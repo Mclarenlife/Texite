@@ -1,0 +1,15 @@
+\documentclass{ctexart}
+\usepackage{booktabs,longtable,tabularx,multirow,threeparttable,makecell,subcaption,siunitx,adjustbox}
+\begin{document}
+表格离线测试，长度 \SI{10}{\metre}。
+\begin{threeparttable}
+\begin{tabularx}{\linewidth}{lX}\toprule 名称 & 说明\\\midrule
+\multirow{2}{*}{中文} & 第一行\\ & \makecell{第二行\\详细说明}\\\bottomrule\end{tabularx}
+\begin{tablenotes}\item 注：完整数据。\end{tablenotes}
+\end{threeparttable}
+\begin{longtable}{lr}\toprule 项目 & 数值\\\midrule 结果 & 42\\\bottomrule\end{longtable}
+\begin{figure}[h]\centering
+\begin{subfigure}{.4\linewidth}\centering\fbox{A}\caption{第一图}\end{subfigure}
+\begin{subfigure}{.4\linewidth}\centering\fbox{B}\caption{第二图}\end{subfigure}
+\caption{组合图}\end{figure}
+\end{document}

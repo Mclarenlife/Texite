@@ -1,5 +1,13 @@
 name: Package desktop preview
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/*runtime*'
+      - 'tests/*compiler*'
+      - 'tests/offline-compatibility.test.mjs'
+      - 'tests/fixtures/offline/**'
+      - '.github/workflows/desktop.yml'
 permissions:
   contents: read
 jobs:
@@ -22,11 +30,18 @@ jobs:
       - run: pnpm runtime:prepare
       - run: pnpm exec install-electron
       - run: pnpm test
-      - run: pnpm package
+      - run: pnpm dist:win
+        if: runner.os == 'Windows'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - run: pnpm dist:mac
+        if: runner.os == 'macOS'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - uses: actions/upload-artifact@v4
         with:
           name: Texite-${{ runner.os }}-preview
-          path: release/
+          path: |
+            release/*.exe
+            release/*.dmg
           retention-days: 7

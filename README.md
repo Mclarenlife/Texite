@@ -2,7 +2,7 @@
 
 本地 LaTeX 编辑器，使用 React、TypeScript、CodeMirror 6、Motion、KaTeX、PDF.js 与 Electron，提供网页版和 Windows / macOS 桌面版。
 
-当前版本：**0.2.0 开发预览**。不包含账号、云同步或云端编译。
+当前版本：**0.2.1 开发预览**。不包含账号、云同步或云端编译。
 
 ## 使用与开发
 
@@ -16,7 +16,7 @@ pnpm exec install-electron
 pnpm dev:desktop
 ```
 
-`runtime:prepare` 首次需要下载约 2.9 GB 官方 TeX 资源及编译器，结果缓存到 `.tools/`，约 1.5 GB 压缩资源放在 `runtime/`。这些文件不会提交进 Git。**打包后的桌面应用已经包含这些资源，用户无需安装 TeX、Perl 或首次联网下载宏包。**
+`runtime:prepare` 首次在**构建机器**下载约 2.9 GB 官方 TeX 资源及编译器，缓存到 `.tools/`，按固定策略裁剪为约 228 MB 的离线资源 ZIP，放在 `runtime/`。这些文件不会提交进 Git。**打包后的桌面应用已包含编译器、常用宏包和中文字体，首次启动也无需安装 TeX、Perl 或联网下载宏包。** 构建时下载量不等于最终安装包大小。
 
 ## 本版功能
 
@@ -27,7 +27,7 @@ pnpm dev:desktop
 - Code / Visual：共享同一份源码；Code 提供高亮、补全、查找替换和独立撤销历史；Visual 展示并编辑标题、段落、行内样式与公式，提供格式工具。导言区和复杂命令保留源码块，不做有损 HTML 转换。
 - 顶栏：编译 / 取消编译，选择仅编辑器、仅 PDF 或拆分视图。
 - PDF：页码输入、前后翻页、总页数、缩放、适合宽度、独立暗色模式、导出 PDF。暗色只影响显示，导出的 PDF 不变。
-- 编译：内置 Tectonic 与完整官方 TeX 资源包；支持中文、数学、TikZ、BibTeX。保留系统 XeLaTeX / pdfLaTeX / LuaLaTeX 选项。
+- 编译：内置 Tectonic 与精简离线 TeX 资源包；支持中文、数学、表格、TikZ / PGFPlots、Beamer、BibTeX。保留系统 XeLaTeX / pdfLaTeX / LuaLaTeX 选项。
 - 大纲、项目搜索、引用补全、命令面板、浅色 / 深色主题、减少动态效果。
 
 Visual 是源码驱动的可视化编辑，复杂宏、表格和自定义环境仍通过源码块编辑；它不是任意 LaTeX 的完整 WYSIWYG 排版器。最终版式以编译 PDF 为准。
@@ -44,7 +44,9 @@ Visual 是源码驱动的可视化编辑，复杂宏、表格和自定义环境�
 
 ## 编译范围
 
-桌面默认使用 **内置 Tectonic 0.17.0**，以本地 ZIP 资源包和 `--only-cached --untrusted` 编译，不访问云端或下载资源。中文建议 `\documentclass[fontset=fandol]{ctexart}`，使用内置 Fandol 字体。编译使用独立临时目录，支持日志、取消、120 秒超时和失败后保留 PDF。
+桌面默认使用 **内置 Tectonic 0.17.0**，以本地 ZIP 资源包和 `--only-cached --untrusted` 编译，不访问云端或下载资源。`\documentclass{ctexart}` / `ctexbook` / `ctexrep` 和 `\usepackage{ctex}` 默认使用内置 Fandol 宋体、黑体、楷体、仿宋；无需系统中文字体。文稿显式指定的 `fontset` 优先，指定其他字体时需要自行提供相应字体。编译使用独立临时目录，支持日志、取消、120 秒超时和失败后保留 PDF。
+
+精简策略保留常用宏包依赖和西文 / 数学字体，并额外保留上游宏包代码与引用样式；主要移除大量额外字体和旧式 CJK 字体资源。支持范围、裁剪策略与验证方式见 [离线编译环境](docs/offline-runtime.md)。未保留字体或外部工具的特殊模板不保证兼容，也不会自动联网补包。
 
 Tectonic 基于 XeTeX，不能替代 LuaTeX、biber 或需要 shell escape 的外部程序。需要这些能力的项目可自行配置系统发行版；应用不启用 shell escape。旧项目选择 pdfLaTeX / XeLaTeX、系统不可用时会使用内置引擎，并在日志中明确标明。
 
@@ -63,9 +65,9 @@ pnpm dist:win
 pnpm dist:mac
 ```
 
-打包命令会校验内置资源 SHA-256；缺少资源会失败，防止生成不能离线编译的安装包。Windows/macOS 应分别在对应平台构建，输出位于 `release/`。系统 Edge 可通过 `TEXITE_BROWSER_PATH` 指定，用于浏览器测试。
+打包命令会校验内置资源 SHA-256、裁剪策略版本、必需文件清单及 230 MB 资源 ZIP 上限；缺少资源或策略过期会失败，防止误打包旧的完整资源。Windows/macOS 应分别在对应平台构建，输出位于 `release/`。系统 Edge 可通过 `TEXITE_BROWSER_PATH` 指定，用于浏览器测试。
 
-内置编译集成测试会从空缓存编译中文、公式、TikZ、参考文献，并验证错误和取消；本机没有准备 runtime 时明确跳过，桌面打包 CI 则先准备 runtime 再测试。基础 CI 另测系统 latexmk。桌面回归测试涵盖实际 IPC、磁盘保存、ZIP 目录、PDF 翻页、外部冲突和重启关联。
+内置编译集成测试会对十类文稿分别建立空缓存，实际编译中文论文、图表、幻灯片、字体与参考文献，并读取 PDF 检查文字和页数；另测编译错误及取消。本机没有准备 runtime 时明确跳过，桌面打包 CI 则先准备 runtime 再测试。可用 `TEXITE_TEST_RUNTIME` 指向打包产物中的 runtime 目录重复检查。基础 CI 另测系统 latexmk。桌面回归测试涵盖实际 IPC、磁盘保存、ZIP 目录、PDF 翻页、外部冲突和重启关联。
 
 默认不包含代码签名或 macOS 公证。Windows/macOS 打包工作流可在 GitHub Actions 手动触发。
 

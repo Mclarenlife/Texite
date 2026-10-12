@@ -44,7 +44,13 @@ export function PdfViewer({
     setError('');
     setPdf(null);
     if (!bytes) return;
-    const task = getDocument({ data: bytes.slice(), useSystemFonts: true });
+    const task = getDocument({
+      data: bytes.slice(),
+      useSystemFonts: true,
+      cMapUrl: new URL('pdfjs/cmaps/', document.baseURI).href,
+      cMapPacked: true,
+      standardFontDataUrl: new URL('pdfjs/standard_fonts/', document.baseURI).href,
+    });
     let disposed = false;
     task.promise
       .then((document) => {

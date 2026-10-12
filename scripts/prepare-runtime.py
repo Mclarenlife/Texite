@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 import zipfile
 from pathlib import Path
+from runtime_profile import select_resources
 
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / '.tools'
@@ -17,6 +18,8 @@ OUT.mkdir(exist_ok=True)
 VERSION = '0.17.0'
 BUNDLE_URL = 'https://data1b.fullyjustified.net/tlextras-2022.0r0.tar'
 BUNDLE_SHA = '425685e124746c15ba9bb8e0596bdaad98fce886afa347fbcf9ec0e9acd7fe79'
+DATABASE_URL = 'https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2022/tlnet-final/tlpkg/texlive.tlpdb.xz'
+DATABASE_SHA = 'be6ec39a41ff875f37a4dfaab75a75c19ea9793d9370c93f69ed27097b02a0cc'
 TARGETS = {
     ('Windows', 'AMD64'): ('x86_64-pc-windows-msvc.zip', 'f61ce51f0b0ade1015b7de7ef368541c5424e9756ecbd0d7af97d6d48030845f'),
     ('Darwin', 'arm64'): ('aarch64-apple-darwin.tar.gz', 'a3f1cac7c5678f01661a92212f58480ae3b0634115d880dbc59e2953ded45667'),
@@ -50,22 +53,50 @@ else:
 
 bundle = CACHE / 'texlive-bundle.tar'
 fetch(BUNDLE_URL, bundle, BUNDLE_SHA)
+database = CACHE / 'texlive-2022.tlpdb.xz'
+fetch(DATABASE_URL, database, DATABASE_SHA)
+policy, selected, packages, policy_sha = select_resources(ROOT / 'scripts/runtime-profile.json', database)
 output = OUT / 'texlive.zip'
-# All resource bytes are preserved; ZIP is a local bundle format supported by Tectonic.
-if not output.exists():
-    partial = OUT / 'texlive.zip.partial'
-    count = 0
-    with tarfile.open(bundle) as t, zipfile.ZipFile(partial, 'w', zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
-        for member in t:
-            if not member.isfile():
-                continue
-            with t.extractfile(member) as src:
-                info = zipfile.ZipInfo(member.name, date_time=(2022, 1, 1, 0, 0, 0))
-                info.compress_type = zipfile.ZIP_DEFLATED
-                z.writestr(info, src.read())
-            count += 1
-    partial.replace(output)
-    print(f'Packaged {count} TeX resources', flush=True)
+# Always rebuild from the pinned source. An old/full bundle must never survive
+# a policy change just because texlive.zip happens to exist on the build machine.
+partial = OUT / 'texlive.zip.partial'
+inventory, fingerprint = {}, hashlib.sha256()
+with tarfile.open(bundle) as t, zipfile.ZipFile(partial, 'w', zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
+    def write(name, data):
+        if name in inventory:
+            raise ValueError(f'Duplicate bundle file: {name}')
+        info = zipfile.ZipInfo(name, date_time=(2022, 1, 1, 0, 0, 0))
+        info.compress_type = zipfile.ZIP_DEFLATED
+        z.writestr(info, data)
+        digest = hashlib.sha256(data).hexdigest()
+        inventory[name] = {'bytes': len(data), 'sha256': digest}
+        fingerprint.update(name.encode() + b'\0' + bytes.fromhex(digest))
+
+    for member in t:
+        if not member.isfile() or member.name == 'SHA256SUM':
+            continue
+        if member.name not in selected and not member.name.endswith(tuple(policy['keepSuffixes'])) and not member.name.startswith(tuple(policy['keepPrefixes'])):
+            continue
+        with t.extractfile(member) as src:
+            data = src.read()
+        if member.name == 'ctexopts.cfg':
+            # Use redistributable bundled fonts on Windows and macOS alike.
+            # Explicit fontset=... in the user's document still takes precedence.
+            data = data.replace(b'\\endinput', b'% Texite default: bundled, platform-independent Chinese fonts.\n\\ctex_set:nn { option } { fontset = fandol }\n\\endinput')
+        write(member.name, data)
+    missing = set(policy['requiredFiles']) - inventory.keys()
+    if missing:
+        raise RuntimeError(f'Required resources missing: {sorted(missing)}')
+    # A trimmed bundle needs a NEW format-cache identity. Reusing the full
+    # distribution's digest could mask missing dependencies with old caches.
+    bundle_identity = fingerprint.hexdigest()
+    write('SHA256SUM', bundle_identity.encode())
+if partial.stat().st_size > policy['resourceBudgetBytes']:
+    raise RuntimeError(f'Runtime exceeds size budget: {partial.stat().st_size} bytes')
+partial.replace(output)
+inventory_path = OUT / 'inventory.json'
+inventory_path.write_text(json.dumps(inventory, sort_keys=True, separators=(',', ':')), encoding='utf-8')
+print(f'Packaged {len(inventory)} resources from {len(packages)} packages: {output.stat().st_size / 1e6:.1f} MB', flush=True)
 
 licenses = OUT / 'licenses'
 licenses.mkdir(exist_ok=True)
@@ -77,5 +108,10 @@ shutil.copyfile(ROOT / 'docs' / 'runtime-notices.txt', licenses / 'NOTICE.txt')
     'tectonic': VERSION, 'platform': target, 'binarySha256': sha(OUT / binary),
     'bundleSource': BUNDLE_URL, 'bundleSourceSha256': BUNDLE_SHA,
     'bundleSha256': sha(output), 'offline': True,
+    'profile': policy['profile'], 'policySha256': policy_sha,
+    'databaseSource': DATABASE_URL, 'databaseSha256': DATABASE_SHA,
+    'resourceCount': len(inventory), 'resourceBytes': output.stat().st_size,
+    'bundleIdentity': bundle_identity, 'packages': packages,
+    'inventorySha256': sha(inventory_path),
 }, indent=2), encoding='utf-8')
 print('Offline runtime ready:', OUT, flush=True)

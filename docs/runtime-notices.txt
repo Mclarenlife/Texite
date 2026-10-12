@@ -5,10 +5,14 @@ components covered by their respective licenses. Source and license information:
 https://github.com/tectonic-typesetting/tectonic/tree/tectonic%400.17.0
 https://github.com/tectonic-typesetting/tectonic/tree/tectonic%400.17.0/dist
 
-The TeX resource bundle is the complete, unmodified file content of the official
-Tectonic tlextras-2022.0r0 bundle (repacked from TAR to ZIP for local reading).
-It includes TeX Live packages and fonts, each under its original license.
-Copyright and license notices inside the files are preserved.
+The TeX resource bundle is a subset of the official Tectonic tlextras-2022.0r0
+bundle, selected using TeX Live package dependencies and Texite's core-CJK policy.
+The package list is recorded in manifest.json; inventory.json records each file
+and checksum. Selected file contents retain their original copyright notices.
+Texite modifies ctexopts.cfg (a user configuration file) to select the bundled
+Fandol Chinese fonts by default. SHA256SUM is replaced with a new bundle identity
+so format caches cannot be inherited from the full upstream distribution.
+Other selected package and font contents are unchanged, under original licenses.
 https://data1b.fullyjustified.net/tlextras-2022.0r0.tar
 https://github.com/tectonic-typesetting/tectonic-texlive-bundles
 https://www.tug.org/texlive/copying.html

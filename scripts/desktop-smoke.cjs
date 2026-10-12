@@ -8,13 +8,14 @@ const JSZip = require('jszip');
   const profile = path.join(base, 'profile');
   await fs.mkdir(folder, { recursive: true });
   const source =
-    '\\documentclass[fontset=fandol]{ctexart}\n\\begin{document}\n桌面离线测试\\newpage 第二页\n\\end{document}\n';
+    '\\documentclass{ctexart}\n\\begin{document}\n桌面离线测试\\newpage 第二页\n\\end{document}\n';
   await fs.writeFile(path.join(folder, 'main.tex'), source);
   let desktop;
   const errors = [];
   const launch = async () => {
     desktop = await electron.launch({
-      args: ['.'],
+      executablePath: process.env.TEXITE_TEST_EXECUTABLE,
+      args: process.env.TEXITE_TEST_EXECUTABLE ? [] : ['.'],
       env: { ...process.env, TEXITE_TEST_USER_DATA: profile },
     });
     await desktop.evaluate(({ dialog }) => {
@@ -22,7 +23,17 @@ const JSZip = require('jszip');
     });
     const page = await desktop.firstWindow();
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.getByRole('textbox', { name: 'LaTeX 源码编辑器' }).waitFor();
+    page.on('console', (message) => {
+      if (/translateFont failed|Unable to load.*CMap|Ensure that the.*cMapUrl/.test(message.text()))
+        errors.push(message.text());
+    });
+    try {
+      await page.getByRole('textbox', { name: 'LaTeX 源码编辑器' }).waitFor();
+    } catch (error) {
+      await fs.writeFile(path.join(base, 'startup.html'), await page.content());
+      console.error('Desktop startup', { url: page.url(), errors });
+      throw error;
+    }
     return page;
   };
   try {
@@ -57,13 +68,11 @@ const JSZip = require('jszip');
     zip.file('main.tex', source.replace('桌面离线测试', 'ZIP 导入测试'));
     zip.folder('assets/empty');
     await page.getByRole('button', { name: '项目首页' }).click();
-    await page
-      .locator('input[accept=".zip"]')
-      .setInputFiles({
-        name: 'Archive.zip',
-        mimeType: 'application/zip',
-        buffer: await zip.generateAsync({ type: 'nodebuffer' }),
-      });
+    await page.locator('input[accept=".zip"]').setInputFiles({
+      name: 'Archive.zip',
+      mimeType: 'application/zip',
+      buffer: await zip.generateAsync({ type: 'nodebuffer' }),
+    });
     await expect(editor).toContainText('ZIP 导入测试');
     const projects = await page.evaluate(() => window.texite.listProjects());
     const imported = projects.find((p) => p.name === 'Archive');

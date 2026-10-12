@@ -1,0 +1,12 @@
+\documentclass{ctexart}
+\usepackage{graphicx,pgfplots,circuitikz}
+\pgfplotsset{compat=1.18}
+\begin{document}
+图形离线测试。
+\includegraphics[width=2cm]{pixel.png}
+\begin{tikzpicture}\draw[blue,thick] (0,0) circle (1cm);\end{tikzpicture}
+\begin{tikzpicture}\begin{axis}[width=6cm,height=4cm]
+\addplot coordinates {(0,0) (1,1) (2,4)};
+\end{axis}\end{tikzpicture}
+\begin{circuitikz}\draw (0,0) to[R=$R$] (2,0);\end{circuitikz}
+\end{document}

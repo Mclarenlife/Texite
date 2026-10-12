@@ -1,6 +1,6 @@
 {
   "name": "texite",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "A local-first LaTeX writing studio for the web, Windows and macOS.",
   "type": "module",
@@ -53,7 +53,12 @@
         "from": "runtime",
         "to": "runtime",
         "filter": [
-          "**/*"
+          "tectonic",
+          "tectonic.exe",
+          "texlive.zip",
+          "manifest.json",
+          "inventory.json",
+          "licenses/**/*"
         ]
       }
     ]

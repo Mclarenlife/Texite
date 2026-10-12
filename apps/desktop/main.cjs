@@ -13,8 +13,10 @@ let window;
 let compiler;
 let library;
 let fileQueue = Promise.resolve();
-if (!app.isPackaged && process.env.TEXITE_TEST_USER_DATA)
-  app.setPath('userData', process.env.TEXITE_TEST_USER_DATA);
+// End-to-end tests also launch the packaged executable. Keep their projects and
+// first-run caches separate from the user's real profile in both launch modes.
+if (process.env.TEXITE_TEST_USER_DATA)
+  app.setPath('userData', path.resolve(process.env.TEXITE_TEST_USER_DATA));
 const devUrl = !app.isPackaged ? process.env.TEXITE_DEV_URL : undefined;
 function trusted(event) {
   const url = event.senderFrame?.url;
@@ -76,7 +78,7 @@ app.whenReady().then(async () => {
   handle('compiler:cancel', () => compiler.cancel());
   function createWindow() {
     window = new BrowserWindow({
-      show: app.isPackaged || !process.env.TEXITE_TEST_USER_DATA,
+      show: !process.env.TEXITE_TEST_USER_DATA,
       width: 1440,
       height: 940,
       minWidth: 820,

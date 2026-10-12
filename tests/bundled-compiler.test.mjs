@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import workspace from '../apps/desktop/workspace.cjs';
-const runtime = path.resolve('runtime');
+const runtime = path.resolve(process.env.TEXITE_TEST_RUNTIME || 'runtime');
 test(
   'bundled runtime compiles Chinese, equations, citations offline, reports errors and cancels',
   { timeout: 180000 },

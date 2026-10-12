@@ -16,7 +16,7 @@ Project 包含 files、folders、mainFile、engine、revision。文件是文本�
 
 ## 内置编译
 
-构建脚本 `prepare-runtime.py` 下载固定版本的官方 Tectonic 二进制和完整 TeX 资源包，验证 SHA-256，将 TAR 的所有普通文件原样转为 ZIP，并附带许可说明。electron-builder 通过 extraResources 放在应用资源目录，二进制不进入 asar。`verify-runtime.cjs` 在打包前验证资源。
+构建脚本 `prepare-runtime.py` 下载固定版本的官方 Tectonic 二进制、TeX 资源包及 TeX Live 包索引，并验证 SHA-256。`runtime-profile.json` 声明常用包、依赖排除、宏包代码保留规则、必需文件和体积上限；`runtime_profile.py` 解析运行时文件及依赖闭包。构建脚本保留对应资源，将中文默认配置设为 Fandol，生成新的资源身份以隔离旧格式缓存，并输出逐文件清单及哈希。electron-builder 只把明确列出的编译资源放入应用资源目录，二进制不进入 asar。`verify-runtime.cjs` 在打包前验证哈希、策略、必需资源和体积上限，详见 [离线编译环境](offline-runtime.md)。
 
 编译器读取快照 → 验证路径 → 建立临时项目 → 调用本地 Tectonic，显式传递本地资源 ZIP、only-cached、untrusted → 流式日志 → 返回 PDF 与快照 revision → 删除本次临时目录。格式缓存单独位于可写的用户数据目录，不修改程序资源。
 
