@@ -82,7 +82,13 @@ with tarfile.open(bundle) as t, zipfile.ZipFile(partial, 'w', zipfile.ZIP_DEFLAT
         if member.name == 'ctexopts.cfg':
             # Use redistributable bundled fonts on Windows and macOS alike.
             # Explicit fontset=... in the user's document still takes precedence.
-            data = data.replace(b'\\endinput', b'% Texite default: bundled, platform-independent Chinese fonts.\n\\ctex_set:nn { option } { fontset = fandol }\n\\endinput')
+            configuration = b'\n% Texite default: bundled, platform-independent Chinese fonts.\n\\ctex_set:nn { option } { fontset = fandol }\n'
+            # This upstream config ends at EOF, not necessarily \\endinput.
+            # A no-op replacement silently keeps macOS's system-font preset.
+            if b'\\endinput' in data:
+                data = data.replace(b'\\endinput', configuration + b'\\endinput', 1)
+            else:
+                data += configuration
         write(member.name, data)
     missing = set(policy['requiredFiles']) - inventory.keys()
     if missing:

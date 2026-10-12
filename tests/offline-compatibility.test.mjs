@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import workspace from '../apps/desktop/workspace.cjs';
+import JSZip from 'jszip';
 
 const runtime = path.resolve(process.env.TEXITE_TEST_RUNTIME || 'runtime');
 const fixtures = new URL('./fixtures/offline/', import.meta.url);
@@ -18,6 +19,9 @@ test(
       return;
     }
     const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const bundle = await JSZip.loadAsync(await fs.readFile(path.join(runtime, 'texlive.zip')));
+    const fontConfig = await bundle.file('ctexopts.cfg')?.async('string');
+    assert.match(fontConfig || '', /^\\ctex_set:nn\s*\{ option \}\s*\{ fontset = fandol \}/m);
     await fs.mkdir('.qa', { recursive: true });
     const base = await fs.mkdtemp(path.resolve('.qa/compatibility-'));
     for (const name of (await fs.readdir(fixtures)).filter((name) => name.endsWith('.tex'))) {
