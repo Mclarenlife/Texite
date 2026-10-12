@@ -3,6 +3,8 @@ on:
   workflow_dispatch:
   push:
     paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
       - 'scripts/*runtime*'
       - 'tests/*compiler*'
       - 'tests/offline-compatibility.test.mjs'

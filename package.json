@@ -15,9 +15,9 @@
     "test": "tsx --test tests/*.test.ts && node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
     "check": "tsc --noEmit",
-    "package": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --dir",
-    "dist:win": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --win nsis",
-    "dist:mac": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --mac dmg",
+    "package": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --dir --publish never",
+    "dist:win": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --win nsis --publish never",
+    "dist:mac": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --mac dmg --publish never",
     "runtime:prepare": "python scripts/prepare-runtime.py",
     "runtime:verify": "node scripts/verify-runtime.cjs"
   },
