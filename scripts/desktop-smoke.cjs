@@ -64,7 +64,22 @@ const JSZip = require('jszip');
     await page.getByRole('button', { name: '修改历史', exact: true }).click();
     await page.locator('.history-list > button').first().click();
     await expect(page.locator('.diff-added')).toContainText('saved from Texite');
-    await page.getByRole('button', { name: '返回编辑' }).click();
+    await page.getByRole('button', { name: '恢复到修改前', exact: true }).click();
+    await expect(
+      page.getByRole('dialog', { name: '预览恢复差异' }).locator('.diff-removed'),
+    ).toContainText('saved from Texite');
+    await page.getByRole('button', { name: '保留当前版本并恢复', exact: true }).click();
+    await expect(editor).not.toContainText('saved from Texite');
+    await expect
+      .poll(() => fs.readFile(path.join(folder, 'main.tex'), 'utf8'))
+      .not.toContain('saved from Texite');
+    await page.locator('.history-list > button').filter({ hasText: '恢复前备份' }).first().click();
+    await page.getByRole('button', { name: '恢复到备份版本', exact: true }).click();
+    await page.getByRole('button', { name: '保留当前版本并恢复', exact: true }).click();
+    await expect(editor).toContainText('saved from Texite');
+    await expect
+      .poll(() => fs.readFile(path.join(folder, 'main.tex'), 'utf8'))
+      .toContain('saved from Texite');
     await page.getByRole('button', { name: '项目文件', exact: true }).click();
     await page.getByRole('button', { name: 'PDF 暗色模式' }).click();
     await expect(page.locator('.pdf-pane')).toHaveAttribute('data-pdf-dark', 'true');
@@ -112,13 +127,16 @@ const JSZip = require('jszip');
     );
     await page.keyboard.press('Control+s');
     await expect(page.getByRole('status')).toContainText('项目已保存到磁盘');
-    await page.screenshot({ path: '.qa/desktop-smoke.png' });
+    await page.getByRole('button', { name: '修改历史', exact: true }).click();
+    await expect(page.locator('.recovery-badge')).toHaveCount(2);
+    await page.screenshot({ animations: 'disabled', path: '.qa/desktop-smoke.png' });
     expect(errors).toEqual([]);
     console.log(
       JSON.stringify({
         offlineChinese: 'passed',
         pdfPagination: 'passed',
         folders: 'passed',
+        restoreAndPersistentBackups: 'passed',
         zipManagedStorage: 'passed',
         conflictAndRelaunchBindings: 'passed',
         errors,

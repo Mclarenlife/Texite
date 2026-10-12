@@ -1,6 +1,12 @@
 import { openDB } from 'idb';
 import JSZip from 'jszip';
-import { type EditRecord, limitHistory } from '../core/history';
+import {
+  type EditRecord,
+  type RecoveryPoint,
+  type RestoreRequest,
+  prepareRestore,
+  limitHistory,
+} from '../core/history';
 import {
   isTextFile,
   safePath,
@@ -11,12 +17,66 @@ import {
 
 let connection: ReturnType<typeof openDB> | undefined;
 const database = () =>
-  (connection ??= openDB('texite-workspace', 1, {
-    upgrade(db) {
-      db.createObjectStore('projects', { keyPath: 'id' });
-      db.createObjectStore('settings');
-    },
+  (connection ??= new Promise((resolve, reject) => {
+    let blocked = false;
+    const opening = openDB('texite-workspace', 2, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('projects'))
+          db.createObjectStore('projects', { keyPath: 'id' });
+        if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+        if (!db.objectStoreNames.contains('recoveries'))
+          db.createObjectStore('recoveries', { keyPath: 'id' }).createIndex(
+            'projectId',
+            'projectId',
+          );
+      },
+      blocked() {
+        blocked = true;
+        reject(new Error('请关闭其他 Texite 标签页后重试，以完成本地存储升级。'));
+      },
+      blocking() {
+        void opening.then((db) => db.close());
+      },
+    });
+    void opening.then((db) => {
+      if (blocked) db.close();
+      else resolve(db);
+    }, reject);
   }));
+export async function readRecoveries(projectId: string): Promise<RecoveryPoint[]> {
+  return (await (await database()).getAllFromIndex('recoveries', 'projectId', projectId)).sort(
+    (a, b) => b.time - a.time,
+  );
+}
+// The safety copy and restored local project commit together. Quota/write failures change neither.
+export async function commitRecovery(current: Project, request: RestoreRequest) {
+  const result = prepareRestore(current, request);
+  const db = await database();
+  const tx = db.transaction(['projects', 'settings', 'recoveries'], 'readwrite');
+  try {
+    const saved: Project | undefined = await tx.objectStore('projects').get(current.id);
+    if (
+      saved &&
+      (saved.revision > current.revision ||
+        (saved.revision === current.revision &&
+          saved.files.find((f) => f.path === request.record.path)?.content !== request.expected))
+    )
+      throw new Error('本地项目已被其他窗口更新，请重新打开项目再恢复。');
+    await tx.objectStore('recoveries').add(result.backup);
+    await tx.objectStore('projects').put(result.restored);
+    await tx.objectStore('settings').put(current.id, 'lastProject');
+    await tx.done;
+    return result;
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {
+      /* Transaction may already be aborted. */
+    }
+    await tx.done.catch(() => {});
+    throw error;
+  }
+}
 export async function saveProject(project: Project) {
   const db = await database();
   const tx = db.transaction(['projects', 'settings'], 'readwrite');

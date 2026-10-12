@@ -1,3 +1,5 @@
+import type { Project } from './model';
+
 export type EditRecord = {
   id: string;
   path: string;
@@ -5,7 +7,45 @@ export type EditRecord = {
   after: string;
   time: number;
   startedAt: number;
+  kind?: 'edit' | 'recovery';
 };
+export type RecoveryPoint = EditRecord & {
+  kind: 'recovery';
+  projectId: string;
+  sourceRecordId: string;
+};
+export type RestoreRequest = { projectId: string; record: EditRecord; expected: string };
+
+export function prepareRestore(project: Project, request: RestoreRequest) {
+  if (project.id !== request.projectId) throw new Error('项目已切换，请重新预览恢复差异。');
+  const file = project.files.find((f) => f.path === request.record.path);
+  if (!file || file.binary) throw new Error('原文件已不存在或不是文本文件，无法恢复。');
+  if (file.content !== request.expected)
+    throw new Error('当前内容已变化，请关闭此预览并重新选择恢复。');
+  if (file.content === request.record.before) throw new Error('当前内容与目标版本一致，无需恢复。');
+  const time = Date.now();
+  const backup: RecoveryPoint = {
+    id: crypto.randomUUID(),
+    projectId: project.id,
+    path: file.path,
+    before: file.content,
+    after: request.record.before,
+    time,
+    startedAt: time,
+    kind: 'recovery',
+    sourceRecordId: request.record.id,
+  };
+  const restored: Project = {
+    ...project,
+    activeFile: file.path,
+    revision: project.revision + 1,
+    updatedAt: time,
+    files: project.files.map((f) =>
+      f.path === file.path ? { ...f, content: request.record.before } : f,
+    ),
+  };
+  return { backup, restored };
+}
 export type DiffLine = {
   kind: 'same' | 'added' | 'removed';
   text: string;

@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { lineDiff, limitHistory, changeSummary, type EditRecord } from '../packages/core/history';
+import {
+  lineDiff,
+  limitHistory,
+  changeSummary,
+  prepareRestore,
+  type EditRecord,
+} from '../packages/core/history';
 const record = (before: string, after: string): EditRecord => ({
   id: 'edit',
   path: 'main.tex',
@@ -63,4 +69,56 @@ test('history bounds skip oversized snapshots without removing smaller prior rec
 test('empty files have no phantom removed or added line', () => {
   assert.deepEqual(changeSummary(record('', 'new')), { added: 1, removed: 0, from: 1, to: 1 });
   assert.deepEqual(lineDiff('', ''), []);
+});
+
+import { createProject } from '../packages/core/sample';
+
+test('restoring targets the pre-edit file, preserves other files and captures the actual current version', () => {
+  const project = createProject();
+  project.files = [
+    { path: 'main.tex', content: 'newest unsaved work' },
+    { path: 'other.tex', content: 'keep other work' },
+  ];
+  const request = {
+    projectId: project.id,
+    record: { ...record('old version', 'intermediate version') },
+    expected: 'newest unsaved work',
+  };
+  const { restored, backup } = prepareRestore(project, request);
+  assert.equal(restored.files[0].content, 'old version');
+  assert.equal(restored.files[1].content, 'keep other work');
+  assert.equal(backup.before, 'newest unsaved work');
+  assert.equal(backup.after, 'old version');
+  assert.equal(backup.kind, 'recovery');
+  assert.equal(backup.projectId, project.id);
+  assert.equal(project.files[0].content, 'newest unsaved work');
+  assert.equal(restored.revision, project.revision + 1);
+  const undo = prepareRestore(restored, {
+    projectId: project.id,
+    record: backup,
+    expected: 'old version',
+  });
+  assert.equal(undo.restored.files[0].content, 'newest unsaved work');
+  assert.equal(undo.backup.before, 'old version');
+  assert.throws(
+    () => prepareRestore(project, { ...request, expected: 'stale contents' }),
+    /当前内容已变化/,
+  );
+  assert.throws(
+    () => prepareRestore(project, { ...request, projectId: 'other-project' }),
+    /项目已切换/,
+  );
+  assert.throws(
+    () =>
+      prepareRestore(project, { ...request, record: { ...request.record, path: 'missing.tex' } }),
+    /不存在/,
+  );
+  assert.throws(
+    () =>
+      prepareRestore(project, {
+        ...request,
+        record: { ...request.record, before: request.expected },
+      }),
+    /无需恢复/,
+  );
 });

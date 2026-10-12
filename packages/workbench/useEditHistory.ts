@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { type EditRecord, limitHistory } from '../core/history';
-import { readHistory, writeHistory } from '../platform/storage';
+import { type EditRecord, type RecoveryPoint, limitHistory } from '../core/history';
+import { readHistory, readRecoveries, writeHistory } from '../platform/storage';
 
 export function useEditHistory(projectId: string | undefined) {
   const [records, setRecords] = useState<EditRecord[]>([]);
   const [error, setError] = useState('');
+  const [recoveries, setRecoveries] = useState<RecoveryPoint[]>([]);
+  const recoveryCache = useRef(new Map<string, RecoveryPoint[]>());
   const cache = useRef(new Map<string, EditRecord[]>());
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const current = useRef(projectId);
@@ -33,9 +35,20 @@ export function useEditHistory(projectId: string | undefined) {
   }, []);
   useEffect(() => {
     setRecords(projectId ? cache.current.get(projectId) || [] : []);
+    setRecoveries(projectId ? recoveryCache.current.get(projectId) || [] : []);
     setError('');
     if (!projectId) return;
     let active = true;
+    void readRecoveries(projectId)
+      .then((saved) => {
+        const local = recoveryCache.current.get(projectId) || [];
+        const merged = [...local, ...saved.filter((r) => !local.some((l) => l.id === r.id))].sort(
+          (a, b) => b.time - a.time,
+        );
+        recoveryCache.current.set(projectId, merged);
+        if (active) setRecoveries(merged);
+      })
+      .catch(() => active && setError('无法读取恢复备份。'));
     void readHistory(projectId)
       .then((saved) => {
         const local = cache.current.get(projectId) || [];
@@ -74,5 +87,10 @@ export function useEditHistory(projectId: string | undefined) {
       setTimeout(() => flush(id), 400),
     );
   }
-  return { records, record, error };
+  function rememberRecovery(point: RecoveryPoint) {
+    const next = [point, ...(recoveryCache.current.get(point.projectId) || [])];
+    recoveryCache.current.set(point.projectId, next);
+    if (current.current === point.projectId) setRecoveries(next);
+  }
+  return { records, recoveries, rememberRecovery, record, error };
 }

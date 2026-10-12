@@ -52,7 +52,14 @@ import {
   type Project,
   type ProjectFile,
 } from '../core/model';
-import { download, exportZip, importZip, loadProjects, saveProject } from '../platform/storage';
+import {
+  commitRecovery,
+  download,
+  exportZip,
+  importZip,
+  loadProjects,
+  saveProject,
+} from '../platform/storage';
 import {
   openBrowserDirectory,
   reopenBrowserProject,
@@ -64,9 +71,10 @@ import { FileTree } from './FileTree';
 import { VisualEditor } from '../editor/VisualEditor';
 import { Dialog } from '../ui/Dialog';
 import { editorFonts, usePreference } from '../ui/preferences';
+import { AppearanceSettings } from '../ui/AppearanceSettings';
 import { useEditHistory } from './useEditHistory';
-import { changeSummary, type EditRecord } from '../core/history';
-import { HistoryReview } from '../editor/HistoryReview';
+import { changeSummary, type EditRecord, type RestoreRequest } from '../core/history';
+import { DiffLines, HistoryReview } from '../editor/HistoryReview';
 
 type Modal =
   'projects' | 'folder' | 'new' | 'file' | 'settings' | 'commands' | 'help' | 'rename' | null;
@@ -85,6 +93,7 @@ const friendlyError = (e: unknown) => (e instanceof Error ? e.message : '操作�
 
 export function App() {
   const [project, setProject] = useState<Project | null>(null);
+  const [bootError, setBootError] = useState('');
   const projectRef = useRef(project);
   projectRef.current = project;
   const [projects, setProjects] = useState<Project[]>([]);
@@ -100,15 +109,29 @@ export function App() {
   const [contrast, setContrast] = usePreference<string>('contrast', 'standard');
   const [fontChoice, setFontChoice] = usePreference<string>('font', 'mono');
   const [textColor, setTextColor] = usePreference<string>('text-color', 'auto');
+  const [syntaxKeyword, setSyntaxKeyword] = usePreference<string>('syntax-keyword', 'auto');
+  const [syntaxString, setSyntaxString] = usePreference<string>('syntax-string', 'auto');
+  const [syntaxComment, setSyntaxComment] = usePreference<string>('syntax-comment', 'auto');
+  const [syntaxPunctuation, setSyntaxPunctuation] = usePreference<string>(
+    'syntax-punctuation',
+    'auto',
+  );
   const [fontSize, setFontSize] = usePreference<number>('font-size', 14);
   const [reduceMotion, setReduceMotion] = usePreference<boolean>('reduce-motion', false);
   const [sidebarWidth, setSidebarWidth] = usePreference<number>('sidebar-width', 240);
   const editHistory = useEditHistory(project?.id);
   const historyRows = useMemo(
-    () => editHistory.records.map((record) => ({ record, summary: changeSummary(record) })),
-    [editHistory.records],
+    () =>
+      [...editHistory.records, ...editHistory.recoveries]
+        .sort((a, b) => b.time - a.time)
+        .map((record) => ({ record, summary: changeSummary(record) })),
+    [editHistory.records, editHistory.recoveries],
   );
   const [review, setReview] = useState<EditRecord | null>(null);
+  const [restoreRequest, setRestoreRequest] = useState<RestoreRequest | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const restoreLock = useRef(false);
+  const [restoreError, setRestoreError] = useState('');
   const [modal, setModal] = useState<Modal>(null);
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
@@ -137,6 +160,7 @@ export function App() {
   const assetInput = useRef<HTMLInputElement>(null);
   const workspace = useRef<HTMLDivElement>(null);
   const saveQueue = useRef(Promise.resolve());
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const compileRunning = useRef(false);
   const compileToken = useRef(0);
   const latestText = useRef<ProjectFile | null>(null);
@@ -147,6 +171,7 @@ export function App() {
   }, []);
   const persist = useCallback(
     (snapshot: Project) => {
+      if (restoreLock.current) return Promise.resolve();
       setSaved('saving');
       const task = saveQueue.current
         .catch(() => {})
@@ -196,6 +221,7 @@ export function App() {
       .catch((e) => {
         if (!cancelled) {
           setSaved('error');
+          setBootError(friendlyError(e));
           notify('无法读取本地项目：' + friendlyError(e));
         }
       });
@@ -204,20 +230,20 @@ export function App() {
     };
   }, [notify]);
   useEffect(() => {
-    if (!project) return;
+    if (!project || restoreLock.current) return;
     setSaved('saving');
-    const timer = setTimeout(() => void persist(project), 350);
-    return () => clearTimeout(timer);
+    autosaveTimer.current = setTimeout(() => void persist(project), 350);
+    return () => clearTimeout(autosaveTimer.current);
   }, [project, persist]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (saved !== 'saved') {
+      if (saved !== 'saved' || restoreBusy) {
         event.preventDefault();
       }
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [saved]);
+  }, [saved, restoreBusy]);
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
@@ -238,7 +264,26 @@ export function App() {
       '--editor-text',
       /^#[\da-f]{6}$/i.test(textColor) ? textColor : 'var(--text)',
     );
-  }, [palette, contrast, fontChoice, fontSize, textColor]);
+    for (const [key, value] of Object.entries({
+      keyword: syntaxKeyword,
+      string: syntaxString,
+      comment: syntaxComment,
+      punctuation: syntaxPunctuation,
+    })) {
+      if (/^#[\da-f]{6}$/i.test(value)) root.style.setProperty('--syntax-' + key, value);
+      else root.style.removeProperty('--syntax-' + key);
+    }
+  }, [
+    palette,
+    contrast,
+    fontChoice,
+    fontSize,
+    textColor,
+    syntaxKeyword,
+    syntaxString,
+    syntaxComment,
+    syntaxPunctuation,
+  ]);
   useEffect(
     () => () => {
       clearTimeout(toastTimer.current);
@@ -281,11 +326,14 @@ export function App() {
   const update = useCallback(
     (change: (p: Project) => Project) =>
       setProject((p) =>
-        p ? { ...change(p), revision: p.revision + 1, updatedAt: Date.now() } : p,
+        p && !restoreLock.current
+          ? { ...change(p), revision: p.revision + 1, updatedAt: Date.now() }
+          : p,
       ),
     [],
   );
   const changeFile = (content: string, path: string) => {
+    if (restoreLock.current) return;
     const previous = projectRef.current?.files.find((f) => f.path === path);
     if (previous && !previous.binary) editHistory.record(path, previous.content, content);
     update((p) => ({
@@ -293,6 +341,57 @@ export function App() {
       files: p.files.map((f) => (f.path === path && !f.binary ? { ...f, content } : f)),
     }));
   };
+  const previewRestore = (record: EditRecord) => {
+    const current = projectRef.current;
+    const file = current?.files.find((f) => f.path === record.path);
+    if (!current || !file || file.binary) return;
+    setRestoreError('');
+    setRestoreRequest({ projectId: current.id, record, expected: file.content });
+  };
+  async function confirmRestore() {
+    if (!restoreRequest || restoreLock.current) return;
+    const request = restoreRequest;
+    restoreLock.current = true;
+    clearTimeout(autosaveTimer.current);
+    setRestoreBusy(true);
+    setRestoreError('');
+    const task = saveQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const current = projectRef.current;
+        if (!current) throw new Error('当前项目不可用。');
+        const { backup, restored } = await commitRecovery(current, request);
+        editHistory.rememberRecovery(backup);
+        if (projectRef.current?.id === restored.id) {
+          projectRef.current = restored;
+          setProject(restored);
+          setReview(null);
+          setEditMode('code');
+        }
+        setProjects((items) => [restored, ...items.filter((p) => p.id !== restored.id)]);
+        setRestoreRequest(null);
+        setSaved('saving');
+        try {
+          if (window.texite) await window.texite.saveProject(restored);
+          else await saveBrowserDirectory(restored);
+          setSaved('saved');
+          notify('已恢复文件；恢复前的版本已单独保存，可从历史记录中找回。');
+        } catch (error) {
+          setSaved('error');
+          notify('已在本地恢复并保留备份，磁盘同步失败：' + friendlyError(error));
+        }
+      });
+    saveQueue.current = task;
+    try {
+      await task;
+    } catch (error) {
+      setSaved('error');
+      setRestoreError('未执行恢复：' + friendlyError(error) + ' 当前内容保持不变。');
+    } finally {
+      restoreLock.current = false;
+      setRestoreBusy(false);
+    }
+  }
   const onCursor = useCallback(
     (line: number, column: number, reference?: string) => setCursor({ line, column, reference }),
     [],
@@ -308,6 +407,7 @@ export function App() {
     setModal(name);
   };
   async function chooseProject(next: Project, refresh = false, alreadyFlushed = false) {
+    if (restoreLock.current) return;
     if (compileRunning.current) {
       notify('请等待或取消当前编译后再切换项目。');
       return;
@@ -373,7 +473,7 @@ export function App() {
   }
   const compile = useCallback(async () => {
     const snapshot = projectRef.current;
-    if (!snapshot || compileRunning.current) return;
+    if (!snapshot || compileRunning.current || restoreLock.current) return;
     if (!window.texite) {
       setModal('settings');
       setModalError(
@@ -548,9 +648,16 @@ export function App() {
     return (
       <div className="boot">
         <div className="brand-symbol">t.</div>
-        <p>{saved === 'error' ? '无法读取工作区，请检查浏览器存储权限。' : '正在打开项目…'}</p>
+        <p>
+          {saved === 'error'
+            ? bootError || '无法读取工作区，请检查浏览器存储权限。'
+            : '正在打开项目…'}
+        </p>
         {saved === 'error' && (
-          <button onClick={() => setProject(createProject())}>创建临时项目</button>
+          <>
+            <button onClick={() => location.reload()}>重试打开工作区</button>
+            <button onClick={() => setProject(createProject())}>创建临时项目</button>
+          </>
         )}
       </div>
     );
@@ -851,9 +958,9 @@ export function App() {
                 </div>
               ) : section === 'history' ? (
                 <div className="history-list">
-                  <p className="history-note">连续输入合并记录 · 最近 150 次，最多 4 MB</p>
+                  <p className="history-note">普通历史：150 次 / 4 MB · 恢复备份单独保留</p>
                   {editHistory.error && <p role="alert">{editHistory.error}</p>}
-                  {!editHistory.records.length && (
+                  {!historyRows.length && (
                     <p className="sidebar-empty">开始编辑后，这里会记录修改时间、文件和行号。</p>
                   )}
                   {historyRows.map(({ record, summary }) => {
@@ -871,6 +978,9 @@ export function App() {
                           {new Date(record.time).toLocaleString('zh-CN', { hour12: false })}
                         </time>
                         <strong>{record.path}</strong>
+                        {record.kind === 'recovery' && (
+                          <span className="recovery-badge">恢复前备份</span>
+                        )}
                         <span>
                           第 {summary.from}
                           {summary.to !== summary.from ? '–' + summary.to : ''} 行{' '}
@@ -1027,7 +1137,14 @@ export function App() {
                   <span>{review?.path || active?.path}</span>
                   <span className="editor-language">{active?.binary ? '资源' : 'LaTeX'}</span>
                 </div>
-                {review && <HistoryReview record={review} onClose={() => setReview(null)} />}
+                {review && (
+                  <HistoryReview
+                    record={review}
+                    onClose={() => setReview(null)}
+                    onRestore={() => previewRestore(review)}
+                    canRestore={!!project.files.find((f) => f.path === review.path && !f.binary)}
+                  />
+                )}
                 <div
                   className="source-container"
                   hidden={
@@ -1233,7 +1350,7 @@ export function App() {
                 {engineNames[project.engine]}
                 <ChevronDown size={11} />
               </button>
-              <span className="version">Texite 0.3</span>
+              <span className="version">Texite 0.4</span>
             </div>
           </footer>
         </div>
@@ -1442,104 +1559,101 @@ export function App() {
           </form>
         </Dialog>
         <Dialog
+          open={!!restoreRequest}
+          onClose={() => {
+            if (!restoreBusy) setRestoreRequest(null);
+          }}
+          title="预览恢复差异"
+          description="仅恢复这一个文件。确认前不会修改内容；确认时会先保存当前版本为独立备份。"
+          wide
+          className="restore-dialog"
+        >
+          {restoreRequest && (
+            <div className="restore-preview" aria-busy={restoreBusy}>
+              <div className="restore-comparison-heading">
+                <strong>{restoreRequest.record.path}</strong>
+                <span>
+                  当前版本 →{' '}
+                  {new Date(restoreRequest.record.time).toLocaleString('zh-CN', { hour12: false })}{' '}
+                  · {restoreRequest.record.kind === 'recovery' ? '备份版本' : '修改前'}
+                </span>
+              </div>
+              <DiffLines before={restoreRequest.expected} after={restoreRequest.record.before} />
+              {restoreRequest.expected === restoreRequest.record.before && (
+                <p className="restore-equal">当前内容与目标版本一致，无需恢复。</p>
+              )}
+              {restoreError && (
+                <p className="form-error" role="alert">
+                  {restoreError}
+                </p>
+              )}
+              <div className="restore-footer">
+                <span>备份会保留在“修改历史”中，可再次预览并恢复。</span>
+                <div>
+                  <button
+                    className="secondary-button"
+                    disabled={restoreBusy}
+                    onClick={() => setRestoreRequest(null)}
+                  >
+                    取消
+                  </button>
+                  <button
+                    className="primary-button"
+                    disabled={
+                      restoreBusy || restoreRequest.expected === restoreRequest.record.before
+                    }
+                    onClick={() => void confirmRestore()}
+                  >
+                    {restoreBusy ? '正在保存备份…' : '保留当前版本并恢复'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </Dialog>
+        <Dialog
           open={modal === 'settings'}
           onClose={() => setModal(null)}
           title="设置"
-          description="外观与本地编译设置。"
+          description="外观、编辑器与本地编译。"
+          wide
+          className="settings-dialog"
+          onEscapeKeyDown={(event) => {
+            if (event.target instanceof Element && event.target.closest('.color-studio'))
+              event.preventDefault();
+          }}
         >
-          <div className="settings-stack">
-            <label className="setting-row">
-              <span>
-                外观<small>选择适合当前环境的亮度</small>
-              </span>
-              <select aria-label="外观" value={theme} onChange={(e) => setTheme(e.target.value)}>
-                <option value="light">浅色</option>
-                <option value="dark">深色</option>
-                <option value="system">跟随系统</option>
-              </select>
-            </label>
-            <label className="setting-row">
-              <span>
-                主题配色<small>黑白基底，独立设置强调色</small>
-              </span>
-              <select
-                aria-label="主题配色"
-                value={palette}
-                onChange={(e) => setPalette(e.target.value)}
-              >
-                <option value="mono">黑白</option>
-                <option value="violet">鸢尾紫</option>
-                <option value="blue">晴空蓝</option>
-                <option value="green">薄荷绿</option>
-                <option value="rose">玫瑰粉</option>
-                <option value="amber">琥珀橙</option>
-              </select>
-            </label>
-            <label className="setting-row">
-              <span>文字对比度</span>
-              <select
-                aria-label="文字对比度"
-                value={contrast}
-                onChange={(e) => setContrast(e.target.value)}
-              >
-                <option value="standard">标准</option>
-                <option value="high">高对比</option>
-                <option value="soft">柔和</option>
-              </select>
-            </label>
-            <div className="setting-row">
-              <span>
-                编辑文字颜色<small>影响 Code 和 Visual 正文，不改变 PDF</small>
-              </span>
-              <div className="text-color-picker">
-                <input
-                  type="color"
-                  aria-label="编辑文字颜色"
-                  value={textColor === 'auto' ? '#303030' : textColor}
-                  onChange={(e) => setTextColor(e.target.value)}
-                />
-                <button onClick={() => setTextColor('auto')}>跟随外观</button>
-              </div>
-            </div>
-            <label className="setting-row">
-              <span>
-                编辑字体<small>使用本机字体，缺少时自动回退</small>
-              </span>
-              <select
-                aria-label="编辑字体"
-                value={fontChoice}
-                onChange={(e) => setFontChoice(e.target.value)}
-              >
-                <option value="mono">系统等宽</option>
-                <option value="consolas">Consolas</option>
-                <option value="cascadia">Cascadia Code</option>
-                <option value="sans">无衬线</option>
-                <option value="serif">衬线 / 宋体</option>
-              </select>
-            </label>
-            <label className="setting-row">
-              <span>
-                编辑器字号<small>{fontSize} px</small>
-              </span>
-              <input
-                aria-label="编辑器字号"
-                type="range"
-                min={12}
-                max={22}
-                value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
-              />
-            </label>
-            <label className="setting-row">
-              <span>
-                减少动态效果<small>保留反馈，减少位移</small>
-              </span>
-              <input
-                type="checkbox"
-                checked={reduceMotion}
-                onChange={(e) => setReduceMotion(e.target.checked)}
-              />
-            </label>
+          <AppearanceSettings
+            theme={theme}
+            onTheme={setTheme}
+            palette={palette}
+            onPalette={setPalette}
+            contrast={contrast}
+            onContrast={setContrast}
+            colors={{
+              text: textColor,
+              keyword: syntaxKeyword,
+              string: syntaxString,
+              comment: syntaxComment,
+              punctuation: syntaxPunctuation,
+            }}
+            onColor={(key, value) =>
+              ({
+                text: setTextColor,
+                keyword: setSyntaxKeyword,
+                string: setSyntaxString,
+                comment: setSyntaxComment,
+                punctuation: setSyntaxPunctuation,
+              })[key](value)
+            }
+            font={fontChoice}
+            onFont={setFontChoice}
+            fontSize={fontSize}
+            onFontSize={setFontSize}
+            reduceMotion={reduceMotion}
+            onReduceMotion={setReduceMotion}
+            initialTab={modalError ? 'compiler' : 'appearance'}
+          >
             <label className="setting-row">
               <span>
                 编译引擎<small>内置引擎无需安装 TeX 环境</small>
@@ -1609,7 +1723,7 @@ export function App() {
                 {modalError}
               </p>
             )}
-          </div>
+          </AppearanceSettings>
         </Dialog>
         <Dialog open={modal === 'commands'} onClose={() => setModal(null)} title="你想做什么？">
           <div className="command-search">

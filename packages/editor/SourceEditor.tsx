@@ -35,7 +35,10 @@ const highlighting = HighlightStyle.define([
     tag: [tags.keyword, tags.tagName, tags.function(tags.variableName)],
     color: 'var(--syntax-keyword)',
   },
-  { tag: [tags.string, tags.attributeValue], color: 'var(--syntax-string)' },
+  {
+    tag: [tags.string, tags.attributeValue, tags.atom, tags.number],
+    color: 'var(--syntax-string)',
+  },
   { tag: tags.comment, color: 'var(--syntax-comment)', fontStyle: 'italic' },
   { tag: [tags.bracket, tags.punctuation], color: 'var(--syntax-punctuation)' },
 ]);

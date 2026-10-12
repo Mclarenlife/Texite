@@ -8,6 +8,8 @@ export function Dialog({
   description,
   children,
   wide = false,
+  className = '',
+  onEscapeKeyDown,
 }: {
   open: boolean;
   onClose: () => void;
@@ -15,13 +17,16 @@ export function Dialog({
   description?: string;
   children: ReactNode;
   wide?: boolean;
+  className?: string;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
 }) {
   return (
     <DialogPrimitive.Root open={open} onOpenChange={(value) => !value && onClose()}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="dialog-overlay" />
         <DialogPrimitive.Content
-          className={'dialog-content' + (wide ? ' wide' : '')}
+          className={'dialog-content' + (wide ? ' wide' : '') + ' ' + className}
+          onEscapeKeyDown={onEscapeKeyDown}
           aria-describedby={description ? 'dialog-description' : undefined}
         >
           <div className="dialog-heading">
