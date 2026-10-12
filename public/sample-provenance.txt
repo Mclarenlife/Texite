@@ -1,0 +1,5 @@
+sample.pdf is an actual LaTeX output generated from packages/core/sample.ts.
+Generated locally with Tectonic 0.17.0 (XeTeX engine), 2026-10-12.
+It is an introductory precompiled example, not a live compilation result.
+To regenerate source: pnpm exec tsx scripts/generate-sample.ts
+Then compile .tools/sample/main.tex with a compatible TeX toolchain.
