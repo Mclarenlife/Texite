@@ -1803,3 +1803,440 @@ h1 {
   animation-duration: 0.01ms !important;
   transition-duration: 0.01ms !important;
 }
+/* Workspace 0.2 */
+.app-header {
+  gap: 16px;
+  padding: 0 22px;
+  min-height: 70px;
+}
+.header-actions {
+  gap: 10px;
+}
+.header-actions .command-trigger {
+  width: 30px;
+  padding: 6px;
+  justify-content: center;
+}
+.header-actions .command-trigger span,
+.header-actions .command-trigger kbd {
+  display: none;
+}
+.workspace-actions {
+  gap: 14px;
+}
+.workbench-row {
+  padding-top: 18px;
+}
+.mode-switch button {
+  padding: 7px 10px;
+}
+.compile-button {
+  height: 35px;
+}
+.breadcrumb {
+  min-width: 0;
+}
+.project-title {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-shell[data-view='editor'] .workspace,
+.app-shell[data-view='pdf'] .workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+.app-shell[data-view='editor'] .preview-container,
+.app-shell[data-view='pdf'] .editor-pane,
+.app-shell:not([data-view='split']) .panel-divider {
+  display: none;
+}
+.app-shell[data-view='pdf'] .preview-container {
+  display: flex;
+}
+.edit-mode-switch {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  padding: 2px;
+  border-radius: 7px;
+}
+.edit-mode-switch button {
+  padding: 4px 9px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+.edit-mode-switch button[aria-pressed='true'] {
+  background: var(--raised);
+  color: var(--accent);
+  box-shadow: 0 1px 4px #0001;
+}
+.pdf-header {
+  gap: 8px;
+  flex-wrap: wrap;
+  height: auto;
+  min-height: 47px;
+  padding: 6px 10px;
+}
+.pdf-header .pdf-controls {
+  gap: 2px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+.pdf-heading-label {
+  font-weight: 600;
+  color: var(--secondary);
+}
+.pdf-controls .icon-button {
+  width: 26px;
+  height: 28px;
+}
+.page-input {
+  width: 30px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--raised);
+  padding: 4px 0;
+  font-size: 11px;
+}
+.page-count {
+  min-width: 25px;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+.zoom-value {
+  font-size: 11px;
+  padding: 4px;
+  min-width: 38px;
+}
+.tool-divider {
+  height: 15px;
+  border-left: 1px solid var(--line);
+  margin: 0 4px;
+}
+.pdf-pane[data-pdf-dark='true'] .pdf-scroll {
+  background: #222725;
+}
+.pdf-pane[data-pdf-dark='true'] canvas {
+  filter: invert(0.9) hue-rotate(180deg);
+}
+.pdf-controls [aria-pressed='true'] {
+  background: var(--tint);
+  color: var(--accent);
+}
+.preview-empty {
+  gap: 14px;
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 350px;
+}
+.project-space {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 54px clamp(24px, 5vw, 90px);
+}
+.space-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.space-mark {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 13px;
+}
+.space-header h1 {
+  font-size: 29px;
+  letter-spacing: -1px;
+  margin: 10px 0 0;
+  font-weight: 550;
+}
+.space-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.space-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 42px 0 24px;
+  color: var(--muted);
+}
+.space-filter label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.space-filter input {
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
+  width: 200px;
+}
+.project-space .project-cards {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 24px;
+}
+.project-space .project-card {
+  padding: 12px 12px 20px;
+  border-radius: 16px;
+  max-width: 420px;
+}
+.project-space .project-cover {
+  height: 156px;
+  margin-bottom: 20px;
+  position: relative;
+  background: #e5eadd;
+  border-radius: 10px;
+  color: #637d5b;
+  overflow: hidden;
+}
+.project-space .cover-1 {
+  background: #e9e3f0;
+  color: #86729d;
+}
+.project-space .cover-2 {
+  background: #eee4d5;
+  color: #a38865;
+}
+.project-cover .cover-number {
+  font-family: Georgia, serif;
+  font-size: 100px;
+  opacity: 0.13;
+  position: absolute;
+  right: 12px;
+  bottom: -28px;
+}
+.project-card strong,
+.project-card > span,
+.project-location {
+  margin-left: 8px;
+}
+.project-location {
+  display: block;
+  max-width: 250px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  margin-top: 8px;
+}
+.visual-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--surface);
+}
+.visual-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border-bottom: 1px solid var(--line);
+  padding: 7px 14px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+.visual-toolbar button {
+  border-radius: 5px;
+  padding: 5px;
+}
+.visual-toolbar button:hover {
+  background: var(--tint);
+}
+.visual-toolbar span {
+  font-size: 10px;
+  color: var(--muted);
+  margin-left: 12px;
+}
+.visual-page {
+  padding: 25px clamp(20px, 3vw, 50px) 60px;
+  max-width: 900px;
+  margin: 0 auto;
+  font-size: 16px;
+  line-height: 1.8;
+  font-family: Georgia, 'Microsoft YaHei', serif;
+}
+.visual-block {
+  margin: 8px 0 16px;
+}
+.visual-content {
+  display: block;
+  width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
+  line-height: inherit;
+  padding: 4px;
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.visual-content:hover {
+  background: var(--bg);
+}
+.visual-section {
+  font-size: 25px;
+  font-weight: 600;
+  margin-top: 28px;
+}
+.visual-subsection {
+  font-size: 20px;
+  font-weight: 600;
+}
+.visual-block textarea {
+  display: block;
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  resize: vertical;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px;
+  background: var(--raised);
+  min-height: 40px;
+  field-sizing: content;
+}
+.visual-source {
+  font:
+    12px/1.6 ui-monospace,
+    monospace;
+  color: var(--secondary);
+}
+.visual-source summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 2px;
+  color: var(--muted);
+}
+.source-block {
+  width: 100%;
+  text-align: left;
+  white-space: pre-wrap;
+  background: var(--bg);
+  padding: 12px;
+  border-radius: 7px;
+  overflow-wrap: anywhere;
+}
+.visual-add {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font:
+    12px 'Segoe UI',
+    sans-serif;
+  padding: 8px;
+}
+@media (max-width: 1200px) {
+  .app-header {
+    padding: 0 16px;
+  }
+  .header-actions {
+    gap: 7px;
+  }
+  .local-badge,
+  .export-button span,
+  .compile-button kbd {
+    display: none;
+  }
+  .project-title {
+    max-width: 140px;
+  }
+  .workspace-actions {
+    gap: 8px;
+  }
+  .mode-switch button {
+    padding: 6px 8px;
+  }
+}
+@media (max-width: 900px) {
+  .app-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .header-actions {
+    margin-left: auto;
+  }
+  .header-actions .icon-button,
+  .header-actions .command-trigger {
+    display: none;
+  }
+  .space-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .space-actions {
+    margin-top: 18px;
+  }
+}
+@media (max-width: 760px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .header-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+  .header-actions .workspace-actions {
+    width: 100%;
+    justify-content: space-between;
+    display: flex;
+  }
+  .header-actions .export-button {
+    display: none;
+  }
+  .mode-switch {
+    display: flex;
+  }
+  .mode-switch button {
+    padding: 7px;
+  }
+  .mode-switch button svg {
+    display: none;
+  }
+  .compile-button {
+    padding: 0 10px;
+  }
+  .app-shell[data-view='split'] .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1fr 1fr;
+    gap: 8px;
+  }
+  .app-shell[data-view='split'] .preview-container {
+    display: flex;
+  }
+  .workbench-row {
+    padding-top: 8px;
+  }
+  .pdf-controls .icon-button {
+    width: 22px;
+  }
+  .tool-divider {
+    margin: 0 2px;
+  }
+  .project-space {
+    padding: 28px 18px;
+  }
+  .space-actions {
+    gap: 8px;
+  }
+  .space-actions button {
+    padding: 8px;
+  }
+  .visual-toolbar span {
+    display: none;
+  }
+}

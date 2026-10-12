@@ -1,0 +1,21 @@
+Texite offline typesetting runtime
+
+Tectonic 0.17.0 is distributed unmodified under the MIT license, with third-party
+components covered by their respective licenses. Source and license information:
+https://github.com/tectonic-typesetting/tectonic/tree/tectonic%400.17.0
+https://github.com/tectonic-typesetting/tectonic/tree/tectonic%400.17.0/dist
+
+The TeX resource bundle is the complete, unmodified file content of the official
+Tectonic tlextras-2022.0r0 bundle (repacked from TAR to ZIP for local reading).
+It includes TeX Live packages and fonts, each under its original license.
+Copyright and license notices inside the files are preserved.
+https://data1b.fullyjustified.net/tlextras-2022.0r0.tar
+https://github.com/tectonic-typesetting/tectonic-texlive-bundles
+https://www.tug.org/texlive/copying.html
+Corresponding original package sources and documentation are available at:
+https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2022/
+https://ctan.org/
+
+The application does not enable shell escape or download packages at runtime.
+Tectonic uses a XeTeX-derived engine and BibTeX. It does not replace a LuaTeX
+engine, biber, or external programs required by some specialized documents.

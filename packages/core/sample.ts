@@ -1,13 +1,13 @@
 import type { Project } from './model';
 
-export const sampleSource = String.raw`% 给想法，留一点空间。
+export const sampleSource = String.raw`% Texite 示例文稿
 \documentclass[11pt,a4paper]{article}
 \usepackage[margin=28mm]{geometry}
 \usepackage{amsmath}
 \usepackage{graphicx}
 \usepackage{hyperref}
 
-\title{A Little Space for Big Ideas}
+\title{Research Notes}
 \author{Your name}
 \date{\today}
 
@@ -15,20 +15,17 @@ export const sampleSource = String.raw`% 给想法，留一点空间。
 \maketitle
 
 \begin{abstract}
-Good writing starts with a little room to think.
-This is your first document in Texite: a quiet
-workspace for research, discovery, and the next idea.
+This example demonstrates sections, equations,
+citations, and a bibliography in a LaTeX document.
 \end{abstract}
 
-\section{A fresh perspective}
-Every great paper begins with a question.
-Write yours here, then let the details follow.
+\section{Introduction}
+Replace this paragraph with an introduction to your work.
 
-Attention helps us find meaningful connections
-between ideas \cite{vaswani2017}.
+The attention mechanism is described in \cite{vaswani2017}.
 
-\section{Connecting the dots}
-One familiar expression brings it all together:
+\section{Method}
+Scaled dot-product attention is defined as:
 \begin{equation}
   \mathrm{Attention}(Q,K,V) =
   \mathrm{softmax}\!\left(
@@ -36,21 +33,20 @@ One familiar expression brings it all together:
   \right)V.
 \end{equation}
 
-\subsection{What comes next?}
-Make a small change. Compile. See your ideas
-take shape, one paragraph at a time.
+\subsection{Results}
+Add your results here, then compile to update the PDF.
 
 \bibliographystyle{plain}
 \bibliography{references}
 \end{document}
 `;
-export function createProject(name = '关于下一个好想法', blank = false): Project {
+export function createProject(name = '示例项目', blank = false): Project {
   return {
     id: crypto.randomUUID(),
     name,
     mainFile: 'main.tex',
     activeFile: 'main.tex',
-    engine: 'pdflatex',
+    engine: 'tectonic',
     revision: 0,
     updatedAt: Date.now(),
     files: [

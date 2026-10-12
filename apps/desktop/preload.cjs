@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('texite', {
+  listProjects: () => ipcRenderer.invoke('project:list'),
+  importProject: (project) => ipcRenderer.invoke('project:import', project),
+  reopenProject: (id) => ipcRenderer.invoke('project:reopen', id),
   openProject: () => ipcRenderer.invoke('project:open'),
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   detectEngines: () => ipcRenderer.invoke('compiler:detect'),

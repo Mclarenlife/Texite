@@ -1,6 +1,7 @@
 node_modules/
 dist/
 release/
+runtime/
 .tools/
 .qa/
 test-results/

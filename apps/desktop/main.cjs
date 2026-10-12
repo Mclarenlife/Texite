@@ -1,7 +1,8 @@
 const { app, BrowserWindow, ipcMain, dialog, session, protocol, net } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
-const { Compiler, readDirectory, saveDirectory, detectEngines } = require('./workspace.cjs');
+const { Compiler, detectEngines } = require('./workspace.cjs');
+const { ProjectLibrary } = require('./projects.cjs');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'texite',
@@ -10,8 +11,8 @@ protocol.registerSchemesAsPrivileged([
 ]);
 let window;
 let compiler;
-let opened = null;
-let fileOperationPending = false;
+let library;
+let fileQueue = Promise.resolve();
 if (!app.isPackaged && process.env.TEXITE_TEST_USER_DATA)
   app.setPath('userData', process.env.TEXITE_TEST_USER_DATA);
 const devUrl = !app.isPackaged ? process.env.TEXITE_DEV_URL : undefined;
@@ -30,18 +31,17 @@ function handle(name, callback) {
   });
 }
 function handleFiles(name, callback) {
-  handle(name, async (...args) => {
-    if (fileOperationPending) throw new Error('正在处理文件，请等待当前操作完成。');
-    fileOperationPending = true;
-    try {
-      return await callback(...args);
-    } finally {
-      fileOperationPending = false;
-    }
+  handle(name, (...args) => {
+    const task = fileQueue.catch(() => {}).then(() => callback(...args));
+    fileQueue = task;
+    return task;
   });
 }
-app.whenReady().then(() => {
-  compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'));
+app.whenReady().then(async () => {
+  library = new ProjectLibrary(app.getPath('userData'));
+  await library.init();
+  const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
+  compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime);
   protocol.handle('texite', (request) => {
     const url = new URL(request.url);
     if (url.hostname !== 'app') return new Response('Forbidden', { status: 403 });
@@ -61,34 +61,13 @@ app.whenReady().then(() => {
   );
   handleFiles('project:open', async () => {
     const result = await dialog.showOpenDialog(window, { properties: ['openDirectory'] });
-    if (result.canceled) return null;
-    const root = result.filePaths[0];
-    const data = await readDirectory(root);
-    const id = require('node:crypto').randomUUID();
-    opened = { root, hashes: data.hashes, id };
-    return {
-      id,
-      name: data.settings.name || path.basename(root),
-      files: data.files,
-      mainFile: data.settings.mainFile,
-      engine: data.settings.engine,
-    };
+    return result.canceled ? null : library.link(result.filePaths[0]);
   });
-  handleFiles('project:save', async (project) => {
-    // A project ID binds a selected directory to one browser workspace.
-    if (!opened || (opened.id && opened.id !== project.id)) {
-      const result = await dialog.showOpenDialog(window, {
-        title: '选择保存项目的空文件夹',
-        properties: ['openDirectory', 'createDirectory'],
-      });
-      if (result.canceled) return { cancelled: true };
-      opened = { root: result.filePaths[0], hashes: new Map(), id: project.id };
-    }
-    opened.id = project.id;
-    opened.hashes = await saveDirectory(opened.root, project, opened.hashes);
-    return { directory: opened.root };
-  });
-  handle('compiler:detect', detectEngines);
+  handleFiles('project:save', (project) => library.save(project));
+  handleFiles('project:import', (project) => library.import(project));
+  handleFiles('project:list', () => library.list());
+  handleFiles('project:reopen', (id) => library.reopen(id));
+  handle('compiler:detect', () => detectEngines(runtime));
   handle('compiler:run', (project) =>
     compiler.compile(project, (chunk) => {
       if (window && !window.isDestroyed()) window.webContents.send('compiler:log', chunk);
@@ -115,6 +94,18 @@ app.whenReady().then(() => {
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event, url) => {
       if (url !== (devUrl || 'texite://app/index.html')) event.preventDefault();
+    });
+    window.webContents.on('will-prevent-unload', (event) => {
+      const choice = dialog.showMessageBoxSync(window, {
+        type: 'warning',
+        title: '项目尚未完全保存',
+        message: '部分更改尚未写入磁盘。',
+        detail: '可以继续编辑并导出 ZIP，或退出后从本地恢复副本继续。',
+        buttons: ['继续编辑', '退出'],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      if (choice === 1) event.preventDefault();
     });
     window.on('closed', () => {
       void compiler.cancel();

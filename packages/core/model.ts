@@ -1,10 +1,12 @@
-export type Engine = 'xelatex' | 'pdflatex' | 'lualatex';
-export type Mode = 'write' | 'proof' | 'focus';
+export type Engine = 'tectonic' | 'xelatex' | 'pdflatex' | 'lualatex';
+export type Mode = 'split' | 'editor' | 'pdf';
 export type ProjectFile = { path: string; content: string; binary?: boolean };
 export type Project = {
   id: string;
   name: string;
   files: ProjectFile[];
+  folders?: string[];
+  location?: { kind: 'linked' | 'managed'; directory: string };
   mainFile: string;
   activeFile: string;
   engine: Engine;
@@ -19,21 +21,31 @@ export type Diagnostic = {
 };
 export type CompileResult = {
   success: boolean;
+  engine?: Engine;
   pdf?: number[];
   log: string;
   revision: number;
   cancelled?: boolean;
 };
 export type DesktopAPI = {
+  importProject(project: Project): Promise<Project>;
+  listProjects(): Promise<Project[]>;
+  reopenProject(id: string): Promise<Project | null>;
   openProject(): Promise<{
     id: string;
     name: string;
     files: ProjectFile[];
+    folders?: string[];
+    location?: Project['location'];
     mainFile?: string;
     engine?: Engine;
   } | null>;
   saveProject(project: Project): Promise<{ cancelled?: boolean; directory?: string }>;
-  detectEngines(): Promise<{ latexmk: boolean; engines: Record<Engine, boolean> }>;
+  detectEngines(): Promise<{
+    bundled: boolean;
+    latexmk: boolean;
+    engines: Record<Engine, boolean>;
+  }>;
   compile(project: Project): Promise<CompileResult>;
   cancelCompile(): Promise<void>;
   onCompileLog(callback: (chunk: string) => void): () => void;
@@ -100,20 +112,46 @@ export function validateProject(value: unknown): Project {
     total += file.content.length;
   }
   if (total > 70 * 1024 * 1024) throw new Error('初版支持最多 50 MB 的项目。');
+  const folders = validateFolders(
+    p.folders ?? [],
+    p.files.map((f) => f.path),
+  );
   const mainFile =
     p.files.find((f) => f.path === p.mainFile && /\.tex$/i.test(f.path) && !f.binary)?.path ??
     p.files.find((f) => /\.tex$/i.test(f.path) && !f.binary)?.path;
   if (!mainFile) throw new Error('项目中没有 .tex 主文件。');
   return {
     ...p,
+    folders,
     id: typeof p.id === 'string' ? p.id : crypto.randomUUID(),
     name: p.name.slice(0, 100),
     mainFile,
     activeFile: p.files.some((f) => f.path === p.activeFile) ? p.activeFile : mainFile,
-    engine: ['xelatex', 'pdflatex', 'lualatex'].includes(p.engine) ? p.engine : 'xelatex',
+    engine: ['tectonic', 'xelatex', 'pdflatex', 'lualatex'].includes(p.engine)
+      ? p.engine
+      : 'tectonic',
     revision: Number.isSafeInteger(p.revision) ? p.revision : 0,
     updatedAt: Number.isFinite(p.updatedAt) ? p.updatedAt : Date.now(),
   };
+}
+export function validateFolders(folders: string[], files: string[]) {
+  if (!Array.isArray(folders) || folders.length > 500) throw new Error('最多支持 500 个文件夹。');
+  const all = new Set(folders.map(safePath));
+  for (const path of [...files, ...all]) {
+    const parts = path.split('/');
+    while (parts.length > 1) {
+      parts.pop();
+      all.add(parts.join('/'));
+    }
+  }
+  const fileNames = new Set(files.map((f) => f.toLowerCase()));
+  const names = new Set<string>();
+  for (const folder of all) {
+    const key = folder.toLowerCase();
+    if (fileNames.has(key) || names.has(key)) throw new Error('文件与文件夹路径冲突。');
+    names.add(key);
+  }
+  return [...all].sort();
 }
 export function getOutline(source: string) {
   return [

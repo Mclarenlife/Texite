@@ -43,6 +43,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
   current.current = props;
   const states = useRef(new Map<string, EditorState>());
   const active = useRef('');
+  const externalChange = useRef(false);
   const font = useRef(new Compartment());
   const factory = useRef<((content: string) => EditorState) | null>(null);
   useImperativeHandle(
@@ -138,7 +139,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       font.current.of(EditorView.theme({ '&': { fontSize: current.current.fontSize + 'px' } })),
       EditorView.contentAttributes.of({ 'aria-label': 'LaTeX 源码编辑器', spellcheck: 'false' }),
       EditorView.updateListener.of((update) => {
-        if (update.docChanged)
+        if (update.docChanged && !externalChange.current)
           current.current.onChange(update.state.doc.toString(), current.current.file.path);
         if (update.selectionSet || update.docChanged) {
           const pos = update.state.selection.main.head;
@@ -172,6 +173,11 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       const position = v.state.selection.main.head;
       const line = v.state.doc.lineAt(position);
       current.current.onCursor(line.number, position - line.from + 1);
+    }
+    if (v.state.doc.toString() !== props.file.content) {
+      externalChange.current = true;
+      v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: props.file.content } });
+      externalChange.current = false;
     }
     if (v.state.doc.toString() !== props.file.content)
       v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: props.file.content } });

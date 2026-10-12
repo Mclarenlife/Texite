@@ -15,6 +15,9 @@ import {
   FilePlus2,
   FileText,
   FolderOpen,
+  FolderPlus,
+  Columns2,
+  PanelTop,
   History,
   Image as ImageIcon,
   LayoutPanelLeft,
@@ -50,18 +53,27 @@ import {
   type ProjectFile,
 } from '../core/model';
 import { download, exportZip, importZip, loadProjects, saveProject } from '../platform/storage';
+import {
+  openBrowserDirectory,
+  reopenBrowserProject,
+  saveBrowserDirectory,
+} from '../platform/storage';
 import { SourceEditor, type EditorHandle } from '../editor/SourceEditor';
 import { PdfViewer } from '../preview/PdfViewer';
+import { FileTree } from './FileTree';
+import { VisualEditor } from '../editor/VisualEditor';
 import { Dialog } from '../ui/Dialog';
 
-type Modal = 'projects' | 'new' | 'file' | 'settings' | 'commands' | 'help' | 'rename' | null;
+type Modal =
+  'projects' | 'folder' | 'new' | 'file' | 'settings' | 'commands' | 'help' | 'rename' | null;
 const modes: { id: Mode; label: string; icon: typeof BookOpen }[] = [
-  { id: 'write', label: '写作', icon: FileCode2 },
-  { id: 'proof', label: '校对', icon: BookOpen },
-  { id: 'focus', label: '专注', icon: Maximize2 },
+  { id: 'editor', label: '仅编辑器', icon: FileCode2 },
+  { id: 'pdf', label: '仅 PDF', icon: BookOpen },
+  { id: 'split', label: '拆分', icon: Columns2 },
 ];
 const engineNames: Record<Engine, string> = {
-  xelatex: 'XeLaTeX',
+  tectonic: '内置 Tectonic',
+  xelatex: 'XeLaTeX（系统）',
   pdflatex: 'pdfLaTeX',
   lualatex: 'LuaLaTeX',
 };
@@ -72,7 +84,11 @@ export function App() {
   const projectRef = useRef(project);
   projectRef.current = project;
   const [projects, setProjects] = useState<Project[]>([]);
-  const [mode, setMode] = useState<Mode>('write');
+  const [mode, setMode] = useState<Mode>('split');
+  const [space, setSpace] = useState(false);
+  const [spaceQuery, setSpaceQuery] = useState('');
+  const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
+  const [selectedFolder, setSelectedFolder] = useState('');
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 760);
   const [section, setSection] = useState<'files' | 'references' | 'search'>('files');
   const [theme, setTheme] = useState(() => localStorage.getItem('texite-theme') || 'light');
@@ -104,7 +120,6 @@ export function App() {
   const editor = useRef<EditorHandle>(null);
   const zipInput = useRef<HTMLInputElement>(null);
   const assetInput = useRef<HTMLInputElement>(null);
-  const pdfInput = useRef<HTMLInputElement>(null);
   const workspace = useRef<HTMLDivElement>(null);
   const saveQueue = useRef(Promise.resolve());
   const compileRunning = useRef(false);
@@ -118,7 +133,13 @@ export function App() {
   const persist = useCallback(
     (snapshot: Project) => {
       setSaved('saving');
-      const task = saveQueue.current.catch(() => {}).then(() => saveProject(snapshot));
+      const task = saveQueue.current
+        .catch(() => {})
+        .then(async () => {
+          await saveProject(snapshot);
+          if (window.texite) await window.texite.saveProject(snapshot);
+          else await saveBrowserDirectory(snapshot);
+        });
       saveQueue.current = task;
       task
         .then(() => {
@@ -129,9 +150,9 @@ export function App() {
             setSaved('saved');
           setProjects((items) => [snapshot, ...items.filter((p) => p.id !== snapshot.id)]);
         })
-        .catch(() => {
+        .catch((error) => {
           setSaved('error');
-          notify('本地保存失败。请立即导出 ZIP 备份项目。');
+          notify('保存失败：' + friendlyError(error));
         });
       return task;
     },
@@ -140,6 +161,16 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     loadProjects()
+      .then(async (data) => {
+        if (window.texite?.listProjects) {
+          const native = await window.texite.listProjects();
+          data.projects = [
+            ...data.projects,
+            ...native.filter((p) => !data.projects.some((s) => s.id === p.id)),
+          ];
+        }
+        return data;
+      })
       .then((data) => {
         if (cancelled) return;
         setProjects(data.projects);
@@ -234,18 +265,30 @@ export function App() {
     [],
   );
   const openModal = (name: Modal, value = '') => {
+    if (name === 'projects') {
+      setSpace(true);
+      return;
+    }
     setModalError('');
     setInput(value);
     setQuery('');
     setModal(name);
   };
-  async function chooseProject(next: Project) {
+  async function chooseProject(next: Project, refresh = false, alreadyFlushed = false) {
     if (compileRunning.current) {
       notify('请等待或取消当前编译后再切换项目。');
       return;
     }
-    if (projectRef.current) await persist(projectRef.current);
+    // Flush edits before loading another disk snapshot. Preserve recovery on external conflicts.
+    await saveQueue.current.catch(() => {});
+    if (projectRef.current && !alreadyFlushed) await persist(projectRef.current).catch(() => {});
+    if (refresh && next.id !== projectRef.current?.id && window.texite?.reopenProject)
+      next = (await window.texite.reopenProject(next.id)) ?? next;
+    if (refresh && next.id !== projectRef.current?.id && !window.texite)
+      next = await reopenBrowserProject(next);
     setProject(next);
+    setSelectedFolder('');
+    setSpace(false);
     setModal(null);
   }
   async function exportProject() {
@@ -265,25 +308,21 @@ export function App() {
     if (!snapshot) return;
     try {
       await persist(snapshot);
-      if (window.texite) {
-        const result = await window.texite.saveProject(snapshot);
-        if (!result.cancelled) notify('项目文件已保存到 ' + result.directory);
-      } else notify('已保存到此浏览器。导出 ZIP 可另存或迁移项目。');
+      notify(
+        window.texite ? '项目已保存到磁盘。' : '已保存到此浏览器。导出 ZIP 可另存或迁移项目。',
+      );
     } catch (e) {
       notify(friendlyError(e));
     }
   }
   async function openDirectory() {
-    if (!window.texite) {
-      zipInput.current?.click();
-      return;
-    }
     try {
       if (compileRunning.current) {
         notify('请先取消编译。');
         return;
       }
-      const data = await window.texite.openProject();
+      if (projectRef.current) await persist(projectRef.current).catch(() => {});
+      const data = window.texite ? await window.texite.openProject() : await openBrowserDirectory();
       if (data)
         await chooseProject(
           validateProject({
@@ -292,9 +331,11 @@ export function App() {
             revision: 0,
             updatedAt: Date.now(),
           }),
+          false,
+          true,
         );
     } catch (e) {
-      notify(friendlyError(e));
+      if ((e as DOMException).name !== 'AbortError') notify(friendlyError(e));
     }
   }
   const compile = useCallback(async () => {
@@ -312,14 +353,14 @@ export function App() {
     setCompiling(true);
     setLog('');
     try {
-      await persist(snapshot);
+      await saveProject(snapshot);
       const result = await window.texite.compile(snapshot);
       if (projectRef.current?.id !== snapshot.id || compileToken.current !== token) return;
       setLog(result.log);
       if (result.success && result.pdf) {
         setPdf(new Uint8Array(result.pdf));
         setPdfRevision(result.revision);
-        setPdfLabel(engineNames[snapshot.engine]);
+        setPdfLabel(engineNames[result.engine ?? snapshot.engine]);
         notify('编译完成，PDF 已更新。');
       } else if (result.cancelled) notify('编译已取消，上次预览已保留。');
       else {
@@ -421,7 +462,7 @@ export function App() {
       const additions: ProjectFile[] = [];
       for (const file of Array.from(files)) {
         if (total + file.size * 1.4 > 70 * 1024 * 1024) throw new Error('项目大小超过初版上限。');
-        const path = safePath(file.name);
+        const path = safePath((selectedFolder ? selectedFolder + '/' : '') + file.name);
         if (project.files.some((f) => f.path.toLowerCase() === path.toLowerCase()))
           throw new Error(path + ' 已存在，请先重命名。');
         total += file.size * 1.4;
@@ -457,9 +498,9 @@ export function App() {
     { label: '导出项目 ZIP', detail: '完整备份', run: () => void exportProject() },
     { label: '查找与替换', detail: '当前文件', run: () => editor.current?.search() },
     {
-      label: '切换专注模式',
-      detail: '沉浸写作',
-      run: () => setMode((m) => (m === 'focus' ? 'write' : 'focus')),
+      label: '切换编辑器 / 拆分视图',
+      detail: '视图',
+      run: () => setMode((m) => (m === 'editor' ? 'split' : 'editor')),
     },
     {
       label: '切换浅色 / 深色',
@@ -471,9 +512,7 @@ export function App() {
     return (
       <div className="boot">
         <div className="brand-symbol">t.</div>
-        <p>
-          {saved === 'error' ? '无法读取工作区，请检查浏览器存储权限。' : '正在打开你的写作空间…'}
-        </p>
+        <p>{saved === 'error' ? '无法读取工作区，请检查浏览器存储权限。' : '正在打开项目…'}</p>
         {saved === 'error' && (
           <button onClick={() => setProject(createProject())}>创建临时项目</button>
         )}
@@ -481,7 +520,7 @@ export function App() {
     );
   return (
     <MotionConfig reducedMotion={reduceMotion ? 'always' : 'user'}>
-      <div className={'app-shell' + (reduceMotion ? ' reduce-motion' : '')} data-mode={mode}>
+      <div className={'app-shell' + (reduceMotion ? ' reduce-motion' : '')} data-view={mode}>
         <input
           ref={zipInput}
           type="file"
@@ -492,7 +531,10 @@ export function App() {
             event.target.value = '';
             if (file)
               try {
-                await chooseProject(await importZip(file));
+                if (compileRunning.current) throw new Error('请先取消编译。');
+                let imported = await importZip(file);
+                if (window.texite) imported = await window.texite.importProject(imported);
+                await chooseProject(imported);
                 notify('项目已导入。');
               } catch (e) {
                 notify(friendlyError(e));
@@ -509,25 +551,6 @@ export function App() {
             event.target.value = '';
           }}
         />
-        <input
-          ref={pdfInput}
-          type="file"
-          accept="application/pdf"
-          hidden
-          onChange={async (event) => {
-            const file = event.target.files?.[0];
-            event.target.value = '';
-            if (file) {
-              if (file.size > 50 * 1024 * 1024) {
-                notify('PDF 不能超过 50 MB。');
-                return;
-              }
-              setPdf(new Uint8Array(await file.arrayBuffer()));
-              setPdfLabel('导入的 PDF');
-              setPdfRevision(-1);
-            }
-          }}
-        />
         <nav className="activity-rail" aria-label="主导航">
           <button
             className="brand-symbol"
@@ -542,6 +565,7 @@ export function App() {
               aria-label="项目文件"
               title="项目文件"
               onClick={() => {
+                setSpace(false);
                 setSection('files');
                 setSidebar(true);
               }}
@@ -553,6 +577,7 @@ export function App() {
               aria-label="项目搜索"
               title="项目搜索"
               onClick={() => {
+                setSpace(false);
                 setSection('search');
                 setQuery('');
                 setSidebar(true);
@@ -565,6 +590,7 @@ export function App() {
               aria-label="参考文献"
               title="参考文献"
               onClick={() => {
+                setSpace(false);
                 setSection('references');
                 setSidebar(true);
               }}
@@ -592,10 +618,10 @@ export function App() {
             </button>
           </div>
         </nav>
-        <div className="main-shell">
+        <div className="main-shell" hidden={space}>
           <header className="app-header">
             <div className="breadcrumb">
-              <button onClick={() => openModal('projects')}>我的工作区</button>
+              <button onClick={() => openModal('projects')}>项目空间</button>
               <ChevronRight size={13} />
               <button className="project-title" onClick={() => openModal('rename', project.name)}>
                 {project.name}
@@ -607,6 +633,37 @@ export function App() {
               </span>
             </div>
             <div className="header-actions">
+              <div className="workspace-actions">
+                <div className="mode-switch" role="group" aria-label="视图切换">
+                  {modes.map((item) => (
+                    <button
+                      key={item.id}
+                      className={mode === item.id ? 'selected' : ''}
+                      aria-pressed={mode === item.id}
+                      onClick={() => setMode(item.id)}
+                    >
+                      {mode === item.id && (
+                        <motion.span
+                          className="mode-highlight"
+                          layoutId="mode-highlight"
+                          transition={{ type: 'spring', bounce: 0.12, duration: 0.28 }}
+                        />
+                      )}
+                      <item.icon size={14} />
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className={'compile-button' + (compiling ? ' compiling' : '')}
+                  onClick={() => (compiling ? void window.texite?.cancelCompile() : void compile())}
+                >
+                  {compiling ? <Square size={14} /> : <Play size={14} fill="currentColor" />}
+                  <span>{compiling ? '取消编译' : '编译文稿'}</span>
+                  <kbd>{compiling ? <LoaderCircle size={12} className="spin" /> : '⌘ ↵'}</kbd>
+                </button>
+              </div>
+
               <button className="command-trigger" onClick={() => openModal('commands')}>
                 <Search size={14} />
                 <span>搜索与命令</span>
@@ -626,54 +683,8 @@ export function App() {
               </button>
             </div>
           </header>
-          <div className="workspace-heading">
-            <div>
-              <span className="eyebrow">A LITTLE SPACE FOR BIG IDEAS</span>
-              <h1>
-                {mode === 'focus'
-                  ? '此刻，只专注于想法。'
-                  : mode === 'proof'
-                    ? '让每一个细节，恰到好处。'
-                    : '给想法，留一点空间。'}
-              </h1>
-            </div>
-            <div className="workspace-actions">
-              <div className="mode-switch" role="group" aria-label="工作模式">
-                {modes.map((item) => (
-                  <button
-                    key={item.id}
-                    className={mode === item.id ? 'selected' : ''}
-                    aria-pressed={mode === item.id}
-                    onClick={() => setMode(item.id)}
-                  >
-                    {mode === item.id && (
-                      <motion.span
-                        className="mode-highlight"
-                        layoutId="mode-highlight"
-                        transition={{ type: 'spring', bounce: 0.12, duration: 0.28 }}
-                      />
-                    )}
-                    <item.icon size={14} />
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </div>
-              <button
-                className={'compile-button' + (compiling ? ' compiling' : '')}
-                onClick={() => (compiling ? void window.texite?.cancelCompile() : void compile())}
-              >
-                {compiling ? <Square size={14} /> : <Play size={14} fill="currentColor" />}
-                <span>{compiling ? '取消编译' : '编译文稿'}</span>
-                <kbd>{compiling ? <LoaderCircle size={12} className="spin" /> : '⌘ ↵'}</kbd>
-              </button>
-            </div>
-          </div>
           <div className={'workbench-row' + (!sidebar ? ' sidebar-hidden' : '')}>
-            <aside
-              className="project-sidebar"
-              aria-label="项目导航"
-              hidden={!sidebar || mode === 'focus'}
-            >
+            <aside className="project-sidebar" aria-label="项目导航" hidden={!sidebar}>
               <div className="sidebar-heading">
                 <span>
                   {section === 'files'
@@ -689,9 +700,21 @@ export function App() {
                         className="icon-button"
                         aria-label="添加文件"
                         title="添加文件"
-                        onClick={() => openModal('file')}
+                        onClick={() =>
+                          openModal('file', selectedFolder ? selectedFolder + '/' : '')
+                        }
                       >
                         <Plus size={15} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        aria-label="创建文件夹"
+                        title="创建文件夹"
+                        onClick={() =>
+                          openModal('folder', selectedFolder ? selectedFolder + '/' : '')
+                        }
+                      >
+                        <FolderPlus size={15} />
                       </button>
                       <button
                         className="icon-button"
@@ -714,33 +737,17 @@ export function App() {
               </div>
               {section === 'files' ? (
                 <>
-                  <button className="project-folder" onClick={() => void openDirectory()}>
+                  <button className="project-folder" onClick={() => setSelectedFolder('')}>
                     <FolderOpen size={15} />
                     <span>{project.name}</span>
                     <ChevronDown size={12} />
                   </button>
-                  <div className="file-tree">
-                    {project.files.map((file) => (
-                      <button
-                        key={file.path}
-                        className={active?.path === file.path ? 'selected' : ''}
-                        onClick={() => selectFile(file.path)}
-                        title={file.path}
-                      >
-                        {file.binary ? (
-                          <ImageIcon size={15} />
-                        ) : file.path.endsWith('.bib') ? (
-                          <Library size={15} />
-                        ) : (
-                          <FileCode2 size={15} />
-                        )}
-                        <span>{file.path}</span>
-                        {file.path === project.mainFile && (
-                          <span className="main-dot" title="主文件" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
+                  <FileTree
+                    project={project}
+                    selectedFolder={selectedFolder}
+                    onFolder={setSelectedFolder}
+                    onFile={selectFile}
+                  />
                   <div className="outline-heading">
                     <span>文档脉络</span>
                     <span>{outline.length.toString().padStart(2, '0')}</span>
@@ -808,17 +815,9 @@ export function App() {
                 </div>
               )}
               <div className="sidebar-bottom">
-                <div className="quiet-tip">
-                  <Sparkles size={15} />
-                  <p>
-                    好想法，从一行开始。
-                    <br />
-                    <span>让写作保持自己的节奏。</span>
-                  </p>
-                </div>
                 <button onClick={() => openModal('projects')}>
                   <History size={14} />
-                  最近项目
+                  项目空间
                   <ArrowUpRight size={13} />
                 </button>
               </div>
@@ -828,20 +827,19 @@ export function App() {
               ref={workspace}
               style={
                 {
-                  '--editor-ratio': `${mode === 'proof' ? 36 : editorRatio}%`,
+                  '--editor-ratio': `${editorRatio}%`,
                 } as React.CSSProperties
               }
             >
               <section className="editor-pane" aria-label="编辑区域">
                 <div className="pane-heading">
                   <div>
-                    {(!sidebar || mode === 'focus') && (
+                    {!sidebar && (
                       <button
                         className="icon-button"
                         aria-label="展开侧栏"
                         onClick={() => {
                           setSidebar(true);
-                          if (mode === 'focus') setMode('write');
                         }}
                       >
                         <PanelLeftOpen size={15} />
@@ -854,6 +852,22 @@ export function App() {
                     </span>
                   </div>
                   <div className="editor-tools">
+                    {!active?.binary && active?.path.endsWith('.tex') && (
+                      <div className="edit-mode-switch" aria-label="编辑模式">
+                        <button
+                          aria-pressed={editMode === 'code'}
+                          onClick={() => setEditMode('code')}
+                        >
+                          Code
+                        </button>
+                        <button
+                          aria-pressed={editMode === 'visual'}
+                          onClick={() => setEditMode('visual')}
+                        >
+                          Visual
+                        </button>
+                      </div>
+                    )}
                     <button
                       className="icon-button"
                       aria-label="查找与替换"
@@ -878,7 +892,12 @@ export function App() {
                   <span>{active?.path}</span>
                   <span className="editor-language">{active?.binary ? '资源' : 'LaTeX'}</span>
                 </div>
-                <div className="source-container" hidden={!!active?.binary}>
+                <div
+                  className="source-container"
+                  hidden={
+                    !!active?.binary || (editMode === 'visual' && active?.path.endsWith('.tex'))
+                  }
+                >
                   {textFile && (
                     <SourceEditor
                       ref={editor}
@@ -893,6 +912,13 @@ export function App() {
                     />
                   )}
                 </div>
+                {!active?.binary && active?.path.endsWith('.tex') && editMode === 'visual' && (
+                  <VisualEditor
+                    key={project.id + active.path}
+                    file={active}
+                    onChange={changeFile}
+                  />
+                )}
                 {active?.binary && (
                   <div className="asset-preview">
                     {/\.(png|jpe?g|gif|webp)$/i.test(active.path) ? (
@@ -984,7 +1010,6 @@ export function App() {
                   bytes={pdf}
                   label={pdfLabel}
                   stale={!!pdf && pdfRevision >= 0 && pdfRevision !== project.revision}
-                  onImport={() => pdfInput.current?.click()}
                 />
               </div>
             </div>
@@ -1065,7 +1090,7 @@ export function App() {
                 {engineNames[project.engine]}
                 <ChevronDown size={11} />
               </button>
-              <span className="version">Texite 0.1</span>
+              <span className="version">Texite 0.2</span>
             </div>
           </footer>
         </div>
@@ -1086,47 +1111,76 @@ export function App() {
             </motion.div>
           )}
         </AnimatePresence>
-        <Dialog
-          open={modal === 'projects'}
-          onClose={() => setModal(null)}
-          title="你的写作空间"
-          description="所有项目保存在这台设备上。导出 ZIP，可以随时带走。"
-          wide
-        >
-          <div className="project-dialog-actions">
-            <button className="primary-button" onClick={() => openModal('new')}>
-              <Plus size={16} />
-              新建项目
-            </button>
-            <button className="secondary-button" onClick={() => void openDirectory()}>
-              <FolderOpen size={16} />
-              {window.texite ? '打开文件夹' : '导入 ZIP'}
-            </button>
+        <section className="project-space" hidden={!space} aria-label="项目空间">
+          <header className="space-header">
+            <div>
+              <span className="space-mark">Texite</span>
+              <h1>项目空间</h1>
+            </div>
+            <div className="space-actions">
+              <button className="secondary-button" onClick={() => void openDirectory()}>
+                <FolderOpen size={16} />
+                打开文件夹
+              </button>
+              <button className="secondary-button" onClick={() => zipInput.current?.click()}>
+                <Upload size={16} />
+                导入 ZIP
+              </button>
+              <button className="primary-button" onClick={() => openModal('new')}>
+                <Plus size={16} />
+                新建项目
+              </button>
+            </div>
+          </header>
+          <div className="space-filter">
+            <label>
+              <Search size={16} />
+              <input
+                aria-label="搜索项目"
+                placeholder="搜索项目"
+                value={spaceQuery}
+                onChange={(e) => setSpaceQuery(e.target.value)}
+              />
+            </label>
+            <span>{[project, ...projects.filter((p) => p.id !== project.id)].length} 个项目</span>
           </div>
           <div className="project-cards">
-            {[project, ...projects.filter((p) => p.id !== project.id)].map((p) => (
-              <button
-                key={p.id}
-                className="project-card"
-                onClick={() => void chooseProject(p).catch((e) => notify(friendlyError(e)))}
-              >
-                <div className="project-cover">
-                  <FileText size={32} />
-                  <span>LaTeX</span>
-                </div>
-                <strong>{p.name}</strong>
-                <span>
-                  {p.files.length} 个文件 · {p.engine}
-                </span>
-                {p.id === project.id && <small>当前项目</small>}
-              </button>
-            ))}
+            {[project, ...projects.filter((p) => p.id !== project.id)]
+              .filter((p) => p.name.toLowerCase().includes(spaceQuery.toLowerCase()))
+              .map((p, index) => (
+                <motion.button
+                  key={p.id}
+                  className="project-card"
+                  whileHover={{ y: -4 }}
+                  onClick={() => void chooseProject(p, true).catch((e) => notify(friendlyError(e)))}
+                >
+                  <div className={'project-cover cover-' + (index % 3)}>
+                    <span className="cover-number">{String(index + 1).padStart(2, '0')}</span>
+                    <FileText size={40} />
+                    <span>LaTeX</span>
+                  </div>
+                  <strong>{p.name}</strong>
+                  <span>
+                    {p.files.length} 个文件 ·{' '}
+                    {p.location?.kind === 'linked'
+                      ? '关联文件夹'
+                      : window.texite
+                        ? '应用项目'
+                        : '浏览器项目'}
+                  </span>
+                  {p.location && (
+                    <small className="project-location" title={p.location.directory}>
+                      {p.location.directory}
+                    </small>
+                  )}
+                </motion.button>
+              ))}
           </div>
-        </Dialog>
+        </section>
         <Dialog
           open={modal === 'new' || modal === 'rename'}
           onClose={() => setModal(null)}
-          title={modal === 'new' ? '一个新想法' : '项目名称'}
+          title={modal === 'new' ? '新建项目' : '项目名称'}
           description="名字可以随时更改。"
         >
           <form
@@ -1170,9 +1224,11 @@ export function App() {
           </form>
         </Dialog>
         <Dialog
-          open={modal === 'file'}
+          open={modal === 'file' || modal === 'folder'}
           onClose={() => setModal(null)}
-          title={input === active?.path ? '当前文件' : '添加文件'}
+          title={
+            modal === 'folder' ? '创建文件夹' : input === active?.path ? '当前文件' : '添加文件'
+          }
           description="支持相对路径，例如 chapters/introduction.tex。"
         >
           <form
@@ -1180,14 +1236,28 @@ export function App() {
               e.preventDefault();
               try {
                 const path = safePath(input.trim());
+                if (modal === 'folder') {
+                  const next = validateProject({
+                    ...project,
+                    folders: [...(project.folders || []), path],
+                  });
+                  if (validateProject(project).folders?.includes(path))
+                    throw new Error('这个文件夹已存在。');
+                  update(() => next);
+                  setSelectedFolder(path);
+                  setModal(null);
+                  return;
+                }
                 if (!isTextFile(path)) throw new Error('请用“导入资源”添加图片、字体和 PDF。');
                 if (project.files.some((f) => f.path.toLowerCase() === path.toLowerCase()))
                   throw new Error('这个文件已存在。');
-                update((p) => ({
-                  ...p,
-                  files: [...p.files, { path, content: '' }],
-                  activeFile: path,
-                }));
+                update((p) =>
+                  validateProject({
+                    ...p,
+                    files: [...p.files, { path, content: '' }],
+                    activeFile: path,
+                  }),
+                );
                 setModal(null);
               } catch (error) {
                 setModalError(friendlyError(error));
@@ -1195,7 +1265,7 @@ export function App() {
             }}
           >
             <label className="form-field">
-              文件路径
+              {modal === 'folder' ? '文件夹路径' : '文件路径'}
               <input
                 autoFocus
                 value={input}
@@ -1209,7 +1279,7 @@ export function App() {
               </p>
             )}
             <div className="dialog-actions">
-              {active?.path.endsWith('.tex') && (
+              {modal === 'file' && active?.path.endsWith('.tex') && (
                 <button
                   type="button"
                   className="secondary-button"
@@ -1223,7 +1293,7 @@ export function App() {
                 </button>
               )}
               <button className="primary-button" disabled={!input.trim() || input === active?.path}>
-                创建文件
+                {modal === 'folder' ? '创建文件夹' : '创建文件'}
               </button>
             </div>
           </form>
@@ -1231,7 +1301,7 @@ export function App() {
         <Dialog
           open={modal === 'settings'}
           onClose={() => setModal(null)}
-          title="让工作区适合你"
+          title="设置"
           description="外观与本地编译设置。"
         >
           <div className="settings-stack">
@@ -1240,8 +1310,8 @@ export function App() {
                 外观<small>选择适合当前环境的亮度</small>
               </span>
               <select value={theme} onChange={(e) => setTheme(e.target.value)}>
-                <option value="light">晨间 · 浅色</option>
-                <option value="dark">夜读 · 深色</option>
+                <option value="light">浅色</option>
+                <option value="dark">深色</option>
               </select>
             </label>
             <label className="setting-row">
@@ -1269,7 +1339,7 @@ export function App() {
             </label>
             <label className="setting-row">
               <span>
-                编译引擎<small>中文项目建议使用 XeLaTeX</small>
+                编译引擎<small>内置引擎无需安装 TeX 环境</small>
               </span>
               <select
                 value={project.engine}
@@ -1300,11 +1370,11 @@ export function App() {
             <div className="engine-note">
               <span>
                 <span className="status-dot" />
-                {window.texite ? '使用本机 TeX 环境' : '网页版 · 本地编辑模式'}
+                {window.texite ? '内置离线编译环境' : '网页版 · 本地编辑模式'}
               </span>
               <p>
                 {window.texite
-                  ? '安装 TeX Live / MacTeX，或 MiKTeX 与 Perl。Texite 通过 latexmk 在本机编译，默认关闭 shell escape。'
+                  ? 'Tectonic 与 TeX 宏包随软件提供，离线编译。系统引擎可用于需要 pdfLaTeX、LuaLaTeX 或额外程序的项目。'
                   : '初版可编辑、保存、导入导出项目和查看 PDF。浏览器 WASM 编译尚未接入；请在桌面版编译文稿。'}
               </p>
               {window.texite && (
@@ -1323,13 +1393,11 @@ export function App() {
               )}
               {engineStatus && (
                 <div className="engine-results">
-                  {Object.entries({ latexmk: engineStatus.latexmk, ...engineStatus.engines }).map(
-                    ([key, ok]) => (
-                      <span key={key}>
-                        {ok ? <Check size={13} /> : <X size={13} />} {key}
-                      </span>
-                    ),
-                  )}
+                  {Object.entries({ ...engineStatus.engines }).map(([key, ok]) => (
+                    <span key={key}>
+                      {ok ? <Check size={13} /> : <X size={13} />} {key}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -1385,12 +1453,7 @@ export function App() {
               ))}
           </div>
         </Dialog>
-        <Dialog
-          open={modal === 'help'}
-          onClose={() => setModal(null)}
-          title="欢迎来到 Texite"
-          description="给想法留一点空间，也让每一次修改安心落地。"
-        >
+        <Dialog open={modal === 'help'} onClose={() => setModal(null)} title="使用帮助">
           <div className="help-content">
             <p>
               源码会自动保存为这台设备上的恢复副本。浏览器清理站点数据会删除副本，请定期导出

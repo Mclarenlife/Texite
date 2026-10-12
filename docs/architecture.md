@@ -1,33 +1,33 @@
-# Texite 0.1 架构
+# Texite 0.2 架构
 
-## 共享工作台与平台边界
+## 共享界面
 
-`apps/web/main.tsx` 是 React 入口，浏览器和 Electron 共用这一构建。`packages/workbench` 管理项目状态、保存调度、编译结果和界面交互；`packages/core` 提供项目模型、路径校验、大纲与文献索引、诊断解析；`packages/editor` 封装 CodeMirror；`packages/preview` 封装 PDF.js；`packages/platform` 提供 IndexedDB 和 ZIP 适配；`packages/ui` 提供视觉系统和 Radix 弹窗。
+Web 与 Electron 共用 `apps/web` 入口。`packages/workbench` 调度项目空间和当前工作区；`core` 定义文件、文件夹、磁盘位置和编译版本；`platform` 负责 IndexedDB、ZIP、浏览器文件夹句柄；`editor` 提供 CodeMirror 和源码偏移驱动的 Visual 编辑；`preview` 用 PDF.js 渲染真实 PDF。
 
-桌面主进程位于 `apps/desktop`。preload 只暴露固定的项目与编译操作，开启 context isolation、renderer sandbox，关闭 Node integration，校验 IPC 来源，拒绝新窗口和外部导航。生产界面从 `texite://app` 自定义协议加载，静态资源只能落在 dist 目录内。
+项目空间与工作区是两个页面。视图切换只改变面板可见性，保留编辑器与 PDF 的实例状态。Visual 通过原始字符串偏移替换编辑块，不重建整篇文档。复杂语法保留可展开源码。CodeMirror 接收 Visual 的外部更新并记录撤销历史。
 
-## 状态与编辑器
+## 文件与持久化
 
-Project 是可序列化项目快照，文件内容使用文本或 base64。revision 代表源码或项目设置版本，activeFile 变化不增加 revision。切换工作模式保留同一个 EditorView；每个文件缓存 EditorState，以保留选区和撤销历史。应用快照同步与 CodeMirror 文档状态分离。
+Project 包含 files、folders、mainFile、engine、revision。文件是文本或 base64；文件夹显式保留空目录。统一校验相对路径、保留目录、文件 / 文件夹冲突、数量和大小。
 
-0.1 的索引使用同步、受限范围的简单解析；BibTeX 嵌套花括号、自定义宏和大型项目的语义分析尚不完整。后续抽离 Worker 索引服务。不能把当前正则解析器视作完整 TeX 解析器。
+恢复副本保存在 IndexedDB。桌面 `ProjectLibrary` 在 userData 保存持久目录注册表，将项目 ID 映射到用户选择的文件夹或应用管理的 UUID 目录。renderer 不能传入任意保存根路径。目录摘要基线持久化，写入前检测外部修改，避免重启后无条件覆盖。
 
-## 持久化
+桌面和浏览器都串行保存。桌面逐文件临时写入并 rename；浏览器通过持久化 File System Access 句柄读写，需要浏览器授权。ZIP 导入的 Web 项目仍在 IndexedDB；桌面 ZIP 项目通过 IPC 写入应用管理目录。项目切换先刷新保存队列，重新进入其他目录项目时从磁盘读取。
 
-IndexedDB 提供恢复副本，编辑后短暂防抖，写入按队列顺序执行。项目切换先保存当前快照。文件夹保存是显式操作，与恢复副本状态区分。
+## 内置编译
 
-目录打开记录文件内容摘要。写回前比较磁盘内容，拒绝外部冲突；单个文件通过同目录临时文件加 rename 替换。此机制不提供跨文件事务，也没有完整文件监视器。没有自动清理用户文件。
+构建脚本 `prepare-runtime.py` 下载固定版本的官方 Tectonic 二进制和完整 TeX 资源包，验证 SHA-256，将 TAR 的所有普通文件原样转为 ZIP，并附带许可说明。electron-builder 通过 extraResources 放在应用资源目录，二进制不进入 asar。`verify-runtime.cjs` 在打包前验证资源。
 
-## 编译流程
+编译器读取快照 → 验证路径 → 建立临时项目 → 调用本地 Tectonic，显式传递本地资源 ZIP、only-cached、untrusted → 流式日志 → 返回 PDF 与快照 revision → 删除本次临时目录。格式缓存单独位于可写的用户数据目录，不修改程序资源。
 
-界面捕获项目快照与 revision → 主进程验证数据 → 探测本机工具 → 创建独立临时工作目录 → 写入快照 → spawn latexmk（参数数组、无 shell）→ 流式日志 → 成功读取 PDF → 回传快照 revision → 清理临时目录。
+编译任务互斥，支持取消进程树和超时。编译过程中可以编辑，结果仍关联原始 revision，变更后提示预览过期。错误保留旧 PDF。系统 TeX 是可选适配器，不是默认依赖。
 
-同一时间只允许一个编译任务。编译时仍可编辑，但不能切换项目；结果显示其快照对应 PDF，并在当前 revision 不同的情况下标记旧预览。取消与超时终止进程树。失败不清空最近一次成功预览。
+## 安全边界与已知限制
 
-当前只返回 PDF 和日志，未保留 SyncTeX 数据；双向定位是下一阶段工作。浏览器适配只负责本地编辑与保存，WASM 引擎需另行实现，不能调用桌面 IPC。
+Electron 开启 contextIsolation、renderer sandbox，关闭 Node integration，IPC 校验主 frame。生产静态资源限制在 dist；拒绝外部导航、新窗口与权限请求。路径验证和无 shell 的 spawn 不等同于操作系统沙箱。
+
+保存没有多文件事务或文件监听器；复杂 TeX 语义解析、任意宏的视觉还原、SyncTeX、PDF 文本层及浏览器 WASM 编译仍未实现。
 
 ## 视觉系统
 
-浅色采用温暖灰底、纸面层级和绿色强调；深色使用对应的独立变量，PDF 页面保留原始纸张颜色。工作模式改变面板比例，不给源码文本做缩放转场。Motion 承担选中态、浮层、诊断面板的过渡；分栏使用 CSS Grid，拖动时关闭延迟动画。
-
-键盘、焦点、对比度和减少动态效果与视觉设计同时维护。应用不依赖远程字体或图片。
+顶栏容纳编译与布局选择，移除标语区。项目空间使用可搜索的卡片网格；当前项目使用树形文件导航。浅色 / 深色主题独立于 PDF 暗色模式。轻量弹簧选中态、卡片悬浮和面板过渡均尊重减少动态效果，运行时不依赖远程字体或图片。

@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const textPattern = /\.(tex|bib|sty|cls|txt|md|csv|json|bst|tikz)$/i;
-const engines = ['xelatex', 'pdflatex', 'lualatex'];
+const engines = ['tectonic', 'xelatex', 'pdflatex', 'lualatex'];
 function safeRelative(value) {
   if (typeof value !== 'string') throw new Error('Invalid path');
   const name = value.replaceAll('\\', '/');
@@ -58,6 +58,19 @@ function validateSnapshot(project) {
     total += file.content.length;
   }
   if (total > 70 * 1024 * 1024) throw new Error('Project exceeds 50 MB');
+  if (project.folders && (!Array.isArray(project.folders) || project.folders.length > 500))
+    throw new Error('Invalid folders');
+  const folders = new Set();
+  for (const name of [...(project.folders || []), ...project.files.map((f) => f.path)]) {
+    safeRelative(name);
+    const parts = name.split('/');
+    if (project.folders?.includes(name)) folders.add(name.toLowerCase());
+    while (parts.length > 1) {
+      parts.pop();
+      folders.add(parts.join('/').toLowerCase());
+    }
+  }
+  if ([...folders].some((name) => names.has(name))) throw new Error('File/folder path conflict');
   safeRelative(project.mainFile);
   if (
     !project.files.some((f) => f.path === project.mainFile && !f.binary && /\.tex$/i.test(f.path))
@@ -69,6 +82,7 @@ function validateSnapshot(project) {
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 async function readDirectory(root) {
   const files = [];
+  const folders = [];
   const hashes = new Map();
   let total = 0;
   async function visit(relative = '') {
@@ -81,6 +95,8 @@ async function readDirectory(root) {
         continue;
       const name = safeRelative(relative ? relative + '/' + entry.name : entry.name);
       if (entry.isDirectory()) {
+        if (folders.length >= 500) throw new Error('最多支持 500 个文件夹。');
+        folders.push(name);
         await visit(name);
         continue;
       }
@@ -104,7 +120,7 @@ async function readDirectory(root) {
   try {
     settings = JSON.parse(await fs.readFile(path.join(root, '.texite.json'), 'utf8'));
   } catch {}
-  return { files, hashes, settings };
+  return { files, folders, hashes, settings };
 }
 async function ensureSafeDestination(root, name) {
   const base = await fs.realpath(root);
@@ -146,6 +162,8 @@ async function saveDirectory(root, project, hashes = new Map()) {
     writes.push({ target, content, name: file.path });
   }
   // Each file is atomic; the whole directory is not a multi-file transaction.
+  for (const folder of project.folders || [])
+    await fs.mkdir(await ensureSafeDestination(root, folder), { recursive: true });
   for (const write of writes) {
     await fs.mkdir(path.dirname(write.target), { recursive: true });
     const temp = write.target + '.texite-' + crypto.randomUUID() + '.tmp';
@@ -202,11 +220,26 @@ function probe(command) {
     child.on('exit', (code) => finish(code === 0));
   });
 }
-async function detectEngines() {
-  const values = await Promise.all(['latexmk', ...engines].map(probe));
+async function detectEngines(runtime) {
+  const system = engines.filter((e) => e !== 'tectonic');
+  const values = await Promise.all(['latexmk', ...system].map(probe));
+  let bundled = false;
+  if (runtime) {
+    try {
+      await fs.access(
+        path.join(runtime, process.platform === 'win32' ? 'tectonic.exe' : 'tectonic'),
+      );
+      await fs.access(path.join(runtime, 'texlive.zip'));
+      bundled = true;
+    } catch {}
+  }
   return {
+    bundled,
     latexmk: values[0],
-    engines: Object.fromEntries(engines.map((name, i) => [name, values[i + 1]])),
+    engines: {
+      tectonic: bundled,
+      ...Object.fromEntries(system.map((name, i) => [name, values[i + 1]])),
+    },
   };
 }
 function buildArguments(project) {
@@ -224,8 +257,9 @@ function buildArguments(project) {
   ];
 }
 class Compiler {
-  constructor(cache) {
+  constructor(cache, runtime) {
     this.cache = cache;
+    this.runtime = runtime;
     this.active = null;
   }
   async cancel() {
@@ -263,17 +297,34 @@ class Compiler {
     let timeout;
     let log = '';
     try {
-      const available = await detectEngines();
-      if (!available.latexmk || !available.engines[project.engine])
+      const available = await detectEngines(this.runtime);
+      const bundled =
+        project.engine === 'tectonic' ||
+        (project.engine !== 'lualatex' &&
+          available.bundled &&
+          (!available.latexmk || !available.engines[project.engine]));
+      if (
+        (bundled && !available.bundled) ||
+        (!bundled && (!available.latexmk || !available.engines[project.engine]))
+      )
         return {
           success: false,
           revision: project.revision,
-          log: `未找到 ${!available.latexmk ? 'latexmk 和 ' : ''}${project.engine}。请安装 TeX Live / MacTeX，或 MiKTeX 与 Perl，并重新启动 Texite。`,
+          log: bundled
+            ? '内置编译资源不完整，请重新安装完整版本的 Texite。开发环境请先运行 runtime:prepare。'
+            : `未检测到系统 ${project.engine} / latexmk。请在设置中选择“内置 Tectonic”，或配置所需的系统引擎。`,
         };
+      if (bundled) {
+        log = '使用内置 Tectonic · 离线 TeX 资源包\n';
+        onLog(log);
+      }
       if (job.cancelled)
         return { success: false, cancelled: true, revision: project.revision, log: '编译已取消。' };
       await fs.mkdir(this.cache, { recursive: true });
       root = await fs.mkdtemp(path.join(this.cache, 'compile-'));
+      await fs.mkdir(path.join(root, '.texite-build'));
+      for (const folder of project.folders || [])
+        await fs.mkdir(path.join(root, safeRelative(folder)), { recursive: true });
       for (const file of project.files) {
         const target = path.join(root, safeRelative(file.path));
         await fs.mkdir(path.dirname(target), { recursive: true });
@@ -282,9 +333,28 @@ class Compiler {
       if (job.cancelled)
         return { success: false, cancelled: true, revision: project.revision, log: '编译已取消。' };
       const code = await new Promise((resolve) => {
-        const child = spawn('latexmk', buildArguments(project), {
+        const binary = bundled
+          ? path.join(this.runtime, process.platform === 'win32' ? 'tectonic.exe' : 'tectonic')
+          : 'latexmk';
+        const args = bundled
+          ? [
+              '-X',
+              'compile',
+              '--bundle',
+              require('node:url').pathToFileURL(path.join(this.runtime, 'texlive.zip')).href,
+              '--only-cached',
+              '--untrusted',
+              '--synctex',
+              '--keep-logs',
+              '--print',
+              '--outdir',
+              '.texite-build',
+              './' + safeRelative(project.mainFile),
+            ]
+          : buildArguments(project);
+        const child = spawn(binary, args, {
           cwd: root,
-          env: environment(),
+          env: { ...environment(), TECTONIC_CACHE_DIR: path.join(this.cache, 'formats') },
           windowsHide: true,
           shell: false,
           detached: process.platform !== 'win32',
@@ -321,6 +391,7 @@ class Compiler {
       if (stat.size > 50 * 1024 * 1024) throw new Error('PDF 超过 50 MB。');
       return {
         success: true,
+        engine: bundled ? 'tectonic' : project.engine,
         revision: project.revision,
         log,
         pdf: [...(await fs.readFile(pdfPath))],

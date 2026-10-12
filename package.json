@@ -1,6 +1,6 @@
 {
   "name": "texite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "A local-first LaTeX writing studio for the web, Windows and macOS.",
   "type": "module",
@@ -15,9 +15,11 @@
     "test": "tsx --test tests/*.test.ts && node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
     "check": "tsc --noEmit",
-    "package": "pnpm build && install-electron && electron-builder --dir",
-    "dist:win": "pnpm build && install-electron && electron-builder --win nsis",
-    "dist:mac": "pnpm build && install-electron && electron-builder --mac dmg"
+    "package": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --dir",
+    "dist:win": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --win nsis",
+    "dist:mac": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --mac dmg",
+    "runtime:prepare": "python scripts/prepare-runtime.py",
+    "runtime:verify": "node scripts/verify-runtime.cjs"
   },
   "build": {
     "appId": "com.texite.app",
@@ -45,7 +47,16 @@
       "allowToChangeInstallationDirectory": true
     },
     "electronDist": "node_modules/electron/dist",
-    "npmRebuild": false
+    "npmRebuild": false,
+    "extraResources": [
+      {
+        "from": "runtime",
+        "to": "runtime",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
   },
   "devDependencies": {
     "@codemirror/autocomplete": "6.20.3",
@@ -58,6 +69,7 @@
     "@lezer/highlight": "1.2.5",
     "@playwright/test": "1.64.0",
     "@radix-ui/react-dialog": "1.2.0",
+    "@types/katex": "^0.16.8",
     "@types/node": "26.6.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
@@ -67,6 +79,7 @@
     "electron-builder": "26.15.3",
     "idb": "8.0.4",
     "jszip": "3.10.2",
+    "katex": "^0.19.0",
     "lucide-react": "1.55.0",
     "motion": "14.1.0",
     "pdfjs-dist": "6.4.299",
