@@ -21,6 +21,7 @@ test(
     await fs.mkdir('.qa', { recursive: true });
     const base = await fs.mkdtemp(path.resolve('.qa/compatibility-'));
     for (const name of (await fs.readdir(fixtures)).filter((name) => name.endsWith('.tex'))) {
+      let failedCompilation = false;
       await t.test(name, async () => {
         const cache = path.join(base, name.replace('.tex', ''));
         const compiler = new workspace.Compiler(cache, runtime);
@@ -46,6 +47,10 @@ test(
         });
         await fs.mkdir(cache, { recursive: true });
         await fs.writeFile(path.join(cache, 'compile.log'), result.log);
+        if (!result.success) {
+          failedCompilation = true;
+          t.diagnostic(`${name}: ${result.log.slice(-12000)}`);
+        }
         assert.equal(result.success, true, result.log.slice(-12000));
         assert.match(result.log, /generating format "latex"/);
         assert.match(result.log, /using only cached resource files/);
@@ -104,6 +109,7 @@ test(
           await loading.destroy();
         }
       });
+      if (failedCompilation) break;
     }
   },
 );

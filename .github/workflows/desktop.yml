@@ -15,6 +15,7 @@ permissions:
 jobs:
   desktop:
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -32,6 +33,12 @@ jobs:
       - run: pnpm runtime:prepare
       - run: pnpm exec install-electron
       - run: pnpm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: Texite-${{ runner.os }}-compile-diagnostics
+          path: .qa/**/*.log
+          retention-days: 7
       - run: pnpm dist:win
         if: runner.os == 'Windows'
         env:
