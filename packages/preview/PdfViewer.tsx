@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Moon,
   Sun,
-  Maximize,
   Minus,
   Plus,
   ScanLine,
@@ -32,7 +31,6 @@ export function PdfViewer({
   useEffect(() => setPageInput(String(page)), [page]);
   const [error, setError] = useState('');
   const [width, setWidth] = useState(600);
-  const canvas = useRef<HTMLCanvasElement>(null);
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!container.current) return;
@@ -56,7 +54,8 @@ export function PdfViewer({
       .then((document) => {
         if (!disposed) {
           setPdf(document);
-          setPage((p) => Math.min(p, document.numPages));
+          setPage(1);
+          if (container.current) container.current.scrollTop = 0;
         }
       })
       .catch((e) => {
@@ -67,48 +66,58 @@ export function PdfViewer({
       void task.destroy();
     };
   }, [bytes]);
+  const navigate = (value: number) => {
+    const target = Math.max(1, Math.min(pdf?.numPages || 1, value));
+    const element = container.current?.querySelector<HTMLElement>(`[data-page="${target}"]`);
+    if (element && container.current)
+      container.current.scrollTop =
+        container.current.scrollTop +
+        element.getBoundingClientRect().top -
+        container.current.getBoundingClientRect().top -
+        20;
+    setPage(target);
+    setPageInput(String(target));
+  };
   useEffect(() => {
-    if (!pdf || !canvas.current) return;
-    let cancelled = false;
-    let renderTask:
-      ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['render']> | undefined;
-    pdf
-      .getPage(page)
-      .then((pdfPage) => {
-        if (cancelled || !canvas.current) return;
-        const natural = pdfPage.getViewport({ scale: 1 });
-        const scale = Math.max(0.2, (width - 64) / natural.width) * zoom;
-        const viewport = pdfPage.getViewport({ scale });
-        const ratio = Math.min(window.devicePixelRatio || 1, 2);
-        const target = canvas.current;
-        target.width = Math.ceil(viewport.width * ratio);
-        target.height = Math.ceil(viewport.height * ratio);
-        target.style.width = viewport.width + 'px';
-        target.style.height = viewport.height + 'px';
-        renderTask = pdfPage.render({
-          canvas: target,
-          viewport,
-          transform: ratio !== 1 ? [ratio, 0, 0, ratio, 0, 0] : undefined,
+    const root = container.current;
+    if (!root || !pdf) return;
+    let frame = 0;
+    const track = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const top = root.getBoundingClientRect().top + Math.min(root.clientHeight * 0.3, 180);
+        const pages = [...root.querySelectorAll<HTMLElement>('[data-page]')];
+        const containing = pages.find((node) => {
+          const rect = node.getBoundingClientRect();
+          return rect.top <= top && rect.bottom > top;
         });
-        return renderTask.promise;
-      })
-      .catch((e) => {
-        if (!cancelled && e.name !== 'RenderingCancelledException')
-          setError('页面渲染失败：' + e.message);
+        const closest =
+          containing ||
+          pages.reduce<HTMLElement | null>(
+            (best, node) =>
+              !best ||
+              Math.abs(node.getBoundingClientRect().top - top) <
+                Math.abs(best.getBoundingClientRect().top - top)
+                ? node
+                : best,
+            null,
+          );
+        if (closest) setPage(Number(closest.dataset.page));
       });
-    return () => {
-      cancelled = true;
-      renderTask?.cancel();
     };
-  }, [pdf, page, zoom, width]);
+    root.addEventListener('scroll', track, { passive: true });
+    return () => {
+      root.removeEventListener('scroll', track);
+      cancelAnimationFrame(frame);
+    };
+  }, [pdf]);
   const goToPage = () => {
     const value = Number(pageInput);
     const target = Math.max(
       1,
       Math.min(pdf?.numPages || 1, Number.isFinite(value) ? Math.round(value) : page),
     );
-    setPage(target);
-    setPageInput(String(target));
+    navigate(target);
   };
   return (
     <section className="pdf-pane" aria-label="PDF 预览" data-pdf-dark={dark}>
@@ -121,7 +130,7 @@ export function PdfViewer({
             className="icon-button"
             aria-label="上一页"
             disabled={!pdf || page <= 1}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => navigate(page - 1)}
           >
             <ChevronLeft size={15} />
           </button>
@@ -147,7 +156,7 @@ export function PdfViewer({
             className="icon-button"
             aria-label="下一页"
             disabled={!pdf || page >= pdf.numPages}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => navigate(page + 1)}
           >
             <ChevronRight size={15} />
           </button>
@@ -210,7 +219,17 @@ export function PdfViewer({
             <p>{error}</p>
           </div>
         ) : bytes ? (
-          <canvas ref={canvas} aria-label={`PDF 第 ${page} 页`} />
+          pdf &&
+          Array.from({ length: pdf.numPages }, (_, index) => (
+            <PdfPage
+              key={index}
+              pdf={pdf}
+              number={index + 1}
+              width={width}
+              zoom={zoom}
+              root={container}
+            />
+          ))
         ) : (
           <div className="preview-empty">
             <ScanLine size={32} />
@@ -219,5 +238,108 @@ export function PdfViewer({
         )}
       </div>
     </section>
+  );
+}
+
+function PdfPage({
+  pdf,
+  number,
+  width,
+  zoom,
+  root,
+}: {
+  pdf: PDFDocumentProxy;
+  number: number;
+  width: number;
+  zoom: number;
+  root: React.RefObject<HTMLDivElement | null>;
+}) {
+  const holder = useRef<HTMLDivElement>(null),
+    canvas = useRef<HTMLCanvasElement>(null);
+  const [near, setNear] = useState(false),
+    [ratio, setRatio] = useState(1.414),
+    [error, setError] = useState('');
+  const pageWidth = Math.max(160, width - 64) * zoom;
+  useEffect(() => {
+    const observer = new IntersectionObserver((entries) => setNear(entries[0].isIntersecting), {
+      root: root.current,
+      rootMargin: '800px',
+    });
+    if (holder.current) observer.observe(holder.current);
+    return () => observer.disconnect();
+  }, [root, pdf]);
+  useEffect(() => {
+    let disposed = false;
+    void pdf
+      .getPage(number)
+      .then((page) => {
+        if (!disposed) {
+          const v = page.getViewport({ scale: 1 });
+          setRatio(v.height / v.width);
+        }
+      })
+      .catch((e) => {
+        if (!disposed) setError(e.message);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [pdf, number]);
+  useEffect(() => {
+    if (!near) {
+      if (canvas.current) {
+        canvas.current.width = 0;
+        canvas.current.height = 0;
+      }
+      return;
+    }
+    let disposed = false,
+      task: ReturnType<Awaited<ReturnType<PDFDocumentProxy['getPage']>>['render']> | undefined;
+    setError('');
+    void pdf
+      .getPage(number)
+      .then(async (page) => {
+        if (disposed || !canvas.current) return;
+        const viewport = page.getViewport({
+          scale: pageWidth / page.getViewport({ scale: 1 }).width,
+        });
+        const density = Math.min(
+          window.devicePixelRatio || 1,
+          2,
+          Math.sqrt(16_000_000 / (viewport.width * viewport.height)),
+        );
+        const target = canvas.current;
+        target.width = Math.ceil(viewport.width * density);
+        target.height = Math.ceil(viewport.height * density);
+        task = page.render({ canvas: target, viewport, transform: [density, 0, 0, density, 0, 0] });
+        await task.promise;
+      })
+      .catch((e) => {
+        if (!disposed && e.name !== 'RenderingCancelledException') setError(e.message);
+      });
+    return () => {
+      disposed = true;
+      task?.cancel();
+    };
+  }, [pdf, number, pageWidth, near]);
+  return (
+    <div
+      className="pdf-page"
+      ref={holder}
+      data-page={number}
+      style={{ width: pageWidth, height: pageWidth * ratio }}
+    >
+      <canvas
+        ref={canvas}
+        aria-label={`PDF 第 ${number} 页`}
+        style={{ width: '100%', height: '100%' }}
+      />
+      {error && (
+        <div className="page-error" role="alert">
+          第 {number} 页：{error}
+        </div>
+      )}
+      <span className="pdf-page-label">{number}</span>
+    </div>
   );
 }

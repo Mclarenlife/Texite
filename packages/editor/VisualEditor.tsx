@@ -1,60 +1,50 @@
 import { useState, useRef } from 'react';
-import katex from 'katex';
+import { BlockPreview } from './VisualPreview';
 import 'katex/dist/katex.min.css';
 import { Bold, Italic, Heading1, Sigma, Plus, Code2 } from 'lucide-react';
 import { visualBlocks, type VisualBlock } from './visual';
 import type { ProjectFile } from '../core/model';
 
-function MathPreview({ source, display = false }: { source: string; display?: boolean }) {
-  return (
-    <span
-      dangerouslySetInnerHTML={{
-        __html: katex.renderToString(source, {
-          displayMode: display,
-          throwOnError: false,
-          trust: false,
-          strict: false,
-        }),
-      }}
-    />
-  );
-}
-function Inline({ text }: { text: string }) {
-  return (
-    <>
-      {text.split(/(\\(?:textbf|textit|emph)\{[^{}]*\}|\$[^$\n]+\$)/g).map((part, i) => {
-        if (part.startsWith('$')) return <MathPreview key={i} source={part.slice(1, -1)} />;
-        const match = part.match(/^\\(textbf|textit|emph)\{([^{}]*)\}$/);
-        if (match)
-          return match[1] === 'textbf' ? (
-            <strong key={i}>{match[2]}</strong>
-          ) : (
-            <em key={i}>{match[2]}</em>
-          );
-        return <span key={i}>{part}</span>;
-      })}
-    </>
-  );
-}
 export function VisualEditor({
   file,
   onChange,
+  files,
+  onOpenFile,
 }: {
   file: ProjectFile;
+  files: ProjectFile[];
+  onOpenFile: (path: string) => void;
   onChange: (content: string, path: string) => void;
 }) {
-  const [active, setActive] = useState<number | null>(null);
+  // Keep the edited block boundaries stable while braces or environments are incomplete.
+  const [edit, setEdit] = useState<{
+    index: number;
+    source: string;
+    blocks: VisualBlock[];
+    draft: string;
+  } | null>(null);
+  const active = edit?.index ?? null;
   const input = useRef<HTMLTextAreaElement>(null);
-  const blocks = visualBlocks(file.content);
-  const change = (block: VisualBlock, value: string) =>
+  const blocks = edit
+    ? edit.blocks.map((block, i) => (i === edit.index ? { ...block, text: edit.draft } : block))
+    : visualBlocks(file.content);
+  const setActive = (index: number | null) => {
+    if (index === null) {
+      setEdit(null);
+      return;
+    }
+    const next = visualBlocks(file.content);
+    if (next[index])
+      setEdit({ index, source: file.content, blocks: next, draft: next[index].text });
+  };
+  const change = (block: VisualBlock, value: string) => {
+    const source = edit?.source || file.content;
     onChange(
-      file.content.slice(0, block.from) +
-        block.prefix +
-        value +
-        block.suffix +
-        file.content.slice(block.to),
+      source.slice(0, block.from) + block.prefix + value + block.suffix + source.slice(block.to),
       file.path,
     );
+    setEdit((previous) => (previous ? { ...previous, draft: value } : null));
+  };
   function insert(before: string, after = '') {
     const block = active === null ? undefined : blocks[active];
     if (block && input.current) {
@@ -122,7 +112,7 @@ export function VisualEditor({
         >
           <Sigma size={16} />
         </button>
-        <span>点击内容编辑 · 复杂语法保留源码</span>
+        <span>点击内容编辑 · 最终排版以 PDF 为准</span>
       </div>
       <div className="visual-page" aria-label="LaTeX 可视化编辑器">
         {blocks.map((block, i) => (
@@ -157,13 +147,23 @@ export function VisualEditor({
                 </button>
               </details>
             ) : (
-              <button className="visual-content" onClick={() => setActive(i)}>
-                {block.kind === 'math' ? (
-                  <MathPreview source={block.text} display />
-                ) : (
-                  <Inline text={block.text} />
-                )}
-              </button>
+              <div
+                className="visual-content"
+                role="button"
+                tabIndex={0}
+                onClick={() => setActive(i)}
+                onKeyDown={(e) => {
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    setActive(i);
+                  }
+                }}
+              >
+                <BlockPreview
+                  block={block}
+                  context={{ files, path: file.path, document: file.content, onOpenFile }}
+                />
+              </div>
             )}
           </div>
         ))}

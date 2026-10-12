@@ -31,10 +31,13 @@ type Props = {
   onSave: () => void;
 };
 const highlighting = HighlightStyle.define([
-  { tag: [tags.keyword, tags.tagName, tags.function(tags.variableName)], color: '#a782c2' },
-  { tag: [tags.string, tags.attributeValue], color: '#87a58a' },
-  { tag: tags.comment, color: '#87968c', fontStyle: 'italic' },
-  { tag: [tags.bracket, tags.punctuation], color: '#9aa298' },
+  {
+    tag: [tags.keyword, tags.tagName, tags.function(tags.variableName)],
+    color: 'var(--syntax-keyword)',
+  },
+  { tag: [tags.string, tags.attributeValue], color: 'var(--syntax-string)' },
+  { tag: tags.comment, color: 'var(--syntax-comment)', fontStyle: 'italic' },
+  { tag: [tags.bracket, tags.punctuation], color: 'var(--syntax-punctuation)' },
 ]);
 export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEditor(props, ref) {
   const host = useRef<HTMLDivElement>(null);

@@ -1,5 +1,6 @@
 import { openDB } from 'idb';
 import JSZip from 'jszip';
+import { type EditRecord, limitHistory } from '../core/history';
 import {
   isTextFile,
   safePath,
@@ -22,6 +23,25 @@ export async function saveProject(project: Project) {
   await tx.objectStore('projects').put(project);
   await tx.objectStore('settings').put(project.id, 'lastProject');
   await tx.done;
+}
+export async function readHistory(id: string): Promise<EditRecord[]> {
+  const value = await (await database()).get('settings', 'history:' + id);
+  return Array.isArray(value)
+    ? limitHistory(
+        value.filter(
+          (r) =>
+            r &&
+            typeof r.id === 'string' &&
+            typeof r.path === 'string' &&
+            typeof r.before === 'string' &&
+            typeof r.after === 'string' &&
+            Number.isFinite(r.time),
+        ),
+      )
+    : [];
+}
+export async function writeHistory(id: string, records: EditRecord[]) {
+  await (await database()).put('settings', limitHistory(records), 'history:' + id);
 }
 export async function loadProjects(): Promise<{ projects: Project[]; lastId: string | undefined }> {
   const db = await database();

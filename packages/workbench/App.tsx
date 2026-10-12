@@ -63,6 +63,10 @@ import { PdfViewer } from '../preview/PdfViewer';
 import { FileTree } from './FileTree';
 import { VisualEditor } from '../editor/VisualEditor';
 import { Dialog } from '../ui/Dialog';
+import { editorFonts, usePreference } from '../ui/preferences';
+import { useEditHistory } from './useEditHistory';
+import { changeSummary, type EditRecord } from '../core/history';
+import { HistoryReview } from '../editor/HistoryReview';
 
 type Modal =
   'projects' | 'folder' | 'new' | 'file' | 'settings' | 'commands' | 'help' | 'rename' | null;
@@ -90,10 +94,21 @@ export function App() {
   const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
   const [selectedFolder, setSelectedFolder] = useState('');
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 760);
-  const [section, setSection] = useState<'files' | 'references' | 'search'>('files');
-  const [theme, setTheme] = useState(() => localStorage.getItem('texite-theme') || 'light');
-  const [fontSize, setFontSize] = useState(14);
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const [section, setSection] = useState<'files' | 'references' | 'search' | 'history'>('files');
+  const [theme, setTheme] = usePreference<string>('appearance', 'system');
+  const [palette, setPalette] = usePreference<string>('palette', 'mono');
+  const [contrast, setContrast] = usePreference<string>('contrast', 'standard');
+  const [fontChoice, setFontChoice] = usePreference<string>('font', 'mono');
+  const [textColor, setTextColor] = usePreference<string>('text-color', 'auto');
+  const [fontSize, setFontSize] = usePreference<number>('font-size', 14);
+  const [reduceMotion, setReduceMotion] = usePreference<boolean>('reduce-motion', false);
+  const [sidebarWidth, setSidebarWidth] = usePreference<number>('sidebar-width', 240);
+  const editHistory = useEditHistory(project?.id);
+  const historyRows = useMemo(
+    () => editHistory.records.map((record) => ({ record, summary: changeSummary(record) })),
+    [editHistory.records],
+  );
+  const [review, setReview] = useState<EditRecord | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
@@ -204,9 +219,26 @@ export function App() {
     return () => window.removeEventListener('beforeunload', warn);
   }, [saved]);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('texite-theme', theme);
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      document.documentElement.dataset.theme =
+        theme === 'system' ? (media.matches ? 'dark' : 'light') : theme;
+    };
+    apply();
+    media.addEventListener('change', apply);
+    return () => media.removeEventListener('change', apply);
   }, [theme]);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.palette = palette;
+    root.dataset.contrast = contrast;
+    root.style.setProperty('--editor-font', editorFonts[fontChoice] || editorFonts.mono);
+    root.style.setProperty('--editor-size', `${Math.max(12, Math.min(24, fontSize))}px`);
+    root.style.setProperty(
+      '--editor-text',
+      /^#[\da-f]{6}$/i.test(textColor) ? textColor : 'var(--text)',
+    );
+  }, [palette, contrast, fontChoice, fontSize, textColor]);
   useEffect(
     () => () => {
       clearTimeout(toastTimer.current);
@@ -226,6 +258,7 @@ export function App() {
     setPdfRevision(-1);
     setLog('');
     setDiagnosticsOpen(false);
+    setReview(null);
     latestText.current = null;
     setCursor({ line: 1, column: 1, reference: undefined });
     if (project.files.find((f) => f.path === 'main.tex')?.content === sampleSource) {
@@ -252,14 +285,14 @@ export function App() {
       ),
     [],
   );
-  const changeFile = useCallback(
-    (content: string, path: string) =>
-      update((p) => ({
-        ...p,
-        files: p.files.map((f) => (f.path === path && !f.binary ? { ...f, content } : f)),
-      })),
-    [update],
-  );
+  const changeFile = (content: string, path: string) => {
+    const previous = projectRef.current?.files.find((f) => f.path === path);
+    if (previous && !previous.binary) editHistory.record(path, previous.content, content);
+    update((p) => ({
+      ...p,
+      files: p.files.map((f) => (f.path === path && !f.binary ? { ...f, content } : f)),
+    }));
+  };
   const onCursor = useCallback(
     (line: number, column: number, reference?: string) => setCursor({ line, column, reference }),
     [],
@@ -443,7 +476,10 @@ export function App() {
         : [],
     [query, section, project?.files],
   );
-  const selectFile = (path: string) => setProject((p) => (p ? { ...p, activeFile: path } : p));
+  const selectFile = (path: string) => {
+    setReview(null);
+    setProject((p) => (p ? { ...p, activeFile: path } : p));
+  };
   function jumpLine(file: string, line: number) {
     selectFile(file);
     setTimeout(() => {
@@ -505,7 +541,7 @@ export function App() {
     {
       label: '切换浅色 / 深色',
       detail: '外观',
-      run: () => setTheme((t) => (t === 'light' ? 'dark' : 'light')),
+      run: () => setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light'),
     },
   ];
   if (!project)
@@ -597,12 +633,26 @@ export function App() {
             >
               <Library size={20} />
             </button>
+            <button
+              aria-label="修改历史"
+              title="修改历史"
+              className={section === 'history' ? 'active' : ''}
+              onClick={() => {
+                setSpace(false);
+                setSection('history');
+                setSidebar(true);
+              }}
+            >
+              <History size={20} />
+            </button>
           </div>
           <div className="rail-bottom">
             <button
               aria-label="切换主题"
               title="切换主题"
-              onClick={() => setTheme((t) => (t === 'light' ? 'dark' : 'light'))}
+              onClick={() =>
+                setTheme(document.documentElement.dataset.theme === 'light' ? 'dark' : 'light')
+              }
             >
               {theme === 'light' ? <Moon size={19} /> : <Sun size={19} />}
             </button>
@@ -684,14 +734,21 @@ export function App() {
             </div>
           </header>
           <div className={'workbench-row' + (!sidebar ? ' sidebar-hidden' : '')}>
-            <aside className="project-sidebar" aria-label="项目导航" hidden={!sidebar}>
+            <aside
+              className="project-sidebar"
+              aria-label="项目导航"
+              hidden={!sidebar}
+              style={{ width: Math.max(200, Math.min(480, sidebarWidth)) }}
+            >
               <div className="sidebar-heading">
                 <span>
                   {section === 'files'
                     ? '项目文件'
                     : section === 'search'
                       ? '项目搜索'
-                      : '参考文献'}
+                      : section === 'history'
+                        ? '修改历史'
+                        : '参考文献'}
                 </span>
                 <div>
                   {section === 'files' && (
@@ -792,6 +849,37 @@ export function App() {
                     <p className="sidebar-empty">添加 .bib 文件，管理和插入引用。</p>
                   )}
                 </div>
+              ) : section === 'history' ? (
+                <div className="history-list">
+                  <p className="history-note">连续输入合并记录 · 最近 150 次，最多 4 MB</p>
+                  {editHistory.error && <p role="alert">{editHistory.error}</p>}
+                  {!editHistory.records.length && (
+                    <p className="sidebar-empty">开始编辑后，这里会记录修改时间、文件和行号。</p>
+                  )}
+                  {historyRows.map(({ record, summary }) => {
+                    return (
+                      <button
+                        key={record.id}
+                        className={review?.id === record.id ? 'selected' : ''}
+                        onClick={() => {
+                          setReview(record);
+                          setMode((m) => (m === 'pdf' ? 'split' : m));
+                          setEditMode('code');
+                        }}
+                      >
+                        <time dateTime={new Date(record.time).toISOString()}>
+                          {new Date(record.time).toLocaleString('zh-CN', { hour12: false })}
+                        </time>
+                        <strong>{record.path}</strong>
+                        <span>
+                          第 {summary.from}
+                          {summary.to !== summary.from ? '–' + summary.to : ''} 行{' '}
+                          <ins>+{summary.added}</ins> <del>−{summary.removed}</del>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               ) : (
                 <div className="project-search">
                   <label>
@@ -822,6 +910,47 @@ export function App() {
                 </button>
               </div>
             </aside>
+            {sidebar && (
+              <div
+                className="sidebar-resizer"
+                role="separator"
+                aria-label="调整侧栏宽度"
+                aria-orientation="vertical"
+                aria-valuemin={200}
+                aria-valuemax={480}
+                aria-valuenow={sidebarWidth}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    setSidebarWidth((w) =>
+                      Math.max(200, Math.min(480, w + (e.key === 'ArrowRight' ? 16 : -16))),
+                    );
+                  }
+                }}
+                onPointerDown={(e) => {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                  e.currentTarget.dataset.start = String(e.clientX);
+                  e.currentTarget.dataset.width = String(sidebarWidth);
+                }}
+                onPointerMove={(e) => {
+                  if (e.currentTarget.hasPointerCapture(e.pointerId))
+                    setSidebarWidth(
+                      Math.max(
+                        200,
+                        Math.min(
+                          480,
+                          window.innerWidth * 0.45,
+                          Number(e.currentTarget.dataset.width) +
+                            e.clientX -
+                            Number(e.currentTarget.dataset.start),
+                        ),
+                      ),
+                    );
+                }}
+                onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+              />
+            )}
             <div
               className={'workspace' + (dragging ? ' resizing' : '')}
               ref={workspace}
@@ -847,7 +976,7 @@ export function App() {
                     )}
                     <span className="editor-tab">
                       <FileCode2 size={15} />
-                      {active?.path}
+                      {review?.path || active?.path}
                       <span className="tab-dot" />
                     </span>
                   </div>
@@ -856,13 +985,19 @@ export function App() {
                       <div className="edit-mode-switch" aria-label="编辑模式">
                         <button
                           aria-pressed={editMode === 'code'}
-                          onClick={() => setEditMode('code')}
+                          onClick={() => {
+                            setReview(null);
+                            setEditMode('code');
+                          }}
                         >
                           Code
                         </button>
                         <button
                           aria-pressed={editMode === 'visual'}
-                          onClick={() => setEditMode('visual')}
+                          onClick={() => {
+                            setReview(null);
+                            setEditMode('visual');
+                          }}
                         >
                           Visual
                         </button>
@@ -889,13 +1024,16 @@ export function App() {
                 <div className="editor-breadcrumb">
                   <span>{project.name}</span>
                   <ChevronRight size={11} />
-                  <span>{active?.path}</span>
+                  <span>{review?.path || active?.path}</span>
                   <span className="editor-language">{active?.binary ? '资源' : 'LaTeX'}</span>
                 </div>
+                {review && <HistoryReview record={review} onClose={() => setReview(null)} />}
                 <div
                   className="source-container"
                   hidden={
-                    !!active?.binary || (editMode === 'visual' && active?.path.endsWith('.tex'))
+                    !!review ||
+                    !!active?.binary ||
+                    (editMode === 'visual' && active?.path.endsWith('.tex'))
                   }
                 >
                   {textFile && (
@@ -912,14 +1050,19 @@ export function App() {
                     />
                   )}
                 </div>
-                {!active?.binary && active?.path.endsWith('.tex') && editMode === 'visual' && (
-                  <VisualEditor
-                    key={project.id + active.path}
-                    file={active}
-                    onChange={changeFile}
-                  />
-                )}
-                {active?.binary && (
+                {!review &&
+                  !active?.binary &&
+                  active?.path.endsWith('.tex') &&
+                  editMode === 'visual' && (
+                    <VisualEditor
+                      key={project.id + active.path}
+                      file={active}
+                      files={project.files}
+                      onOpenFile={selectFile}
+                      onChange={changeFile}
+                    />
+                  )}
+                {!review && active?.binary && (
                   <div className="asset-preview">
                     {/\.(png|jpe?g|gif|webp)$/i.test(active.path) ? (
                       <img
@@ -1090,7 +1233,7 @@ export function App() {
                 {engineNames[project.engine]}
                 <ChevronDown size={11} />
               </button>
-              <span className="version">Texite 0.2</span>
+              <span className="version">Texite 0.3</span>
             </div>
           </footer>
         </div>
@@ -1309,9 +1452,69 @@ export function App() {
               <span>
                 外观<small>选择适合当前环境的亮度</small>
               </span>
-              <select value={theme} onChange={(e) => setTheme(e.target.value)}>
+              <select aria-label="外观" value={theme} onChange={(e) => setTheme(e.target.value)}>
                 <option value="light">浅色</option>
                 <option value="dark">深色</option>
+                <option value="system">跟随系统</option>
+              </select>
+            </label>
+            <label className="setting-row">
+              <span>
+                主题配色<small>黑白基底，独立设置强调色</small>
+              </span>
+              <select
+                aria-label="主题配色"
+                value={palette}
+                onChange={(e) => setPalette(e.target.value)}
+              >
+                <option value="mono">黑白</option>
+                <option value="violet">鸢尾紫</option>
+                <option value="blue">晴空蓝</option>
+                <option value="green">薄荷绿</option>
+                <option value="rose">玫瑰粉</option>
+                <option value="amber">琥珀橙</option>
+              </select>
+            </label>
+            <label className="setting-row">
+              <span>文字对比度</span>
+              <select
+                aria-label="文字对比度"
+                value={contrast}
+                onChange={(e) => setContrast(e.target.value)}
+              >
+                <option value="standard">标准</option>
+                <option value="high">高对比</option>
+                <option value="soft">柔和</option>
+              </select>
+            </label>
+            <div className="setting-row">
+              <span>
+                编辑文字颜色<small>影响 Code 和 Visual 正文，不改变 PDF</small>
+              </span>
+              <div className="text-color-picker">
+                <input
+                  type="color"
+                  aria-label="编辑文字颜色"
+                  value={textColor === 'auto' ? '#303030' : textColor}
+                  onChange={(e) => setTextColor(e.target.value)}
+                />
+                <button onClick={() => setTextColor('auto')}>跟随外观</button>
+              </div>
+            </div>
+            <label className="setting-row">
+              <span>
+                编辑字体<small>使用本机字体，缺少时自动回退</small>
+              </span>
+              <select
+                aria-label="编辑字体"
+                value={fontChoice}
+                onChange={(e) => setFontChoice(e.target.value)}
+              >
+                <option value="mono">系统等宽</option>
+                <option value="consolas">Consolas</option>
+                <option value="cascadia">Cascadia Code</option>
+                <option value="sans">无衬线</option>
+                <option value="serif">衬线 / 宋体</option>
               </select>
             </label>
             <label className="setting-row">
@@ -1476,8 +1679,8 @@ export function App() {
               <kbd>Ctrl / ⌘ F</kbd>
             </div>
             <p className="muted">
-              初版提供单页 PDF 阅读与源码编辑。SyncTeX 双向定位、PDF 文本搜索、自动编译和浏览器 WASM
-              编译仍在后续计划中。
+              支持连续 PDF 阅读、Code / Visual 编辑与本地修改历史。SyncTeX 双向定位、PDF
+              文本搜索、自动编译和浏览器 WASM 编译仍在后续计划中。
             </p>
             <button
               className="secondary-button"

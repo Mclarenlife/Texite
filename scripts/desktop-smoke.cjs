@@ -54,8 +54,18 @@ const JSZip = require('jszip');
     await page.getByRole('button', { name: '编译文稿', exact: false }).click();
     await expect(page.getByRole('status')).toContainText('编译完成', { timeout: 60000 });
     await expect(page.getByLabel('PDF 总页数')).toHaveText('/ 2');
+    await expect(page.locator('.pdf-page')).toHaveCount(2);
     await page.getByRole('button', { name: '下一页', exact: true }).click();
     await expect(page.getByLabel('PDF 页码')).toHaveValue('2');
+    await expect(page.locator('.pdf-page')).toHaveCount(2);
+    await expect
+      .poll(() => page.locator('.pdf-scroll').evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(100);
+    await page.getByRole('button', { name: '修改历史', exact: true }).click();
+    await page.locator('.history-list > button').first().click();
+    await expect(page.locator('.diff-added')).toContainText('saved from Texite');
+    await page.getByRole('button', { name: '返回编辑' }).click();
+    await page.getByRole('button', { name: '项目文件', exact: true }).click();
     await page.getByRole('button', { name: 'PDF 暗色模式' }).click();
     await expect(page.locator('.pdf-pane')).toHaveAttribute('data-pdf-dark', 'true');
     await page.getByRole('button', { name: '创建文件夹', exact: true }).click();
