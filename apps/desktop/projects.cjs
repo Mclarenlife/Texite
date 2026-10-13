@@ -11,6 +11,14 @@ class ProjectLibrary {
   }
   async init() {
     await fs.mkdir(this.directory, { recursive: true });
+    this.projectsRoot = path.join(this.directory, 'projects');
+    try {
+      this.projectsRoot =
+        JSON.parse(await fs.readFile(path.join(this.directory, 'storage.json'), 'utf8'))
+          .projectsRoot || this.projectsRoot;
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
     try {
       const entries = JSON.parse(
         await fs.readFile(path.join(this.directory, 'projects.json'), 'utf8'),
@@ -25,6 +33,33 @@ class ProjectLibrary {
     const temp = target + '.tmp';
     await fs.writeFile(temp, JSON.stringify([...this.entries.values()]));
     await fs.rename(temp, target);
+  }
+  async setRoot(root) {
+    root = await fs.realpath(root);
+    if (!(await fs.stat(root)).isDirectory()) throw new Error('请选择文件夹。');
+    // Only new managed projects use this path; existing bindings remain valid.
+    const target = path.join(this.directory, 'storage.json');
+    await fs.writeFile(target + '.tmp', JSON.stringify({ projectsRoot: root }));
+    await fs.rename(target + '.tmp', target);
+    this.projectsRoot = root;
+    return root;
+  }
+  async relocate(project) {
+    validateSnapshot(project);
+    const original = this.entries.get(project.id);
+    if (!original) throw new Error('请先保存项目。');
+    const root = path.join(this.projectsRoot, randomUUID());
+    await fs.mkdir(root, { recursive: true });
+    const hashes = await saveDirectory(root, project);
+    const entry = { ...original, root, kind: 'managed', hashes: [...hashes] };
+    this.entries.set(project.id, entry);
+    try {
+      await this.persist();
+    } catch (e) {
+      this.entries.set(project.id, original);
+      throw e;
+    }
+    return { ...project, location: { kind: 'managed', directory: root } };
   }
   async link(root) {
     root = await fs.realpath(root);
@@ -99,7 +134,7 @@ class ProjectLibrary {
   async import(project) {
     validateSnapshot(project);
     const id = randomUUID();
-    const root = path.join(this.directory, 'projects', id);
+    const root = path.join(this.projectsRoot, id);
     await fs.mkdir(root, { recursive: true });
     const hashes = await saveDirectory(root, project);
     const entry = { id, root, kind: 'managed', hashes: [...hashes] };
@@ -107,16 +142,16 @@ class ProjectLibrary {
     await this.persist();
     return { ...project, id, location: { kind: entry.kind, directory: root } };
   }
-  async save(project, removals = []) {
+  async save(project, removals = [], sync = false) {
     validateSnapshot(project);
     let entry = this.entries.get(project.id);
     if (!entry) {
       // IDs are renderer data; never use them as a filesystem path.
-      const root = path.join(this.directory, 'projects', randomUUID());
+      const root = path.join(this.projectsRoot, randomUUID());
       await fs.mkdir(root, { recursive: true });
       entry = { id: project.id, root, kind: 'managed', hashes: [] };
     }
-    const hashes = await saveDirectory(entry.root, project, new Map(entry.hashes), removals);
+    const hashes = await saveDirectory(entry.root, project, new Map(entry.hashes), removals, sync);
     entry.hashes = [...hashes];
     entry.name = project.name;
     this.entries.set(project.id, entry);

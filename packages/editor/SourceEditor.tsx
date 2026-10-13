@@ -97,7 +97,6 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
     [],
   );
   useEffect(() => {
-    states.current.clear();
     active.current = '';
     const completion = (ctx: CompletionContext) =>
       latexCompletions(
@@ -202,13 +201,13 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
     factory.current = makeState;
     const initial = makeState(current.current.file.content);
     view.current = new EditorView({ state: initial, parent: host.current! });
-    active.current = current.current.file.path;
+    active.current = JSON.stringify([current.current.projectId, current.current.file.path]);
     // Keep one view and retain per-file selection and undo history.
     return () => {
       view.current?.destroy();
       view.current = null;
     };
-  }, [props.projectId]);
+  }, []);
   useEffect(() => {
     view.current?.dispatch({
       effects: editable.current.reconfigure(EditorState.readOnly.of(!!props.readOnly)),
@@ -217,12 +216,14 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
   useEffect(() => {
     const v = view.current;
     if (!v) return;
-    if (active.current !== props.file.path) {
+    const key = JSON.stringify([props.projectId, props.file.path]);
+    if (active.current !== key) {
       setAnchor(null);
       states.current.set(active.current, v.state);
-      const cached = states.current.get(props.file.path);
+      const cached = states.current.get(key);
       v.setState(cached ?? factory.current!(props.file.content));
-      active.current = props.file.path;
+      active.current = key;
+      if (states.current.size > 50) states.current.delete(states.current.keys().next().value!);
       const position = v.state.selection.main.head;
       const line = v.state.doc.lineAt(position);
       current.current.onCursor(line.number, position - line.from + 1);

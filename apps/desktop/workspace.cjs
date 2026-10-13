@@ -141,9 +141,10 @@ async function ensureSafeDestination(root, name) {
   }
   return target;
 }
-async function saveDirectory(root, project, hashes = new Map(), removals = []) {
+async function saveDirectory(root, project, hashes = new Map(), removals = [], sync = false) {
   validateSnapshot(project);
-  if (!Array.isArray(removals) || removals.length > 30) throw new Error('Invalid removals');
+  if (!Array.isArray(removals) || removals.length > (sync ? 500 : 30))
+    throw new Error('Invalid removals');
   const deletes = [];
   const removalNames = new Set();
   for (const item of removals) {
@@ -152,7 +153,7 @@ async function saveDirectory(root, project, hashes = new Map(), removals = []) {
     removalNames.add(name.toLowerCase());
     if (
       typeof item.expected !== 'string' ||
-      !textPattern.test(name) ||
+      (!sync && !textPattern.test(name)) ||
       name.split('/').some((part) => part.startsWith('.')) ||
       project.files.some((f) => f.path.toLowerCase() === name.toLowerCase())
     )
@@ -165,7 +166,10 @@ async function saveDirectory(root, project, hashes = new Map(), removals = []) {
       if (e.code === 'ENOENT') continue;
       throw e;
     }
-    if (bytes.toString('utf8') !== item.expected || digest(bytes) !== hashes.get(name))
+    if (
+      bytes.toString(sync && item.binary ? 'base64' : 'utf8') !== item.expected ||
+      digest(bytes) !== hashes.get(name)
+    )
       throw new Error(`文件 ${name} 已被外部修改，未删除。`);
     deletes.push({ target, name, expected: digest(bytes) });
   }

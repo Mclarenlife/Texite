@@ -1,5 +1,20 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('texite', {
+  platform: process.platform,
+  windowControl: (action) => ipcRenderer.invoke('window:control', action),
+  storage: {
+    get: () => ipcRenderer.invoke('storage:get'),
+    choose: () => ipcRenderer.invoke('storage:choose'),
+    relocate: (project) => ipcRenderer.invoke('storage:relocate', project),
+  },
+  webdav: {
+    get: () => ipcRenderer.invoke('webdav:get'),
+    configure: (input) => ipcRenderer.invoke('webdav:configure', input),
+    list: () => ipcRenderer.invoke('webdav:list'),
+    sync: (project) => ipcRenderer.invoke('webdav:sync', project),
+    download: (key) => ipcRenderer.invoke('webdav:download', key),
+    detach: (id) => ipcRenderer.invoke('webdav:detach', id),
+  },
   chat: {
     get: () => ipcRenderer.invoke('chat:get'),
     save: (config) => ipcRenderer.invoke('chat:save', config),

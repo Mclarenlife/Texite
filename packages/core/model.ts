@@ -29,6 +29,23 @@ export type CompileResult = {
   cancelled?: boolean;
 };
 export type DesktopAPI = {
+  platform?: string;
+  windowControl?(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
+  storage?: {
+    get(): Promise<string>;
+    choose(): Promise<string | null>;
+    relocate(project: Project): Promise<Project>;
+  };
+  webdav?: {
+    get(): Promise<WebDAVConfig>;
+    configure(input: { url: string; username: string; password: string }): Promise<WebDAVConfig>;
+    list(): Promise<{ key: string; name: string; files: number }[]>;
+    sync(
+      project: Project,
+    ): Promise<{ status: 'uploaded' | 'downloaded' | 'conflict' | 'unchanged'; project?: Project }>;
+    download(key: string): Promise<Project>;
+    detach(id: string): Promise<WebDAVConfig>;
+  };
   ai?: import('./ai').AIAPI;
   chat?: import('./ai').ChatAPI;
   saveAIProject?(
@@ -68,6 +85,13 @@ export type DesktopAPI = {
   cancelCompile(): Promise<void>;
   writeClipboard?(text: string): Promise<void>;
   onCompileLog(callback: (chunk: string) => void): () => void;
+};
+export type WebDAVConfig = {
+  url: string;
+  username: string;
+  hasPassword: boolean;
+  persistent: boolean;
+  projects: { id: string; time: number }[];
 };
 export type RuntimeModule = {
   id: string;

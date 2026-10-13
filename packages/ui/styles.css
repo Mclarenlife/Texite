@@ -125,13 +125,17 @@ button[hidden],
   background: transparent;
 }
 .app-shell {
-  display: flex;
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-rows: 58px minmax(0, 1fr);
   height: 100dvh;
   min-height: 500px;
   overflow: hidden;
   background: var(--bg);
 }
 .activity-rail {
+  grid-row: 2;
+  grid-column: 1;
   width: 64px;
   flex-shrink: 0;
   background: var(--rail);
@@ -195,6 +199,9 @@ button[hidden],
   margin-top: 9px;
 }
 .main-shell {
+  grid-row: 2;
+  grid-column: 2;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -3180,4 +3187,219 @@ h1 {
 .preview-tab[aria-label='PDF'] {
   min-width: 60px;
   justify-content: center;
+}
+/* Shared title bar: project tabs and controls retain normal hit testing. */
+.app-shell > .app-header {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  height: 58px;
+  padding: 0 12px 0 14px;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  background: var(--surface);
+  gap: 14px;
+  min-width: 0;
+}
+.app-header.windows-header {
+  -webkit-app-region: drag;
+  padding-right: 0;
+}
+.app-header button,
+.project-tabs,
+.window-controls {
+  -webkit-app-region: no-drag;
+}
+.app-header > .brand-symbol {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+}
+.project-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 70px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.project-tab {
+  display: flex;
+  align-items: center;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  flex-shrink: 0;
+  max-width: 230px;
+}
+.project-tab.active {
+  background: var(--bg);
+  border-color: var(--line);
+  color: var(--text);
+}
+.project-tab > button:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px 8px 10px 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.project-tab > button:first-child span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.project-tab svg {
+  flex-shrink: 0;
+}
+.project-tab > button:last-child {
+  padding: 6px;
+  margin-right: 4px;
+  border-radius: 5px;
+}
+.project-tab > button:last-child:hover {
+  background: var(--line);
+}
+.app-header .header-actions {
+  flex-shrink: 0;
+  width: auto;
+  margin-left: auto;
+}
+.app-header .mode-switch button {
+  min-width: 32px;
+  padding: 7px 9px;
+}
+.app-header .mode-switch button svg {
+  display: block;
+}
+.app-header .compile-button {
+  padding: 0 13px;
+}
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  flex-shrink: 0;
+}
+.window-controls button {
+  width: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 0;
+  color: var(--text);
+}
+.window-controls button:hover {
+  background: var(--line);
+}
+.window-controls .window-close:hover {
+  background: #c42b1c;
+  color: white;
+}
+.app-shell > .project-space {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;
+  overflow: auto;
+}
+.sync-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+.sync-settings section + section {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+}
+.sync-settings fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.sync-credentials {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.sync-actions,
+.storage-path {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.storage-path > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  color: var(--secondary);
+}
+.storage-path > button {
+  flex-shrink: 0;
+}
+.sync-current {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sync-current > div {
+  flex: 1;
+  min-width: 140px;
+}
+.sync-current small,
+.sync-projects small {
+  display: block;
+  color: var(--muted);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  margin-top: 5px;
+}
+.sync-projects {
+  max-height: 240px;
+  overflow: auto;
+}
+.sync-projects > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 0;
+}
+.sync-projects > div > span {
+  flex: 1;
+}
+@media (max-width: 1100px) {
+  .app-header .command-trigger,
+  .app-header .export-button,
+  .app-header .header-actions > .icon-button {
+    display: none;
+  }
+  .app-header .header-actions {
+    gap: 7px;
+  }
+  .project-tab {
+    max-width: 170px;
+  }
+}
+@media (max-width: 760px) {
+  .app-shell > .app-header {
+    gap: 6px;
+    padding-left: 8px;
+  }
+  .app-header .ai-toggle span {
+    display: none;
+  }
+  .project-tab {
+    max-width: 130px;
+  }
+  .app-header .workspace-actions {
+    width: auto;
+  }
+  .window-controls button {
+    width: 32px;
+  }
+  .sync-credentials {
+    grid-template-columns: 1fr;
+  }
 }

@@ -176,7 +176,9 @@ test('database upgrade retains existing projects and history', async ({ page }) 
     db.close();
   }, project);
   await page.goto('/');
-  await expect(page.locator('.project-title')).toContainText('Existing v0.3 project');
+  await expect(page.locator('.project-tab.active > button:first-child')).toContainText(
+    'Existing v0.3 project',
+  );
   await page.getByRole('button', { name: '修改历史', exact: true }).click();
   await expect(page.locator('.history-list > button')).toHaveCount(1);
   await page.locator('.history-list > button').click();

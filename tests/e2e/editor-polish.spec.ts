@@ -7,7 +7,7 @@ test('Chinese search supports literal LaTeX, replacement and regex; UI size is i
   const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器', includeHidden: true });
   await editor.fill('\\theta + \\theta + beta');
   const editorSize = await editor.evaluate((el) => getComputedStyle(el).fontSize);
-  const title = page.locator('.project-title');
+  const title = page.locator('.project-tab.active > button:first-child');
   const initial = parseFloat(await title.evaluate((el) => getComputedStyle(el).fontSize));
   await editor.press('Control+f');
   const search = page.locator('.texite-search');

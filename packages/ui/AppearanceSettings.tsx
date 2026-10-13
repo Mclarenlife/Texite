@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
 import {
   Check,
+  Cloud,
   Sun,
   Moon,
   Monitor,
@@ -40,6 +41,7 @@ type Props = {
   onReduceMotion: (v: boolean) => void;
   children: ReactNode;
   initialTab?: string;
+  sync?: ReactNode;
 };
 function Choices({
   label,
@@ -150,6 +152,7 @@ export function AppearanceSettings(props: Props) {
     { id: 'appearance', name: '外观与主题', icon: Palette },
     { id: 'text', name: '编辑器文字', icon: Type },
     { id: 'compiler', name: '编译设置', icon: Terminal },
+    { id: 'sync', name: '同步与存储', icon: Cloud },
   ];
   return (
     <div className="settings-studio">
@@ -180,7 +183,11 @@ export function AppearanceSettings(props: Props) {
           </button>
         ))}
       </div>
-      <div className={'settings-layout' + (tab === 'compiler' ? ' compiler-layout' : '')}>
+      <div
+        className={
+          'settings-layout' + (['compiler', 'sync'].includes(tab) ? ' compiler-layout' : '')
+        }
+      >
         <div
           className="settings-options"
           role="tabpanel"
@@ -453,6 +460,7 @@ export function AppearanceSettings(props: Props) {
               </label>
             </>
           )}
+          {tab === 'sync' && props.sync}
           {tab === 'compiler' && (
             <div className="compiler-settings">
               <div className="settings-section-heading">
@@ -463,7 +471,7 @@ export function AppearanceSettings(props: Props) {
             </div>
           )}
         </div>
-        {tab !== 'compiler' && (
+        {!['compiler', 'sync'].includes(tab) && (
           <aside className="settings-live-preview" aria-label="编辑器实时预览">
             <div className="live-preview-label">
               <span className="live-dot" />

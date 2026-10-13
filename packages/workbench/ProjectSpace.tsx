@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   FileText,
+  Cloud,
   FolderOpen,
   Info,
   Pencil,
@@ -23,6 +24,7 @@ export function ProjectSpace({
   onNew,
   onRename,
   onArchive,
+  syncedIds = [],
 }: {
   projects: Project[];
   archived: string[];
@@ -32,6 +34,7 @@ export function ProjectSpace({
   onNew(): void;
   onRename(project: Project, name: string): Promise<void>;
   onArchive(ids: string[], remove: boolean): Promise<void>;
+  syncedIds?: string[];
 }) {
   const [query, setQuery] = useState(''),
     [trash, setTrash] = useState(false),
@@ -201,7 +204,11 @@ export function ProjectSpace({
               title="查看属性"
               onClick={() => setInfo(p)}
             >
-              <Info size={16} />
+              {syncedIds.includes(p.id) ? (
+                <Cloud size={16} aria-label="WebDAV 项目" />
+              ) : (
+                <Info size={16} />
+              )}
             </button>
             <input
               className="project-checkbox"

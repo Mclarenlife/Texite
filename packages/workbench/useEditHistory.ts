@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { type EditRecord, type RecoveryPoint, limitHistory } from '../core/history';
 import { readHistory, readRecoveries, writeHistory } from '../platform/storage';
 
@@ -9,15 +9,23 @@ export function useEditHistory(projectId: string | undefined) {
   const recoveryCache = useRef(new Map<string, RecoveryPoint[]>());
   const cache = useRef(new Map<string, EditRecord[]>());
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const writes = useRef(new Map<string, Promise<void>>());
   const current = useRef(projectId);
   current.current = projectId;
-  const flush = (id: string) => {
+  const flush = useCallback((id: string) => {
+    if (!pending.current.has(id)) return writes.current.get(id) || Promise.resolve();
     clearTimeout(pending.current.get(id));
     pending.current.delete(id);
-    void writeHistory(id, cache.current.get(id) || []).catch(() =>
-      setError('历史记录保存失败，请检查本地存储空间。'),
-    );
-  };
+    const snapshot = cache.current.get(id) || [];
+    const task = (writes.current.get(id) || Promise.resolve())
+      .then(() => writeHistory(id, snapshot))
+      .catch(() => setError('历史记录保存失败，请检查本地存储空间。'));
+    writes.current.set(id, task);
+    void task.finally(() => {
+      if (writes.current.get(id) === task) writes.current.delete(id);
+    });
+    return task;
+  }, []);
   useEffect(() => {
     const savePending = () => {
       for (const id of pending.current.keys()) flush(id);
@@ -92,5 +100,5 @@ export function useEditHistory(projectId: string | undefined) {
     recoveryCache.current.set(point.projectId, next);
     if (current.current === point.projectId) setRecoveries(next);
   }
-  return { records, recoveries, rememberRecovery, record, error };
+  return { records, recoveries, rememberRecovery, record, error, flush };
 }

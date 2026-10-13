@@ -1,3 +1,5 @@
+import { SyncSettings } from '../ui/SyncSettings';
+import type { WebDAVConfig } from '../core/model';
 import { ProjectSpace } from './ProjectSpace';
 import { AssetPreview } from '../preview/AssetPreview';
 import { archiveProjects, readArchivedProjects, renameStoredProject } from '../platform/storage';
@@ -5,6 +7,9 @@ import { Select } from '../ui/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
+  Cloud,
+  Minus,
+  Copy,
   ArrowDownToLine,
   ArrowLeft,
   ArrowUpRight,
@@ -107,6 +112,20 @@ export function App() {
   const projectRef = useRef(project);
   projectRef.current = project;
   const [projects, setProjects] = useState<Project[]>([]);
+  const [openedIds, setOpenedIds] = useState<string[]>([]);
+  const drafts = useRef(new Map<string, Project>());
+  if (project) drafts.current.set(project.id, project);
+  const [davConfig, setDavConfig] = useState<WebDAVConfig | null>(null);
+  const [settingsTab, setSettingsTab] = useState('appearance');
+  useEffect(() => {
+    void window.texite?.webdav
+      ?.get()
+      .then(setDavConfig)
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    if (project) setOpenedIds((ids) => (ids.includes(project.id) ? ids : [...ids, project.id]));
+  }, [project?.id]);
   const [mode, setMode] = useState<Mode>('split');
   const [space, setSpace] = useState(false);
   const [inlineRun, setInlineRun] = useState(0);
@@ -206,6 +225,7 @@ export function App() {
           await saveProject(snapshot);
           if (window.texite) await window.texite.saveProject(snapshot);
           else await saveBrowserDirectory(snapshot);
+          await editHistory.flush(snapshot.id);
         });
       saveQueue.current = task;
       task
@@ -223,7 +243,7 @@ export function App() {
         });
       return task;
     },
-    [notify],
+    [notify, editHistory.flush],
   );
   useEffect(() => {
     let cancelled = false;
@@ -445,6 +465,7 @@ export function App() {
       setSpace(true);
       return;
     }
+    if (name === 'settings') setSettingsTab('appearance');
     setModalError('');
     setInput(value);
     setQuery('');
@@ -463,16 +484,85 @@ export function App() {
     // Flush edits before loading another disk snapshot. Preserve recovery on external conflicts.
     await saveQueue.current.catch(() => {});
     if (projectRef.current && !alreadyFlushed) await persist(projectRef.current).catch(() => {});
+    if (openedIds.includes(next.id)) {
+      next = drafts.current.get(next.id) ?? next;
+      refresh = false;
+    }
     if (refresh && next.id !== projectRef.current?.id && window.texite?.reopenProject)
       next = (await window.texite.reopenProject(next.id)) ?? next;
     if (refresh && next.id !== projectRef.current?.id && !window.texite)
       next = { ...(await reopenBrowserProject(next)), name: next.name };
     if (archivedProjects.includes(next.id))
       setArchivedProjects(await archiveProjects([next.id], false));
+    projectRef.current = next;
+    setOpenedIds((ids) => (ids.includes(next.id) ? ids : [...ids, next.id]));
     setProject(next);
     setSelectedFolder('');
     setSpace(false);
     setModal(null);
+  }
+  async function closeProjectTab(id: string) {
+    if (ai.busy || compileRunning.current || restoreLock.current) {
+      notify('请先结束当前任务。');
+      return;
+    }
+    if (id === projectRef.current?.id) {
+      await prepareSpaceMutation();
+      const nextId = openedIds.filter((item) => item !== id).at(-1);
+      if (nextId && drafts.current.has(nextId)) await chooseProject(drafts.current.get(nextId)!);
+      else setSpace(true);
+    }
+    setOpenedIds((ids) => ids.filter((item) => item !== id));
+  }
+  async function syncProject() {
+    await prepareSpaceMutation();
+    restoreLock.current = true;
+    setRestoreBusy(true);
+    try {
+      const result = await window.texite!.webdav!.sync(projectRef.current!);
+      if (result.project) {
+        const next = validateProject(result.project);
+        if (result.status === 'downloaded') {
+          projectRef.current = next;
+          setProject(next);
+        }
+        setProjects((items) => [next, ...items.filter((p) => p.id !== next.id)]);
+        await saveProject(next);
+      }
+      setDavConfig(await window.texite!.webdav!.get());
+      return result.status === 'conflict'
+        ? '两端都有修改。已在项目空间保留云端冲突副本，当前项目和云端原文件未覆盖。'
+        : result.status === 'downloaded'
+          ? '已下载云端更改，覆盖前的本地版本已保存到 sync-backups。'
+          : result.status === 'unchanged'
+            ? '两端内容一致。'
+            : '项目已同步到云端。';
+    } finally {
+      restoreLock.current = false;
+      setRestoreBusy(false);
+    }
+  }
+  async function relocateProject() {
+    await prepareSpaceMutation();
+    restoreLock.current = true;
+    setRestoreBusy(true);
+    try {
+      const next = await window.texite!.storage!.relocate(projectRef.current!);
+      projectRef.current = next;
+      setProject(next);
+      setProjects((items) => [next, ...items.filter((p) => p.id !== next.id)]);
+      await saveProject(next);
+    } finally {
+      restoreLock.current = false;
+      setRestoreBusy(false);
+    }
+  }
+  async function downloadCloudProject(key: string) {
+    await prepareSpaceMutation();
+    const next = validateProject(await window.texite!.webdav!.download(key));
+    await saveProject(next);
+    setProjects((items) => [next, ...items.filter((p) => p.id !== next.id)]);
+    setDavConfig(await window.texite!.webdav!.get());
   }
   async function prepareSpaceMutation() {
     if (ai.busy || compileRunning.current || restoreLock.current)
@@ -492,6 +582,7 @@ export function App() {
       throw error;
     }
     setProjects((items) => items.map((p) => (p.id === next.id ? next : p)));
+    drafts.current.set(next.id, next);
     if (projectRef.current?.id === next.id) {
       projectRef.current = next;
       setProject(next);
@@ -871,13 +962,6 @@ export function App() {
           }}
         />
         <nav className="activity-rail" aria-label="主导航">
-          <button
-            className="brand-symbol"
-            aria-label="项目首页"
-            onClick={() => openModal('projects')}
-          >
-            t.
-          </button>
           <div className="rail-group">
             <button
               className={section === 'files' ? 'active' : ''}
@@ -943,89 +1027,164 @@ export function App() {
               <Settings2 size={19} />
             </button>
             <button
-              className="avatar"
-              aria-label="本地工作区说明"
-              onClick={() => openModal('help')}
+              aria-label="WebDAV 同步"
+              title="WebDAV 同步"
+              onClick={() => {
+                openModal('settings');
+                setSettingsTab('sync');
+              }}
             >
-              本地
+              <Cloud size={20} />
             </button>
           </div>
         </nav>
-        <div className="main-shell" hidden={space}>
-          <header className="app-header">
-            <div className="breadcrumb">
-              <button onClick={() => openModal('projects')}>项目空间</button>
-              <ChevronRight size={13} />
-              <button className="project-title" onClick={() => openModal('rename', project.name)}>
-                {project.name}
-                <ChevronDown size={13} />
-              </button>
-              <span className="local-badge">
-                <span />
-                本地项目
-              </span>
-            </div>
-            <div className="header-actions">
-              <button
-                className="ai-toggle"
-                aria-label="AI 助手"
-                aria-pressed={aiOpen}
-                onClick={() => setAiOpen(!aiOpen)}
-              >
-                <Sparkles size={16} />
-                <span>AI 助手</span>
-                {ai.busy && <LoaderCircle size={12} className="spin" />}
-              </button>
-              <div className="workspace-actions">
-                <div className="mode-switch" role="group" aria-label="视图切换">
-                  {modes.map((item) => (
+        <header
+          className={'app-header' + (window.texite?.platform === 'win32' ? ' windows-header' : '')}
+        >
+          <button
+            className="brand-symbol"
+            aria-label="项目首页"
+            onClick={() => openModal('projects')}
+          >
+            t.
+          </button>
+          <div className="project-tabs" role="tablist" aria-label="打开的项目">
+            {openedIds
+              .filter((id) => !archivedProjects.includes(id))
+              .map((id) => {
+                const tab =
+                  id === project.id
+                    ? project
+                    : (drafts.current.get(id) ?? projects.find((p) => p.id === id));
+                if (!tab) return null;
+                return (
+                  <div
+                    className={'project-tab' + (!space && id === project.id ? ' active' : '')}
+                    key={id}
+                  >
                     <button
-                      key={item.id}
-                      className={mode === item.id ? 'selected' : ''}
-                      aria-pressed={mode === item.id}
-                      onClick={() => setMode(item.id)}
+                      role="tab"
+                      aria-selected={!space && id === project.id}
+                      title={tab.name}
+                      onClick={() => void chooseProject(tab).catch((e) => notify(friendlyError(e)))}
                     >
-                      {mode === item.id && (
-                        <motion.span
-                          className="mode-highlight"
-                          layoutId="mode-highlight"
-                          transition={{ type: 'spring', bounce: 0.12, duration: 0.28 }}
-                        />
+                      {davConfig?.projects.some((p) => p.id === id) ? (
+                        <Cloud size={14} />
+                      ) : (
+                        <FileText size={14} />
                       )}
-                      <item.icon size={14} />
-                      <span>{item.label}</span>
+                      <span>{tab.name}</span>
                     </button>
-                  ))}
-                </div>
-                <button
-                  className={'compile-button' + (compiling ? ' compiling' : '')}
-                  onClick={() => (compiling ? void window.texite?.cancelCompile() : void compile())}
-                >
-                  {compiling ? <Square size={14} /> : <Play size={14} fill="currentColor" />}
-                  <span>{compiling ? '取消编译' : '编译文稿'}</span>
-                  <kbd>{compiling ? <LoaderCircle size={12} className="spin" /> : '⌘ ↵'}</kbd>
-                </button>
+                    <button
+                      aria-label={'关闭项目 ' + tab.name}
+                      title="关闭项目选项卡"
+                      onClick={() =>
+                        void closeProjectTab(id).catch((e) => notify(friendlyError(e)))
+                      }
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                );
+              })}
+            <button
+              className="icon-button"
+              aria-label="打开项目空间"
+              title="打开项目空间"
+              onClick={() => setSpace(true)}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          <div className="header-actions">
+            <button
+              className="ai-toggle"
+              aria-label="AI 助手"
+              aria-pressed={aiOpen}
+              onClick={() => setAiOpen(!aiOpen)}
+            >
+              <Sparkles size={16} />
+              <span>AI 助手</span>
+              {ai.busy && <LoaderCircle size={12} className="spin" />}
+            </button>
+            <div className="workspace-actions">
+              <div className="mode-switch" role="group" aria-label="视图切换">
+                {modes.map((item) => (
+                  <button
+                    key={item.id}
+                    aria-label={item.label}
+                    title={item.label}
+                    className={mode === item.id ? 'selected' : ''}
+                    aria-pressed={mode === item.id}
+                    onClick={() => setMode(item.id)}
+                  >
+                    {mode === item.id && (
+                      <motion.span
+                        className="mode-highlight"
+                        layoutId="mode-highlight"
+                        transition={{ type: 'spring', bounce: 0.12, duration: 0.28 }}
+                      />
+                    )}
+                    <item.icon size={14} />
+                  </button>
+                ))}
               </div>
-
-              <button className="command-trigger" onClick={() => openModal('commands')}>
-                <Search size={14} />
-                <span>搜索与命令</span>
-                <kbd>⌘ K</kbd>
-              </button>
               <button
-                className="icon-button"
-                aria-label="帮助"
-                title="帮助"
-                onClick={() => openModal('help')}
+                aria-label={compiling ? '取消编译' : '编译文稿'}
+                className={'compile-button' + (compiling ? ' compiling' : '')}
+                onClick={() => (compiling ? void window.texite?.cancelCompile() : void compile())}
               >
-                <CircleHelp size={18} />
-              </button>
-              <button className="export-button" onClick={() => void exportProject()}>
-                <ArrowDownToLine size={15} />
-                <span>导出项目</span>
+                {compiling ? <Square size={14} /> : <Play size={14} fill="currentColor" />}
+                <span>{compiling ? '取消编译' : '编译'}</span>
               </button>
             </div>
-          </header>
+
+            <button className="command-trigger" onClick={() => openModal('commands')}>
+              <Search size={14} />
+              <span>搜索与命令</span>
+              <kbd>⌘ K</kbd>
+            </button>
+            <button
+              className="icon-button"
+              aria-label="帮助"
+              title="帮助"
+              onClick={() => openModal('help')}
+            >
+              <CircleHelp size={18} />
+            </button>
+            <button className="export-button" onClick={() => void exportProject()}>
+              <ArrowDownToLine size={15} />
+              <span>导出项目</span>
+            </button>
+          </div>
+          {window.texite?.platform === 'win32' && (
+            <div className="window-controls">
+              <button
+                title="最小化"
+                aria-label="最小化"
+                onClick={() => void window.texite?.windowControl?.('minimize')}
+              >
+                <Minus size={15} />
+              </button>
+              <button
+                title="最大化 / 还原"
+                aria-label="最大化或还原"
+                onClick={() => void window.texite?.windowControl?.('maximize')}
+              >
+                <Copy size={13} />
+              </button>
+              <button
+                className="window-close"
+                title="关闭窗口"
+                aria-label="关闭窗口"
+                onClick={() => void window.texite?.windowControl?.('close')}
+              >
+                <X size={17} />
+              </button>
+            </div>
+          )}
+        </header>
+        <div className="main-shell" hidden={space}>
           <div
             className={
               'workbench-row' + (!sidebar ? ' sidebar-hidden' : '') + (aiOpen ? ' ai-open' : '')
@@ -1530,6 +1689,7 @@ export function App() {
         <section className="project-space" hidden={!space} aria-label="项目空间">
           <ProjectSpace
             projects={[project, ...projects.filter((p) => p.id !== project.id)]}
+            syncedIds={davConfig?.projects.map((p) => p.id) ?? []}
             archived={archivedProjects}
             onOpen={(p) => void chooseProject(p, true).catch((e) => notify(friendlyError(e)))}
             onFolder={() => void openDirectory()}
@@ -1717,7 +1877,7 @@ export function App() {
           open={modal === 'settings'}
           onClose={() => setModal(null)}
           title="设置"
-          description="外观、编辑器与本地编译。"
+          description="外观、编辑器、编译与同步。"
           wide
           className="settings-dialog"
           onEscapeKeyDown={(event) => {
@@ -1756,7 +1916,16 @@ export function App() {
             onUiSize={setUiSize}
             reduceMotion={reduceMotion}
             onReduceMotion={setReduceMotion}
-            initialTab={modalError ? 'compiler' : 'appearance'}
+            initialTab={modalError ? 'compiler' : settingsTab}
+            sync={
+              <SyncSettings
+                project={project}
+                onSync={syncProject}
+                onImport={downloadCloudProject}
+                onChange={setDavConfig}
+                onRelocate={relocateProject}
+              />
+            }
           >
             <label className="setting-row">
               <span>

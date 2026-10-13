@@ -18,6 +18,7 @@ const { ProjectLibrary } = require('./projects.cjs');
 const { RuntimeManager } = require('./runtime-manager.cjs');
 const { CodexClient } = require('./codex-client.cjs');
 const { ChatClient } = require('./chat-client.cjs');
+const { WebDAV } = require('./webdav.cjs');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'texite',
@@ -40,7 +41,7 @@ function trusted(event) {
   return (
     event.sender === window?.webContents &&
     event.senderFrame === window.webContents.mainFrame &&
-    (devUrl ? url?.startsWith('http://127.0.0.1:5173/') : url?.startsWith('texite://app/'))
+    (devUrl ? url?.startsWith(new URL(devUrl).origin + '/') : url?.startsWith('texite://app/'))
   );
 }
 function handle(name, callback) {
@@ -64,6 +65,29 @@ app.whenReady().then(async () => {
   });
   library = new ProjectLibrary(app.getPath('userData'));
   await library.init();
+  const dav = new WebDAV(app.getPath('userData'), safeStorage, library);
+  handleFiles('webdav:get', () => dav.get());
+  handleFiles('webdav:configure', (input) => dav.configure(input));
+  handleFiles('webdav:list', () => dav.list());
+  handleFiles('webdav:sync', (project) => dav.sync(project));
+  handleFiles('webdav:download', (key) => dav.download(key));
+  handleFiles('webdav:detach', (id) => dav.detach(id));
+  handleFiles('storage:get', () => library.projectsRoot);
+  handleFiles('storage:relocate', (project) => library.relocate(project));
+  handleFiles('storage:choose', async () => {
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择项目保存目录',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled ? null : library.setRoot(result.filePaths[0]);
+  });
+  handle('window:control', (action) => {
+    if (action === 'minimize') window.minimize();
+    else if (action === 'maximize') {
+      if (window.isMaximized()) window.unmaximize();
+      else window.maximize();
+    } else if (action === 'close') window.close();
+  });
   handleFiles('project:rename', (id, name) => library.rename(id, name));
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
   const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
@@ -170,6 +194,7 @@ app.whenReady().then(async () => {
       minHeight: 640,
       backgroundColor: '#f3f4ef',
       title: 'Texite',
+      ...(process.platform === 'win32' ? { frame: false } : {}),
       autoHideMenuBar: true,
       webPreferences: {
         preload: path.join(__dirname, 'preload.cjs'),
