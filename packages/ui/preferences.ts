@@ -21,9 +21,11 @@ export function usePreference<T extends string | number | boolean>(key: string, 
   return [value, setValue] as const;
 }
 export const editorFonts: Record<string, string> = {
-  mono: 'ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Microsoft YaHei", monospace',
-  consolas: 'Consolas, "SFMono-Regular", "Microsoft YaHei", monospace',
-  cascadia: '"Cascadia Code", Consolas, "Microsoft YaHei", monospace',
-  sans: '"Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+  mono: 'ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", monospace',
+  consolas:
+    'Consolas, "SFMono-Regular", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", monospace',
+  cascadia:
+    '"Cascadia Code", Consolas, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", monospace',
+  sans: '-apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
   serif: 'Georgia, "Songti SC", SimSun, serif',
 };

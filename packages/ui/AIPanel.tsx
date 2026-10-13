@@ -1,5 +1,5 @@
 import { Select } from './Select';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
   Check,
@@ -44,6 +44,7 @@ export function AIPanel({
   onClose(): void;
 }) {
   const [prompt, setPrompt] = useState('');
+  const input = useRef<HTMLTextAreaElement>(null);
   const [model, setModel] = usePreference<string>('ai-model', '');
   const [mode, setMode] = usePreference<'agent' | 'chat'>('ai-mode', 'agent');
   useEffect(() => {
@@ -54,6 +55,13 @@ export function AIPanel({
   }, [focusAgent]);
   const [provider, setProvider] = usePreference<'codex' | 'api'>('chat-provider', 'codex');
   const [minimized, setMinimized] = useState(false);
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!el || minimized) return;
+    el.style.height = '0px';
+    el.style.height = Math.min(160, Math.max(60, el.scrollHeight)) + 'px';
+  }, [prompt, minimized]);
+
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const panel = useRef<HTMLElement>(null);
@@ -200,7 +208,6 @@ export function AIPanel({
               {mode === 'agent' ? '修改自动保留恢复记录。' : '对话模式仅回答问题，不修改文稿。'}
             </span>
           </button>
-          <small>{mode === 'agent' ? 'Agent' : '对话'}</small>
         </span>
         <div className="ai-window-actions">
           <button
@@ -215,111 +222,129 @@ export function AIPanel({
           </button>
         </div>
       </div>
-      <div className="ai-mode-tabs" role="tablist" aria-label="AI 模式">
-        <button
-          role="tab"
-          aria-selected={mode === 'agent'}
-          disabled={ai.busy}
-          onClick={() => setMode('agent')}
-        >
-          <Sparkles size={14} />
-          Agent
-        </button>
-        <button
-          role="tab"
-          aria-selected={mode === 'chat'}
-          disabled={ai.busy}
-          onClick={() => setMode('chat')}
-        >
-          <MessageSquare size={14} />
-          对话
-        </button>
-        {mode === 'chat' && (
-          <Select
-            aria-label="对话服务"
-            value={provider}
-            disabled={ai.busy}
-            onValueChange={(value) => setProvider(value as 'codex' | 'api')}
-          >
-            <option value="codex">Codex</option>
-            <option value="api">自定义 API</option>
-          </Select>
-        )}
-      </div>
-      {custom ? (
-        <button className="ai-connection-row" onClick={configure}>
-          <Settings2 size={14} />
-          <span>{ai.chatConfig.model || '配置对话 API'}</span>
-          <ChevronDown size={13} />
-        </button>
-      ) : (
-        <>
+      <div className="ai-toolbar">
+        <div className="ai-mode-tabs" role="tablist" aria-label="AI 模式">
           <button
-            className="ai-connection-row"
-            aria-expanded={showConnection}
-            onClick={() => setShowConnection(!showConnection)}
+            role="tab"
+            aria-selected={mode === 'agent'}
+            disabled={ai.busy}
+            onClick={() => setMode('agent')}
           >
-            <span className={ai.connection?.authenticated ? 'ai-dot connected' : 'ai-dot'} />
-            <span>{ai.connection?.authenticated ? '已连接本机 Codex' : '连接 Codex'}</span>
-            <ChevronDown size={13} />
+            <Sparkles size={14} />
+            Agent
           </button>
-          {(!ai.connection?.authenticated || showConnection) && (
-            <div className="ai-connection">
-              {desktop ? (
-                <>
-                  <p>
-                    {ai.connection?.account ||
-                      '使用本机 Codex 的登录状态。首次使用请先在终端执行 codex login。'}
-                  </p>
-                  {ai.connection?.version && <small>{ai.connection.version}</small>}
-                  <div className="ai-inline-actions">
-                    <button
-                      className="secondary-button"
-                      disabled={ai.connecting || ai.busy}
-                      onClick={() => void ai.connect()}
-                    >
-                      {ai.connecting ? (
-                        <LoaderCircle size={14} className="spin" />
-                      ) : (
-                        <Plug size={14} />
-                      )}
-                      {ai.connection ? '刷新连接' : '连接本机 Codex'}
-                    </button>
-                    <button
-                      className="text-button"
-                      disabled={ai.connecting || ai.busy}
-                      onClick={() => void ai.chooseBinary()}
-                    >
-                      选择 Codex CLI
-                    </button>
-                  </div>
-                  <small>选择 codex 可执行文件。Mac 可在终端运行 command -v codex 查找路径。</small>
-                </>
-              ) : (
-                <p>连接本机 Codex 需要 Texite 桌面版。网页版可在对话模式配置 API。</p>
-              )}
-            </div>
+          <button
+            role="tab"
+            aria-selected={mode === 'chat'}
+            disabled={ai.busy}
+            onClick={() => setMode('chat')}
+          >
+            <MessageSquare size={14} />
+            对话
+          </button>
+        </div>
+        <div className="ai-service-controls">
+          {mode === 'chat' && (
+            <Select
+              aria-label="对话服务"
+              value={provider}
+              disabled={ai.busy}
+              onValueChange={(value) => setProvider(value as 'codex' | 'api')}
+            >
+              <option value="codex">Codex</option>
+              <option value="api">自定义 API</option>
+            </Select>
           )}
-        </>
+          {custom ? (
+            <button
+              className="icon-button"
+              aria-label="配置对话 API"
+              title="配置对话 API"
+              onClick={configure}
+            >
+              <Settings2 size={16} />
+            </button>
+          ) : (
+            <button
+              className="ai-connection-toggle"
+              aria-expanded={showConnection}
+              onClick={() => setShowConnection(!showConnection)}
+            >
+              <span className={ai.connection?.authenticated ? 'ai-dot connected' : 'ai-dot'} />
+              <span>{ai.connection?.authenticated ? '已连接本机 Codex' : '连接设置'}</span>
+              <ChevronDown size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+      {!custom && !ai.connection?.authenticated && !showConnection && (
+        <div className="ai-connect-prompt">
+          <span>
+            {desktop ? '连接后即可编辑当前项目' : '本机 Codex 需要桌面版；网页可使用对话 API。'}
+          </span>
+          {desktop && (
+            <button
+              className="secondary-button"
+              disabled={ai.connecting || ai.busy}
+              onClick={() => void ai.connect()}
+            >
+              {ai.connecting ? <LoaderCircle size={14} className="spin" /> : <Plug size={14} />}
+              连接本机 Codex
+            </button>
+          )}
+        </div>
+      )}
+      {!custom && showConnection && (
+        <div className="ai-connection">
+          {desktop ? (
+            <>
+              <p>
+                {ai.connection?.account ||
+                  '使用本机 Codex 登录状态。首次使用请在终端执行 codex login。'}
+              </p>
+              {ai.connection?.version && <small>{ai.connection.version}</small>}
+              <div className="ai-inline-actions">
+                <button
+                  className="secondary-button"
+                  disabled={ai.connecting || ai.busy}
+                  onClick={() => void ai.connect()}
+                >
+                  {ai.connecting ? <LoaderCircle size={14} className="spin" /> : <Plug size={14} />}
+                  {ai.connection ? '刷新连接' : '连接本机 Codex'}
+                </button>
+                <button
+                  className="text-button"
+                  disabled={ai.connecting || ai.busy}
+                  onClick={() => void ai.chooseBinary()}
+                >
+                  选择 Codex CLI
+                </button>
+              </div>
+              <small>选择 codex 可执行文件。Mac 可运行 command -v codex 查找路径。</small>
+            </>
+          ) : (
+            <p>连接本机 Codex 需要 Texite 桌面版。网页版可在对话模式配置 API。</p>
+          )}
+        </div>
       )}
       <div className="ai-thread" aria-label="AI 对话记录">
         {!visibleTasks.length && (
           <div className="ai-empty">
-            <div className="ai-orbit">
-              <Sparkles size={25} />
-            </div>
-            <h3>{mode === 'agent' ? '让想法落在文稿里' : '一起理清思路'}</h3>
-            <p>
-              {mode === 'agent'
-                ? '编辑、编译与修复，修改可查看和撤回。'
-                : '解释公式、讨论写法，不修改项目文件。'}
-            </p>
+            <span className="ai-empty-label">
+              {mode === 'agent' ? '编辑当前文稿' : '围绕文稿提问'}
+            </span>
             <div className="ai-suggestions">
               {(mode === 'agent'
                 ? ['检查并修复编译错误', '整理当前文件的结构', '润色选中文字，保留 LaTeX 命令']
                 : ['解释当前文件中的公式', '这篇文稿的结构可以如何改进？']
               ).map((s) => (
-                <button key={s} onClick={() => setPrompt(s)}>
+                <button
+                  key={s}
+                  onClick={() => {
+                    setPrompt(s);
+                    input.current?.focus();
+                  }}
+                >
                   {s}
                   <ArrowUp size={13} />
                 </button>
@@ -375,55 +400,57 @@ export function AIPanel({
         <div className="ai-context">
           <FileCode2 size={12} />
           <span title={projectName + '/' + activeFile}>{activeFile}</span>
-          <span>当前项目</span>
+          <span>{mode === 'agent' ? '可编辑项目' : '仅对话'}</span>
         </div>
-        <textarea
-          aria-label={custom ? '发送给 API 的消息' : '发送给 Codex 的指令'}
-          placeholder={mode === 'agent' ? '描述你想修改的内容…' : '输入消息，Shift + Enter 换行…'}
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          maxLength={20000}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <div className="ai-composer-controls">
-          <span className="ai-mode-label">{mode === 'agent' ? '可编辑项目' : '仅对话'}</span>
-          {custom ? (
-            <span className="ai-api-model">{ai.chatConfig.model}</span>
-          ) : (
-            <Select
-              aria-label="AI 模型"
-              value={selected}
-              disabled={ai.busy || !models.length}
-              onValueChange={setModel}
+        <div className="ai-input-box">
+          <textarea
+            ref={input}
+            aria-label={custom ? '发送给 API 的消息' : '发送给 Codex 的指令'}
+            placeholder={mode === 'agent' ? '描述你想修改的内容…' : '输入消息，Shift + Enter 换行…'}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            maxLength={20000}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                send();
+              }
+            }}
+          />
+          <div className="ai-composer-controls">
+            {custom ? (
+              <span className="ai-api-model">{ai.chatConfig.model}</span>
+            ) : (
+              <Select
+                aria-label="AI 模型"
+                value={selected}
+                disabled={ai.busy || !models.length}
+                onValueChange={setModel}
+              >
+                {!models.length && <option value="">连接后选择模型</option>}
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+            <button
+              className="ai-send"
+              aria-label={ai.busy ? '停止 AI 任务' : '发送 AI 指令'}
+              disabled={
+                !ai.busy &&
+                (!prompt.trim() ||
+                  ai.loading ||
+                  (custom
+                    ? !ai.chatConfig.model
+                    : !desktop || !ai.connection?.authenticated || !selected))
+              }
+              onClick={() => (ai.busy ? void ai.cancel() : send())}
             >
-              {!models.length && <option value="">连接后选择模型</option>}
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </Select>
-          )}
-          <button
-            className="ai-send"
-            aria-label={ai.busy ? '停止 AI 任务' : '发送 AI 指令'}
-            disabled={
-              !ai.busy &&
-              (!prompt.trim() ||
-                ai.loading ||
-                (custom
-                  ? !ai.chatConfig.model
-                  : !desktop || !ai.connection?.authenticated || !selected))
-            }
-            onClick={() => (ai.busy ? void ai.cancel() : send())}
-          >
-            {ai.busy ? <Square size={14} fill="currentColor" /> : <ArrowUp size={18} />}
-          </button>
+              {ai.busy ? <Square size={14} fill="currentColor" /> : <ArrowUp size={18} />}
+            </button>
+          </div>
         </div>
       </div>
       {!minimized && (

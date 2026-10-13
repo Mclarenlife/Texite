@@ -16,7 +16,6 @@ GlobalWorkerOptions.workerSrc = workerUrl;
 
 export function PdfViewer({
   bytes,
-  label,
   stale,
   diagnostics,
   diagnosticsOpen = false,
@@ -26,7 +25,6 @@ export function PdfViewer({
   downloadName = 'document.pdf',
 }: {
   bytes: Uint8Array | null;
-  label: string;
   stale: boolean;
   diagnostics?: ReactNode;
   diagnosticsOpen?: boolean;
@@ -160,14 +158,7 @@ export function PdfViewer({
             onClick={() => onDiagnosticsChange?.(false)}
             aria-label="PDF"
           >
-            <span className="pdf-heading-label" title={label}>
-              PDF
-              {label && (
-                <small className="pdf-engine-label" aria-label="PDF 实际编译器">
-                  {label}
-                </small>
-              )}
-            </span>
+            <span className="pdf-heading-label">PDF</span>
           </button>
           {diagnostics && (
             <button

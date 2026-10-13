@@ -89,7 +89,7 @@ const JSZip = require('jszip');
     expect(await fs.readFile(path.join(folder, 'main.tex'), 'utf8')).toContain('saved from Texite');
     await page.getByRole('button', { name: '编译文稿', exact: false }).click();
     await expect(page.getByRole('status')).toContainText('编译完成', { timeout: 60000 });
-    await expect(page.getByLabel('PDF 实际编译器')).toContainText('pdfLaTeX');
+    await expect(page.locator('.status-bar button')).toHaveAttribute('title', /pdfLaTeX/);
     expect((await page.evaluate(() => window.texite.detectEngines())).engines).toEqual({
       tectonic: false,
       xelatex: false,
@@ -115,7 +115,9 @@ const JSZip = require('jszip');
     await page.getByRole('option', { name: 'XeLaTeX', exact: true }).click();
     await page.getByRole('button', { name: '关闭弹窗' }).click();
     await page.getByRole('button', { name: '编译文稿', exact: false }).click();
-    await expect(page.getByLabel('PDF 实际编译器')).toContainText('XeLaTeX', { timeout: 60000 });
+    await expect(page.locator('.status-bar button')).toHaveAttribute('title', /XeLaTeX/, {
+      timeout: 60000,
+    });
     await page.getByRole('button', { name: '设置', exact: true }).click();
     await page.getByRole('tab', { name: '编译设置' }).click();
     await page.getByRole('button', { name: '卸载 XeLaTeX', exact: true }).click();

@@ -1437,11 +1437,11 @@ export function App() {
                   diagnosticsOpen={diagnosticsOpen}
                   onDiagnosticsChange={setDiagnosticsOpen}
                   diagnosticCount={diagnostics.length}
-                  label={pdfLabel}
                   stale={!!pdf && pdfRevision >= 0 && pdfRevision !== project.revision}
                   diagnostics={
                     <CompileDiagnostics
                       diagnostics={diagnostics}
+                      compiling={compiling}
                       log={log}
                       project={project}
                       onNotify={notify}
@@ -1487,7 +1487,10 @@ export function App() {
               <span>{window.texite ? '桌面工作区' : '浏览器工作区'}</span>
             </div>
             <div>
-              <button onClick={() => openModal('settings')}>
+              <button
+                title={pdfLabel ? `上次编译：${pdfLabel}` : undefined}
+                onClick={() => openModal('settings')}
+              >
                 {engineNames[project.engine]}
                 {window.texite && engineStatus
                   ? engineStatus.engines[project.engine]

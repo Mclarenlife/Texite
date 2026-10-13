@@ -203,10 +203,34 @@ export function getReferences(files: ProjectFile[]) {
 }
 export function parseDiagnostics(log: string): Diagnostic[] {
   const entries: Diagnostic[] = [];
+  const bibliographyEntries = new Set<Diagnostic>();
   const lines = log.split(/\r?\n/);
   const files: (string | undefined)[] = [];
   const clean = (file: string) => file.replaceAll('\\', '/').replace(/^\.\//, '');
   for (let i = 0; i < lines.length; i++) {
+    // References are normally unresolved until BibTeX and subsequent TeX passes.
+    // Replace transient TeX warnings at each managed pass, not just duplicates.
+    // Bibliography warnings can remain relevant without another BibTeX run.
+    if (/^(?:pdfLaTeX|XeLaTeX|LuaLaTeX) · 第 \d+ 遍\s*$/.test(lines[i])) {
+      const persistent = entries.filter(
+        (e) => e.severity === 'error' || bibliographyEntries.has(e),
+      );
+      entries.splice(0, entries.length, ...persistent);
+      files.length = 0;
+      continue;
+    }
+    if (
+      /^Warning--/.test(lines[i]) ||
+      /^I couldn't open (?:database|style|auxiliary) file/.test(lines[i])
+    ) {
+      const entry: Diagnostic = {
+        severity: lines[i].startsWith('Warning--') ? 'warning' : 'error',
+        message: 'BibTeX: ' + lines[i].trim(),
+      };
+      entries.push(entry);
+      bibliographyEntries.add(entry);
+      continue;
+    }
     const located = lines[i].match(/^(.+?\.(?:tex|sty|cls|bib|bst)):(\d+):\s*(.+)$/);
     const currentFile = [...files].reverse().find(Boolean);
     if (located)

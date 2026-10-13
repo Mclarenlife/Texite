@@ -35,7 +35,10 @@ test('PDF diagnostics copy separately from locating, restore Code/split, and ret
   const diagnostics = preview.getByRole('region', { name: '编译诊断' });
   await expect(diagnostics).toContainText('Undefined control sequence');
   await expect(preview.locator('.pdf-scroll')).toBeHidden();
-  await expect(preview.getByRole('tab', { name: /编译诊断/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(preview.getByRole('tab', { name: /编译诊断/ })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   expect((await editorPane.boundingBox())!.height).toBeCloseTo(height, 0);
   await expect(page.locator('.status-bar .diagnostics')).toHaveCount(0);
   await expect(diagnostics.getByRole('button', { name: '无源码位置' })).toHaveCount(2);
@@ -95,4 +98,29 @@ test('default editor syntax colors match settings previews and follow system app
   expect(new Set(await colors()).size).toBe(5);
   await page.getByRole('tab', { name: '编辑器文字', exact: true }).click();
   await page.screenshot({ path: '.qa/default-syntax-colors.png', animations: 'disabled' });
+});
+
+test('resolved citations leave the diagnostic list while full multi-pass output remains available', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const pdf = [...new Uint8Array(await (await fetch('/sample.pdf')).arrayBuffer())];
+    window.texite = {
+      compile: async (p) => ({
+        success: true,
+        revision: p.revision,
+        pdf,
+        log: "pdfLaTeX · 第 1 遍\n(./main.tex\nLaTeX Warning: Citation `resolved' on page 2 undefined on input line 70.\n)\npdfLaTeX · 第 2 遍\n(./main.tex\nOutput written on main.pdf\n)",
+      }),
+    } as NonNullable<Window['texite']>;
+  });
+  await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+  await expect(page.getByRole('status')).toContainText('编译完成');
+  await page.getByRole('tab', { name: /^编译诊断\s*0$/ }).click();
+  const diagnostics = page.getByRole('region', { name: '编译诊断', exact: true });
+  await expect(diagnostics.locator('.diagnostic-row')).toHaveCount(0);
+  await expect(diagnostics.locator('pre')).toBeHidden();
+  await diagnostics.getByText('原始日志', { exact: true }).click();
+  await expect(diagnostics.locator('pre')).toContainText("Citation `resolved'");
 });

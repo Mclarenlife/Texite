@@ -62,7 +62,6 @@ export function AssetPreview({ file }: { file: ProjectFile }) {
     return (
       <PdfViewer
         bytes={bytes}
-        label=""
         stale={false}
         regionLabel="项目 PDF 预览"
         downloadName={file.path.split('/').pop()}

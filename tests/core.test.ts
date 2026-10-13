@@ -62,6 +62,41 @@ test('diagnostics retain fatal fonts after many warnings and locate nested sourc
     { file: 'main.tex', line: 4 },
   );
 });
+test('managed passes replace resolved citation warnings while preserving final problems and BibTeX diagnostics', () => {
+  for (const engine of ['pdfLaTeX', 'XeLaTeX', 'LuaLaTeX']) {
+    const first = `${engine} · 第 1 遍\n(./main.tex\nLaTeX Warning: Citation \`resolved' on page 2 undefined on input line 70.\n)\nBibTeX · 生成参考文献\nWarning--empty year in retained\n`;
+    const final = `${engine} · 第 3 遍\n(./main.tex\n(./chapters/results.tex\nLaTeX Warning: Citation \`missing' on page 4 undefined on input line 9.\n)\nOverfull \\hbox (2.0pt too wide) at lines 10--11\n)\n`;
+    const result = parseDiagnostics(first + final);
+    assert.equal(result.length, 3);
+    assert(!result.some((d) => d.message.includes('resolved')));
+    assert(result.some((d) => d.message.includes('BibTeX: Warning--empty year')));
+    assert.deepEqual(
+      result.find((d) => d.message.includes('missing')),
+      {
+        severity: 'warning',
+        file: 'chapters/results.tex',
+        line: 9,
+        message: "LaTeX Warning: Citation `missing' on page 4 undefined on input line 9.",
+      },
+    );
+    assert.equal(
+      parseDiagnostics(first + `${engine} · 第 2 遍\n! Fatal font error\nl.12 text`)[0].severity,
+      'error',
+    );
+  }
+  assert.deepEqual(
+    parseDiagnostics(
+      "pdfLaTeX · 第 1 遍\nLaTeX Warning: Citation `resolved' undefined.\npdfLaTeX · 第 2 遍\nOutput written on main.pdf",
+    ),
+    [],
+  );
+  const bibFailure = parseDiagnostics(
+    "pdfLaTeX · 第 1 遍\nBibTeX · 生成参考文献\nI couldn't open database file absent.bib",
+  );
+  assert.equal(bibFailure[0].severity, 'error');
+  assert.match(bibFailure[0].message, /absent.bib/);
+});
+
 test('validates a project and recovers a missing main selection without losing assets', () => {
   const project = createProject();
   project.mainFile = 'missing.tex';

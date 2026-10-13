@@ -16,12 +16,14 @@ export function CompileDiagnostics({
   diagnostics,
   log,
   project,
+  compiling = false,
   onLocate,
   onNotify,
 }: {
   diagnostics: Diagnostic[];
   log: string;
   project: Project;
+  compiling?: boolean;
   onLocate: (file: string, line: number) => void;
   onNotify: (message: string) => void;
 }) {
@@ -70,7 +72,16 @@ export function CompileDiagnostics({
             </div>
           );
         })}
-        <details open={!diagnostics.length}>
+        {!ordered.length && (
+          <p className="diagnostics-empty">
+            {compiling
+              ? '正在编译，诊断将随编译进度更新…'
+              : log
+                ? '暂无诊断条目，可展开原始日志查看完整编译过程。'
+                : '编译后将在这里显示诊断。'}
+          </p>
+        )}
+        <details>
           <summary>原始日志</summary>
           <pre>{log || '尚无编译日志。'}</pre>
         </details>
