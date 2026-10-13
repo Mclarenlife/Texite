@@ -36,6 +36,7 @@ class ProjectLibrary {
       id: existing?.id || randomUUID(),
       root,
       kind: 'linked',
+      name: existing?.name,
       hashes: [...data.hashes],
     };
     const project = this.snapshot(entry, data);
@@ -50,7 +51,7 @@ class ProjectLibrary {
       data.files.find((f) => /\.tex$/i.test(f.path))?.path;
     return {
       id: entry.id,
-      name: data.settings.name || path.basename(entry.root),
+      name: entry.name || data.settings.name || path.basename(entry.root),
       files: data.files,
       folders: data.folders,
       mainFile,
@@ -70,6 +71,20 @@ class ProjectLibrary {
     entry.hashes = [...data.hashes];
     await this.persist();
     return project;
+  }
+  async rename(id, name) {
+    if (typeof id !== 'string' || typeof name !== 'string' || !name.trim() || name.length > 100)
+      throw new Error('项目名称应为 1–100 个字符。');
+    const entry = this.entries.get(id);
+    if (!entry) throw new Error('项目尚未保存到磁盘。');
+    const previous = entry.name;
+    entry.name = name.trim();
+    try {
+      await this.persist();
+    } catch (e) {
+      entry.name = previous;
+      throw e;
+    }
   }
   async list() {
     const projects = [];
@@ -103,6 +118,7 @@ class ProjectLibrary {
     }
     const hashes = await saveDirectory(entry.root, project, new Map(entry.hashes), removals);
     entry.hashes = [...hashes];
+    entry.name = project.name;
     this.entries.set(project.id, entry);
     await this.persist();
     return { directory: entry.root, kind: entry.kind };

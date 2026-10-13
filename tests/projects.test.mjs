@@ -4,6 +4,25 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ProjectLibrary } from '../apps/desktop/projects.cjs';
 
+test('renaming a linked project persists its display name without changing the directory or sources', async () => {
+  await fs.mkdir('.qa', { recursive: true });
+  const base = await fs.mkdtemp(path.resolve('.qa/project-rename-'));
+  const root = path.join(base, 'original-folder');
+  await fs.mkdir(root);
+  await fs.writeFile(path.join(root, 'main.tex'), 'untouched');
+  const library = new ProjectLibrary(path.join(base, 'profile'));
+  await library.init();
+  const project = await library.link(root);
+  await library.rename(project.id, '新的项目名称');
+  const reopened = new ProjectLibrary(path.join(base, 'profile'));
+  await reopened.init();
+  assert.equal((await reopened.reopen(project.id)).name, '新的项目名称');
+  assert.equal((await reopened.link(root)).name, '新的项目名称');
+  assert.equal((await reopened.list())[0].location.directory, await fs.realpath(root));
+  assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'untouched');
+  await assert.rejects(reopened.rename(project.id, ' '), /项目名称/);
+});
+
 test('AI undo deletes only unchanged created text files and protects external edits', async () => {
   await fs.mkdir('.qa', { recursive: true });
   const base = await fs.mkdtemp(path.resolve('.qa/ai-library-test-'));

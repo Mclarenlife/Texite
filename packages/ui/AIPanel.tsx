@@ -1,3 +1,4 @@
+import { Select } from './Select';
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowUp,
@@ -13,6 +14,7 @@ import {
   Minus,
   Settings2,
   MessageSquare,
+  CircleHelp,
 } from 'lucide-react';
 import type { AIController } from '../workbench/useAI';
 import type { AITask } from '../core/ai';
@@ -55,6 +57,8 @@ export function AIPanel({
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const panel = useRef<HTMLElement>(null);
+  const [windowSize, setWindowSize] = useState<{ width: number; height: number } | null>(null);
+  const resizing = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [baseURL, setBaseURL] = useState('');
   const [apiModel, setApiModel] = useState('');
@@ -123,7 +127,10 @@ export function AIPanel({
       ref={panel}
       className={'ai-panel' + (minimized ? ' ai-minimized' : '')}
       aria-label="AI 助手"
-      style={position ? { left: position.x, top: position.y, right: 'auto' } : undefined}
+      style={{
+        ...(position ? { left: position.x, top: position.y, right: 'auto' } : {}),
+        ...(windowSize && !minimized ? windowSize : {}),
+      }}
     >
       <div
         className="ai-heading"
@@ -186,6 +193,13 @@ export function AIPanel({
         <span>
           <Sparkles size={17} />
           <strong>AI 助手</strong>
+          <button className="icon-button ai-help" aria-label="AI 使用说明" type="button">
+            <CircleHelp size={15} />
+            <span role="tooltip">
+              AI 需要联网；相关文稿会作为上下文发送。
+              {mode === 'agent' ? '修改自动保留恢复记录。' : '对话模式仅回答问题，不修改文稿。'}
+            </span>
+          </button>
           <small>{mode === 'agent' ? 'Agent' : '对话'}</small>
         </span>
         <div className="ai-window-actions">
@@ -221,15 +235,15 @@ export function AIPanel({
           对话
         </button>
         {mode === 'chat' && (
-          <select
+          <Select
             aria-label="对话服务"
             value={provider}
             disabled={ai.busy}
-            onChange={(e) => setProvider(e.target.value as 'codex' | 'api')}
+            onValueChange={(value) => setProvider(value as 'codex' | 'api')}
           >
             <option value="codex">Codex</option>
             <option value="api">自定义 API</option>
-          </select>
+          </Select>
         )}
       </div>
       {custom ? (
@@ -381,11 +395,11 @@ export function AIPanel({
           {custom ? (
             <span className="ai-api-model">{ai.chatConfig.model}</span>
           ) : (
-            <select
+            <Select
               aria-label="AI 模型"
               value={selected}
               disabled={ai.busy || !models.length}
-              onChange={(e) => setModel(e.target.value)}
+              onValueChange={setModel}
             >
               {!models.length && <option value="">连接后选择模型</option>}
               {models.map((m) => (
@@ -393,7 +407,7 @@ export function AIPanel({
                   {m.label}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <button
             className="ai-send"
@@ -411,11 +425,70 @@ export function AIPanel({
             {ai.busy ? <Square size={14} fill="currentColor" /> : <ArrowUp size={18} />}
           </button>
         </div>
-        <small className="ai-disclosure">
-          AI 需要联网；相关文稿会作为上下文发送。
-          {mode === 'agent' ? '修改自动保留恢复记录。' : '对话模式仅回答问题，不修改文稿。'}
-        </small>
       </div>
+      {!minimized && (
+        <div
+          className="ai-resize-handle"
+          role="separator"
+          aria-label="调整 AI 窗口大小"
+          tabIndex={0}
+          onPointerDown={(e) => {
+            e.preventDefault();
+            e.currentTarget.setPointerCapture(e.pointerId);
+            const r = panel.current!.getBoundingClientRect();
+            resizing.current = { x: e.clientX, y: e.clientY, width: r.width, height: r.height };
+            setPosition({ x: r.left, y: r.top });
+          }}
+          onPointerMove={(e) => {
+            if (!resizing.current) return;
+            const r = panel.current!.getBoundingClientRect();
+            setWindowSize({
+              width: Math.max(
+                Math.min(360, window.innerWidth - 24),
+                Math.min(
+                  window.innerWidth - r.left - 8,
+                  resizing.current.width + e.clientX - resizing.current.x,
+                ),
+              ),
+              height: Math.max(
+                Math.min(420, window.innerHeight - 32),
+                Math.min(
+                  window.innerHeight - r.top - 8,
+                  resizing.current.height + e.clientY - resizing.current.y,
+                ),
+              ),
+            });
+          }}
+          onPointerUp={(e) => {
+            resizing.current = null;
+            e.currentTarget.releasePointerCapture(e.pointerId);
+          }}
+          onPointerCancel={() => {
+            resizing.current = null;
+          }}
+          onKeyDown={(e) => {
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+            e.preventDefault();
+            const r = panel.current!.getBoundingClientRect();
+            setWindowSize({
+              width: Math.max(
+                360,
+                Math.min(
+                  window.innerWidth - r.left - 8,
+                  r.width + (e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0),
+                ),
+              ),
+              height: Math.max(
+                420,
+                Math.min(
+                  window.innerHeight - r.top - 8,
+                  r.height + (e.key === 'ArrowUp' ? -20 : e.key === 'ArrowDown' ? 20 : 0),
+                ),
+              ),
+            });
+          }}
+        />
+      )}
       <Dialog
         open={configOpen}
         onClose={() => {

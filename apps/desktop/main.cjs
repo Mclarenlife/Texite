@@ -8,6 +8,7 @@ const {
   net,
   shell,
   clipboard,
+  screen,
   safeStorage,
 } = require('electron');
 const path = require('node:path');
@@ -63,6 +64,7 @@ app.whenReady().then(async () => {
   });
   library = new ProjectLibrary(app.getPath('userData'));
   await library.init();
+  handleFiles('project:rename', (id, name) => library.rename(id, name));
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
   const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
   compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime, manager);
@@ -162,8 +164,8 @@ app.whenReady().then(async () => {
   function createWindow() {
     window = new BrowserWindow({
       show: !process.env.TEXITE_TEST_USER_DATA,
-      width: 1440,
-      height: 940,
+      width: Math.min(1720, screen.getPrimaryDisplay().workAreaSize.width),
+      height: Math.min(1080, screen.getPrimaryDisplay().workAreaSize.height),
       minWidth: 820,
       minHeight: 640,
       backgroundColor: '#f3f4ef',

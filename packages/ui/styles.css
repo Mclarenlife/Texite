@@ -2908,3 +2908,244 @@ h1 {
   font-weight: 400;
   color: var(--secondary);
 }
+
+/* Functional preview tabs and resource viewers. */
+.preview-tabs {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.preview-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 2px;
+  position: relative;
+  color: var(--secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.preview-tab[aria-selected='true'] {
+  color: var(--text);
+  font-weight: 600;
+}
+.preview-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+}
+.diagnostic-count {
+  padding: 2px 5px;
+  min-width: 18px;
+  border-radius: 5px;
+  background: var(--tint);
+  font-size: 10px;
+  font-weight: 500;
+}
+.pdf-header {
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.pdf-header .preview-tabs {
+  min-height: 32px;
+}
+.pdf-controls {
+  margin-left: auto;
+}
+.diagnostics.diagnostics-full {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+}
+.diagnostics-full .diagnostics-body {
+  flex: 1;
+  max-height: none;
+  padding: 16px;
+}
+.image-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.asset-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--secondary);
+  font-size: 11px;
+}
+.asset-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.image-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background-color: var(--rail);
+}
+.image-stage {
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.image-stage img {
+  display: block;
+  max-width: none;
+  max-height: none;
+  background-image: conic-gradient(#8881 25%, transparent 0 50%, #8881 0 75%, transparent 0);
+  background-size: 16px 16px;
+  box-shadow: 0 2px 14px #0001;
+}
+.editor-pane > .pdf-pane {
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+.sidebar-heading > span {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--text);
+}
+.outline-heading {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.outline-heading > span:first-child {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+}
+.space-tabs {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.space-tabs button {
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: var(--secondary);
+}
+.space-tabs button[aria-pressed='true'] {
+  background: var(--tint);
+  color: var(--text);
+  font-weight: 600;
+}
+.space-filter {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.space-selection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 46px;
+  margin: 0 0 18px;
+  color: var(--secondary);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.space-selection label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.space-selection input,
+.project-checkbox {
+  accent-color: var(--text);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+.project-space .project-card {
+  position: relative;
+  padding: 0;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+  overflow: hidden;
+}
+.project-card.is-selected {
+  border-color: var(--text);
+  box-shadow: 0 0 0 1px var(--text);
+}
+.project-open {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 100%;
+  text-align: left;
+  padding: 14px;
+  gap: 10px;
+}
+.project-open > strong {
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.project-open > span {
+  color: var(--secondary);
+  font-size: 11px;
+}
+.project-open .project-cover {
+  width: 100%;
+}
+.project-properties {
+  position: absolute;
+  z-index: 1;
+  top: 23px;
+  left: 23px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+.project-checkbox {
+  position: absolute;
+  z-index: 1;
+  top: 29px;
+  right: 26px;
+}
+.project-attributes {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 18px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.project-attributes dt {
+  color: var(--secondary);
+}
+.project-attributes dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.space-empty {
+  padding: 80px 20px;
+  color: var(--secondary);
+  text-align: center;
+  font-size: 13px;
+}

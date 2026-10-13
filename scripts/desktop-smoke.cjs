@@ -28,6 +28,7 @@ const JSZip = require('jszip');
         window.webContents.setBackgroundThrottling(false);
     });
     const page = await desktop.firstWindow();
+    page.setDefaultTimeout(30000);
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('console', (message) => {
       if (/translateFont failed|Unable to load.*CMap|Ensure that the.*cMapUrl/.test(message.text()))
@@ -76,7 +77,7 @@ const JSZip = require('jszip');
         .click();
       await expect(page.locator('.editor-footer')).toContainText('行 3');
       await editor.fill(source);
-      await diagnostics.getByRole('button', { name: '关闭诊断' }).click();
+      await page.getByRole('tab', { name: 'PDF', exact: true }).click();
     } finally {
       await desktop.evaluate(({ clipboard }, text) => clipboard.writeText(text), clipboardBefore);
     }
@@ -110,7 +111,8 @@ const JSZip = require('jszip');
     await expect(page.getByRole('button', { name: '卸载 XeLaTeX', exact: true })).toBeVisible({
       timeout: 60000,
     });
-    await page.getByLabel('编译引擎').selectOption('xelatex');
+    await page.getByRole('combobox', { name: '编译引擎' }).click();
+    await page.getByRole('option', { name: 'XeLaTeX', exact: true }).click();
     await page.getByRole('button', { name: '关闭弹窗' }).click();
     await page.getByRole('button', { name: '编译文稿', exact: false }).click();
     await expect(page.getByLabel('PDF 实际编译器')).toContainText('XeLaTeX', { timeout: 60000 });
@@ -124,7 +126,8 @@ const JSZip = require('jszip');
     // Hidden native windows do not reliably produce compositor frames on Windows.
     if (process.env.TEXITE_TEST_SCREENSHOTS)
       await page.screenshot({ animations: 'disabled', path: '.qa/desktop-runtime-manager.png' });
-    await page.getByLabel('编译引擎').selectOption('pdflatex');
+    await page.getByRole('combobox', { name: '编译引擎' }).click();
+    await page.getByRole('option', { name: 'pdfLaTeX', exact: true }).click();
     await page.getByRole('button', { name: '关闭弹窗' }).click();
     await desktop.evaluate(({ dialog }, directory) => {
       dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
@@ -184,6 +187,16 @@ const JSZip = require('jszip');
     await page.getByRole('button', { name: '项目首页' }).click();
     await page.locator('.project-card').filter({ hasText: 'linked-project' }).click();
     await expect(editor).toContainText('saved from Texite');
+    await page.getByRole('button', { name: '项目首页' }).click();
+    await page.getByLabel('选择项目 linked-project', { exact: true }).check();
+    await page.getByRole('button', { name: '重命名', exact: true }).click();
+    await page.getByLabel('新项目名称').fill('Desktop renamed');
+    await page.getByRole('button', { name: '保存名称', exact: true }).click();
+    await expect(page.getByRole('button', { name: '打开项目 Desktop renamed' })).toBeVisible();
+    expect((await fs.stat(folder)).isDirectory()).toBe(true);
+    const renamed = await page.evaluate(() => window.texite.listProjects());
+    expect(renamed.find((p) => p.name === 'Desktop renamed').location.directory).toBe(folder);
+    await page.getByRole('button', { name: '打开项目 Desktop renamed' }).click();
     await fs.writeFile(path.join(folder, 'main.tex'), source + '% External edit');
     await editor.click();
     await page.keyboard.press('Control+End');
@@ -217,6 +230,7 @@ const JSZip = require('jszip');
         restoreAndPersistentBackups: 'passed',
         zipManagedStorage: 'passed',
         conflictAndRelaunchBindings: 'passed',
+        projectDisplayNameWithoutMovingFolder: 'passed',
         errors,
       }),
     );

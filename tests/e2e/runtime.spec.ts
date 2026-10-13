@@ -95,7 +95,8 @@ test('compiler library previews optional modules, confirms removal and shows the
   await library.getByRole('button', { name: '卸载 XeLaTeX' }).click();
   await library.getByRole('button', { name: '确认卸载' }).click();
   await expect(library.getByRole('button', { name: '卸载 XeLaTeX' })).toHaveCount(0);
-  await page.getByLabel('编译引擎').selectOption('xelatex');
+  await page.getByRole('combobox', { name: '编译引擎' }).click();
+  await page.getByRole('option', { name: 'XeLaTeX', exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: '关闭' }).click();
   await expect(page.locator('.status-bar')).toContainText('XeLaTeX · 未安装');
   await page.getByRole('button', { name: '编译文稿', exact: false }).click();

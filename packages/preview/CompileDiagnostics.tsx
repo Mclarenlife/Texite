@@ -1,4 +1,4 @@
-import { Crosshair, TriangleAlert, ChevronDown } from 'lucide-react';
+import { Crosshair } from 'lucide-react';
 import type { Diagnostic, Project } from '../core/model';
 
 export function diagnosticTarget(d: Diagnostic, project: Project) {
@@ -16,16 +16,12 @@ export function CompileDiagnostics({
   diagnostics,
   log,
   project,
-  open,
-  onToggle,
   onLocate,
   onNotify,
 }: {
   diagnostics: Diagnostic[];
   log: string;
   project: Project;
-  open: boolean;
-  onToggle: () => void;
   onLocate: (file: string, line: number) => void;
   onNotify: (message: string) => void;
 }) {
@@ -44,56 +40,41 @@ export function CompileDiagnostics({
     }
   }
   return (
-    <section className={`diagnostics ${open ? 'is-open' : ''}`} aria-label="编译诊断">
-      <button
-        className="diagnostics-heading"
-        aria-expanded={open}
-        aria-controls="compile-diagnostics-body"
-        aria-label={open ? '关闭诊断' : '展开编译诊断'}
-        onClick={onToggle}
-      >
-        <span>
-          <TriangleAlert size={14} />
-          编译诊断 <small>{diagnostics.length} 条</small>
-        </span>
-        <ChevronDown size={14} className={open ? 'diagnostics-chevron-open' : ''} />
-      </button>
-      {open && (
-        <div id="compile-diagnostics-body" className="diagnostics-body">
-          {ordered.map((d, index) => {
-            const target = diagnosticTarget(d, project);
-            const location = target ? `${target.file}:${target.line}` : d.file;
-            return (
-              <div className="diagnostic-row" key={index}>
-                <button
-                  className="icon-button diagnostic-locate"
-                  disabled={!target}
-                  title={target ? `定位到 ${location}` : '此诊断没有可定位的项目源码行'}
-                  aria-label={target ? `定位到 ${location}` : '无源码位置'}
-                  onClick={() => target && onLocate(target.file, target.line)}
-                >
-                  <Crosshair size={15} />
-                </button>
-                <button
-                  className="diagnostic-message"
-                  title="点击复制诊断信息"
-                  onClick={() => void copy(d)}
-                >
-                  <span className={`diagnostic-meta ${d.severity}`}>
-                    {d.severity === 'error' ? '错误' : '警告'}
-                    {location && <small>{location}</small>}
-                  </span>
-                  <span>{d.message}</span>
-                </button>
-              </div>
-            );
-          })}
-          <details open={!diagnostics.length}>
-            <summary>原始日志</summary>
-            <pre>{log || '尚无编译日志。'}</pre>
-          </details>
-        </div>
-      )}
+    <section className="diagnostics diagnostics-full" aria-label="编译诊断">
+      <div id="compile-diagnostics-body" className="diagnostics-body">
+        {ordered.map((d, index) => {
+          const target = diagnosticTarget(d, project);
+          const location = target ? `${target.file}:${target.line}` : d.file;
+          return (
+            <div className="diagnostic-row" key={index}>
+              <button
+                className="icon-button diagnostic-locate"
+                disabled={!target}
+                title={target ? `定位到 ${location}` : '此诊断没有可定位的项目源码行'}
+                aria-label={target ? `定位到 ${location}` : '无源码位置'}
+                onClick={() => target && onLocate(target.file, target.line)}
+              >
+                <Crosshair size={15} />
+              </button>
+              <button
+                className="diagnostic-message"
+                title="点击复制诊断信息"
+                onClick={() => void copy(d)}
+              >
+                <span className={`diagnostic-meta ${d.severity}`}>
+                  {d.severity === 'error' ? '错误' : '警告'}
+                  {location && <small>{location}</small>}
+                </span>
+                <span>{d.message}</span>
+              </button>
+            </div>
+          );
+        })}
+        <details open={!diagnostics.length}>
+          <summary>原始日志</summary>
+          <pre>{log || '尚无编译日志。'}</pre>
+        </details>
+      </div>
     </section>
   );
 }

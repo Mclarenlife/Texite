@@ -31,7 +31,8 @@ const http = require('node:http');
     const before = await editor.innerText();
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
     await page.getByRole('tab', { name: '对话', exact: true }).click();
-    await page.getByLabel('对话服务').selectOption('api');
+    await page.getByRole('combobox', { name: '对话服务' }).click();
+    await page.getByRole('option', { name: '自定义 API', exact: true }).click();
     await page.getByRole('button', { name: '配置对话 API', exact: false }).click();
     await page
       .getByLabel('API 地址', { exact: true })

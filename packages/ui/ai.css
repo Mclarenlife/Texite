@@ -333,13 +333,13 @@
   z-index: 30;
   right: 24px;
   top: 88px;
-  width: 390px;
-  height: 650px;
+  width: 480px;
+  height: 760px;
   max-height: calc(100vh - 110px);
   max-width: calc(100vw - 24px);
   min-width: min(320px, calc(100vw - 24px));
   min-height: min(420px, calc(100vh - 32px));
-  resize: both;
+  resize: none;
   box-shadow:
     0 24px 90px #0003,
     0 2px 10px #0001;
@@ -452,4 +452,58 @@
   .ai-connection {
     max-height: 100px;
   }
+}
+
+.ai-help {
+  position: relative;
+  color: var(--secondary);
+}
+.ai-help [role='tooltip'] {
+  display: none;
+  position: absolute;
+  top: 30px;
+  left: -90px;
+  width: 240px;
+  white-space: normal;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--secondary);
+  box-shadow: 0 8px 24px #0002;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.7;
+  z-index: 2;
+  text-align: left;
+  pointer-events: none;
+}
+.ai-help:hover [role='tooltip'],
+.ai-help:focus-visible [role='tooltip'] {
+  display: block;
+}
+.ai-resize-handle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 22px;
+  height: 22px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.ai-resize-handle::after {
+  content: '';
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--secondary);
+  border-bottom: 2px solid var(--secondary);
+  opacity: 0.5;
+  border-radius: 1px;
+}
+.ai-resize-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
 }

@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('texite', {
   },
   saveAIProject: (project, removals) => ipcRenderer.invoke('project:save-ai', project, removals),
   listProjects: () => ipcRenderer.invoke('project:list'),
+  renameProject: (id, name) => ipcRenderer.invoke('project:rename', id, name),
   importProject: (project) => ipcRenderer.invoke('project:import', project),
   reopenProject: (id) => ipcRenderer.invoke('project:reopen', id),
   openProject: () => ipcRenderer.invoke('project:open'),

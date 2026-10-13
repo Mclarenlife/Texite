@@ -52,7 +52,7 @@ test('completion snippets and right-click tools insert real, undoable LaTeX', as
       'base64',
     ),
   });
-  await expect(page.getByLabel('项目图片')).toHaveValue('assets/dot.png');
+  await expect(page.getByRole('combobox', { name: '项目图片' })).toContainText('assets/dot.png');
   await page.screenshot({ path: '.qa/insert-tools.png', animations: 'disabled' });
   await page.getByRole('button', { name: '插入图片代码' }).click();
   await expect(editor).toContainText('\\usepackage{graphicx}');
@@ -84,7 +84,8 @@ test('custom API chat streams without editing documents or storing the API key',
   const before = await editor.innerText();
   await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
   await page.getByRole('tab', { name: '对话', exact: true }).click();
-  await page.getByLabel('对话服务').selectOption('api');
+  await page.getByRole('combobox', { name: '对话服务' }).click();
+    await page.getByRole('option', { name: '自定义 API', exact: true }).click();
   await page.getByRole('button', { name: '配置对话 API', exact: false }).click();
   await page.getByLabel('API 地址', { exact: true }).fill('https://chat.example.test/v1');
   await page.getByLabel('API 模型名称').fill('local-test');

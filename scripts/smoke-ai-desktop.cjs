@@ -21,7 +21,9 @@ const path = require('node:path');
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
     await page.getByRole('button', { name: '连接本机 Codex', exact: true }).click();
     await expect(page.getByText('已连接本机 Codex')).toBeVisible({ timeout: 60000 });
-    const models = await page.getByLabel('AI 模型').locator('option').count();
+    await page.getByRole('combobox', { name: 'AI 模型' }).click();
+    const models = await page.getByRole('option').count();
+    await page.keyboard.press('Escape');
     expect(models).toBeGreaterThan(0);
     // Hide account details before saving a screenshot of the actual Electron view.
     await page

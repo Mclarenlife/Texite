@@ -19,11 +19,21 @@ export function PdfViewer({
   label,
   stale,
   diagnostics,
+  diagnosticsOpen = false,
+  onDiagnosticsChange,
+  diagnosticCount = 0,
+  regionLabel = 'PDF 预览',
+  downloadName = 'document.pdf',
 }: {
   bytes: Uint8Array | null;
   label: string;
   stale: boolean;
   diagnostics?: ReactNode;
+  diagnosticsOpen?: boolean;
+  onDiagnosticsChange?(open: boolean): void;
+  diagnosticCount?: number;
+  regionLabel?: string;
+  downloadName?: string;
 }) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [page, setPage] = useState(1);
@@ -36,9 +46,22 @@ export function PdfViewer({
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!container.current) return;
-    const observer = new ResizeObserver((entries) => setWidth(entries[0].contentRect.width));
+    const observer = new ResizeObserver((entries) => {
+      if (entries[0].contentRect.width > 0) setWidth(entries[0].contentRect.width);
+    });
     observer.observe(container.current);
     return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const root = container.current;
+    if (!root) return;
+    const wheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      setZoom((z) => Math.max(0.5, Math.min(3, z + (event.deltaY < 0 ? 0.1 : -0.1))));
+    };
+    root.addEventListener('wheel', wheel, { passive: false });
+    return () => root.removeEventListener('wheel', wheel);
   }, []);
   useEffect(() => {
     setError('');
@@ -122,17 +145,43 @@ export function PdfViewer({
     navigate(target);
   };
   return (
-    <section className="pdf-pane" aria-label="PDF 预览" data-pdf-dark={dark}>
+    <section className="pdf-pane" aria-label={regionLabel} data-pdf-dark={dark}>
       <div className="pane-heading pdf-header">
-        <span className="pdf-heading-label" title={label}>
-          PDF
-          {label && (
-            <small className="pdf-engine-label" aria-label="PDF 实际编译器">
-              {label}
-            </small>
+        <div
+          className="preview-tabs"
+          role={diagnostics ? 'tablist' : undefined}
+          aria-label="预览功能"
+        >
+          <button
+            type="button"
+            role={diagnostics ? 'tab' : undefined}
+            aria-selected={diagnostics ? !diagnosticsOpen : undefined}
+            className="preview-tab"
+            onClick={() => onDiagnosticsChange?.(false)}
+            aria-label="PDF"
+          >
+            <span className="pdf-heading-label" title={label}>
+              PDF
+              {label && (
+                <small className="pdf-engine-label" aria-label="PDF 实际编译器">
+                  {label}
+                </small>
+              )}
+            </span>
+          </button>
+          {diagnostics && (
+            <button
+              type="button"
+              role="tab"
+              className="preview-tab"
+              aria-selected={diagnosticsOpen}
+              onClick={() => onDiagnosticsChange?.(true)}
+            >
+              编译诊断<span className="diagnostic-count">{diagnosticCount}</span>
+            </button>
           )}
-        </span>
-        <div className="pdf-controls">
+        </div>
+        <div className="pdf-controls" hidden={diagnosticsOpen}>
           <button
             className="icon-button"
             aria-label="上一页"
@@ -209,18 +258,17 @@ export function PdfViewer({
             disabled={!bytes}
             onClick={() =>
               bytes &&
-              download(
-                new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }),
-                'document.pdf',
-              )
+              download(new Blob([new Uint8Array(bytes)], { type: 'application/pdf' }), downloadName)
             }
           >
             <ArrowDownToLine size={15} />
           </button>
         </div>
       </div>
-      {stale && <div className="preview-notice">源码已更新 · 当前保留上次预览</div>}
-      <div className="pdf-scroll" ref={container}>
+      {stale && !diagnosticsOpen && (
+        <div className="preview-notice">源码已更新 · 当前保留上次预览</div>
+      )}
+      <div className="pdf-scroll" ref={container} hidden={diagnosticsOpen}>
         {error ? (
           <div className="empty-state" role="alert">
             <p>{error}</p>
@@ -244,7 +292,7 @@ export function PdfViewer({
           </div>
         )}
       </div>
-      {diagnostics}
+      {diagnosticsOpen && diagnostics}
     </section>
   );
 }

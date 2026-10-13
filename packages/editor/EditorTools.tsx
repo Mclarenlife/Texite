@@ -1,3 +1,4 @@
+import { Select } from '../ui/Select';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUp, ImagePlus, Sigma, Table2, X, Sparkles } from 'lucide-react';
@@ -193,16 +194,16 @@ export function EditorTools({
             >
               <label>
                 项目图片
-                <select
+                <Select
                   aria-label="项目图片"
                   value={image}
-                  onChange={(e) => setImage(e.target.value)}
+                  onValueChange={setImage}
                 >
                   <option value="">选择图片</option>
                   {[...new Set([...images, ...(image ? [image] : [])])].map((p) => (
                     <option key={p}>{p}</option>
                   ))}
-                </select>
+                </Select>
               </label>
               <label className="asset-upload">
                 {uploading ? '正在导入…' : '从电脑导入图片'}

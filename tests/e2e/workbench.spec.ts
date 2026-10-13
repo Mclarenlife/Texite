@@ -143,6 +143,8 @@ test('compiled revision stays visibly stale after edits and a failed compile pre
   await expect(page.getByText('源码已更新 · 当前保留上次预览')).toBeVisible();
   await page.getByRole('button', { name: '编译文稿', exact: false }).click();
   await expect(page.locator('.diagnostics')).toContainText('Undefined control sequence');
+  await expect(page.locator('.pdf-scroll')).toBeHidden();
+  await page.getByRole('tab', { name: 'PDF', exact: true }).click();
   await expect(page.locator('.pdf-scroll canvas')).toBeVisible();
 });
 

@@ -46,6 +46,7 @@ export type DesktopAPI = {
   restoreDefaultRuntime(): Promise<RuntimeModule[]>;
   importProject(project: Project): Promise<Project>;
   listProjects(): Promise<Project[]>;
+  renameProject?(id: string, name: string): Promise<void>;
   reopenProject(id: string): Promise<Project | null>;
   openProject(): Promise<{
     id: string;

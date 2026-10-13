@@ -153,6 +153,37 @@ export async function loadProjects(): Promise<{ projects: Project[]; lastId: str
   const projects = data.map(validateProject).sort((a, b) => b.updatedAt - a.updatedAt);
   return { projects, lastId: await db.get('settings', 'lastProject') };
 }
+export async function readArchivedProjects(): Promise<string[]> {
+  const value = await (await database()).get('settings', 'archivedProjects');
+  return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
+}
+export async function archiveProjects(ids: string[], archive: boolean) {
+  const db = await database();
+  const tx = db.transaction('settings', 'readwrite');
+  const current: string[] = (await tx.store.get('archivedProjects')) || [];
+  const next = archive
+    ? [...new Set([...current, ...ids])]
+    : current.filter((id) => !ids.includes(id));
+  await tx.store.put(next, 'archivedProjects');
+  await tx.done;
+  return next;
+}
+export async function renameStoredProject(id: string, name: string) {
+  if (!name.trim() || name.length > 100) throw new Error('项目名称应为 1–100 个字符。');
+  const db = await database();
+  const tx = db.transaction('projects', 'readwrite');
+  const project: Project | undefined = await tx.store.get(id);
+  if (!project) throw new Error('项目不存在，请重新打开项目空间。');
+  const next = {
+    ...project,
+    name: name.trim(),
+    updatedAt: Date.now(),
+    revision: project.revision + 1,
+  };
+  await tx.store.put(next);
+  await tx.done;
+  return next;
+}
 export async function exportZip(project: Project) {
   const zip = new JSZip();
   project.folders?.forEach((folder) => zip.folder(folder));

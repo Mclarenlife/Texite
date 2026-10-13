@@ -1,3 +1,7 @@
+import { ProjectSpace } from './ProjectSpace';
+import { AssetPreview } from '../preview/AssetPreview';
+import { archiveProjects, readArchivedProjects, renameStoredProject } from '../platform/storage';
+import { Select } from '../ui/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
@@ -108,7 +112,7 @@ export function App() {
   const [space, setSpace] = useState(false);
   const [inlineRun, setInlineRun] = useState(0);
   const [aiOpen, setAiOpen] = useState(false);
-  const [spaceQuery, setSpaceQuery] = useState('');
+  const [archivedProjects, setArchivedProjects] = useState<string[]>([]);
   const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
   const [selectedFolder, setSelectedFolder] = useState('');
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 760);
@@ -224,6 +228,11 @@ export function App() {
             ...data.projects,
             ...native.filter((p) => !data.projects.some((s) => s.id === p.id)),
           ];
+        }
+        const archived = await readArchivedProjects();
+        if (!cancelled) {
+          setArchivedProjects(archived);
+          if (data.lastId && archived.includes(data.lastId)) setSpace(true);
         }
         return data;
       })
@@ -449,11 +458,42 @@ export function App() {
     if (refresh && next.id !== projectRef.current?.id && window.texite?.reopenProject)
       next = (await window.texite.reopenProject(next.id)) ?? next;
     if (refresh && next.id !== projectRef.current?.id && !window.texite)
-      next = await reopenBrowserProject(next);
+      next = { ...(await reopenBrowserProject(next)), name: next.name };
+    if (archivedProjects.includes(next.id))
+      setArchivedProjects(await archiveProjects([next.id], false));
     setProject(next);
     setSelectedFolder('');
     setSpace(false);
     setModal(null);
+  }
+  async function prepareSpaceMutation() {
+    if (ai.busy || compileRunning.current || restoreLock.current)
+      throw new Error('请先结束 AI、编译或恢复任务。');
+    clearTimeout(autosaveTimer.current);
+    await saveQueue.current;
+    if (projectRef.current) await persist(projectRef.current);
+  }
+  async function renameSpaceProject(target: Project, name: string) {
+    await prepareSpaceMutation();
+    if (window.texite?.renameProject) await window.texite.renameProject(target.id, name);
+    let next: Project;
+    try {
+      next = await renameStoredProject(target.id, name);
+    } catch (error) {
+      await window.texite?.renameProject?.(target.id, target.name).catch(() => {});
+      throw error;
+    }
+    setProjects((items) => items.map((p) => (p.id === next.id ? next : p)));
+    if (projectRef.current?.id === next.id) {
+      projectRef.current = next;
+      setProject(next);
+    }
+    notify('项目名称已更新，文件夹名称保持不变。');
+  }
+  async function archiveSpaceProjects(ids: string[], archive: boolean) {
+    await prepareSpaceMutation();
+    setArchivedProjects(await archiveProjects(ids, archive));
+    notify(archive ? '项目已移到最近删除。' : '项目已恢复。');
   }
   async function exportProject() {
     if (!projectRef.current) return;
@@ -526,6 +566,7 @@ export function App() {
       if (projectRef.current?.id !== snapshot.id || compileToken.current !== token) return;
       setLog(result.log);
       if (result.success && result.pdf) {
+        setDiagnosticsOpen(false);
         setPdf(new Uint8Array(result.pdf));
         setPdfRevision(result.revision);
         setPdfLabel(result.compilerLabel || engineNames[result.engine ?? snapshot.engine]);
@@ -1150,13 +1191,6 @@ export function App() {
                   {query && !matches.length && <p className="sidebar-empty">没有找到匹配内容。</p>}
                 </div>
               )}
-              <div className="sidebar-bottom">
-                <button onClick={() => openModal('projects')}>
-                  <History size={14} />
-                  项目空间
-                  <ArrowUpRight size={13} />
-                </button>
-              </div>
             </aside>
             {sidebar && (
               <div
@@ -1332,27 +1366,7 @@ export function App() {
                     />
                   )}
                 {!review && active?.binary && (
-                  <div className="asset-preview">
-                    {/\.(png|jpe?g|gif|webp)$/i.test(active.path) ? (
-                      <img
-                        alt={active.path}
-                        src={`data:image/${active.path.split('.').pop()};base64,${active.content}`}
-                      />
-                    ) : (
-                      <FileText size={40} />
-                    )}
-                    <h3>{active.path}</h3>
-                    <p>资源文件随项目一起保存和导出。</p>
-                    <button
-                      className="secondary-button"
-                      onClick={() => {
-                        const bytes = Uint8Array.from(atob(active.content), (c) => c.charCodeAt(0));
-                        download(new Blob([bytes]), active.path.split('/').pop()!);
-                      }}
-                    >
-                      导出文件
-                    </button>
-                  </div>
+                  <AssetPreview key={project.id + active.path} file={active} />
                 )}
                 <AnimatePresence>
                   {selectedReference && (
@@ -1420,6 +1434,9 @@ export function App() {
               <div className="preview-container">
                 <PdfViewer
                   bytes={pdf}
+                  diagnosticsOpen={diagnosticsOpen}
+                  onDiagnosticsChange={setDiagnosticsOpen}
+                  diagnosticCount={diagnostics.length}
                   label={pdfLabel}
                   stale={!!pdf && pdfRevision >= 0 && pdfRevision !== project.revision}
                   diagnostics={
@@ -1427,8 +1444,6 @@ export function App() {
                       diagnostics={diagnostics}
                       log={log}
                       project={project}
-                      open={diagnosticsOpen}
-                      onToggle={() => setDiagnosticsOpen((v) => !v)}
                       onNotify={notify}
                       onLocate={(file, line) => {
                         setMode((current) => (current === 'pdf' ? 'split' : current));
@@ -1503,70 +1518,16 @@ export function App() {
           )}
         </AnimatePresence>
         <section className="project-space" hidden={!space} aria-label="项目空间">
-          <header className="space-header">
-            <div>
-              <span className="space-mark">Texite</span>
-              <h1>项目空间</h1>
-            </div>
-            <div className="space-actions">
-              <button className="secondary-button" onClick={() => void openDirectory()}>
-                <FolderOpen size={16} />
-                打开文件夹
-              </button>
-              <button className="secondary-button" onClick={() => zipInput.current?.click()}>
-                <Upload size={16} />
-                导入 ZIP
-              </button>
-              <button className="primary-button" onClick={() => openModal('new')}>
-                <Plus size={16} />
-                新建项目
-              </button>
-            </div>
-          </header>
-          <div className="space-filter">
-            <label>
-              <Search size={16} />
-              <input
-                aria-label="搜索项目"
-                placeholder="搜索项目"
-                value={spaceQuery}
-                onChange={(e) => setSpaceQuery(e.target.value)}
-              />
-            </label>
-            <span>{[project, ...projects.filter((p) => p.id !== project.id)].length} 个项目</span>
-          </div>
-          <div className="project-cards">
-            {[project, ...projects.filter((p) => p.id !== project.id)]
-              .filter((p) => p.name.toLowerCase().includes(spaceQuery.toLowerCase()))
-              .map((p, index) => (
-                <motion.button
-                  key={p.id}
-                  className="project-card"
-                  whileHover={{ y: -4 }}
-                  onClick={() => void chooseProject(p, true).catch((e) => notify(friendlyError(e)))}
-                >
-                  <div className={'project-cover cover-' + (index % 3)}>
-                    <span className="cover-number">{String(index + 1).padStart(2, '0')}</span>
-                    <FileText size={40} />
-                    <span>LaTeX</span>
-                  </div>
-                  <strong>{p.name}</strong>
-                  <span>
-                    {p.files.length} 个文件 ·{' '}
-                    {p.location?.kind === 'linked'
-                      ? '关联文件夹'
-                      : window.texite
-                        ? '应用项目'
-                        : '浏览器项目'}
-                  </span>
-                  {p.location && (
-                    <small className="project-location" title={p.location.directory}>
-                      {p.location.directory}
-                    </small>
-                  )}
-                </motion.button>
-              ))}
-          </div>
+          <ProjectSpace
+            projects={[project, ...projects.filter((p) => p.id !== project.id)]}
+            archived={archivedProjects}
+            onOpen={(p) => void chooseProject(p, true).catch((e) => notify(friendlyError(e)))}
+            onFolder={() => void openDirectory()}
+            onImport={() => zipInput.current?.click()}
+            onNew={() => openModal('new')}
+            onRename={renameSpaceProject}
+            onArchive={archiveSpaceProjects}
+          />
         </section>
         <Dialog
           open={modal === 'new' || modal === 'rename'}
@@ -1789,22 +1750,24 @@ export function App() {
               <span>
                 编译引擎<small>内置引擎无需安装 TeX 环境</small>
               </span>
-              <select
+              <Select
+                aria-label="编译引擎"
                 value={project.engine}
-                onChange={(e) => update((p) => ({ ...p, engine: e.target.value as Engine }))}
+                onValueChange={(value) => update((p) => ({ ...p, engine: value as Engine }))}
               >
                 {Object.entries(engineNames).map(([key, label]) => (
                   <option value={key} key={key}>
                     {label}
                   </option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label className="setting-row">
               <span>主文件</span>
-              <select
+              <Select
+                aria-label="主文件"
                 value={project.mainFile}
-                onChange={(e) => update((p) => ({ ...p, mainFile: e.target.value }))}
+                onValueChange={(value) => update((p) => ({ ...p, mainFile: value }))}
               >
                 {project.files
                   .filter((f) => f.path.endsWith('.tex'))
@@ -1813,7 +1776,7 @@ export function App() {
                       {f.path}
                     </option>
                   ))}
-              </select>
+              </Select>
             </label>
             <div className="engine-note">
               <span>

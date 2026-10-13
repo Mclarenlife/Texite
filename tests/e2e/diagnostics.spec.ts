@@ -34,6 +34,8 @@ test('PDF diagnostics copy separately from locating, restore Code/split, and ret
   const preview = page.getByRole('region', { name: 'PDF 预览' });
   const diagnostics = preview.getByRole('region', { name: '编译诊断' });
   await expect(diagnostics).toContainText('Undefined control sequence');
+  await expect(preview.locator('.pdf-scroll')).toBeHidden();
+  await expect(preview.getByRole('tab', { name: /编译诊断/ })).toHaveAttribute('aria-selected', 'true');
   expect((await editorPane.boundingBox())!.height).toBeCloseTo(height, 0);
   await expect(page.locator('.status-bar .diagnostics')).toHaveCount(0);
   await expect(diagnostics.getByRole('button', { name: '无源码位置' })).toHaveCount(2);
@@ -62,7 +64,7 @@ test('PDF diagnostics copy separately from locating, restore Code/split, and ret
   await expect(page.locator('.editor-tab')).toContainText('chapters/intro.tex');
   await expect(page.locator('.editor-footer')).toContainText('行 4');
   await page.screenshot({ path: '.qa/pdf-diagnostics.png', animations: 'disabled' });
-  await diagnostics.getByRole('button', { name: '关闭诊断' }).click();
+  await preview.getByRole('tab', { name: 'PDF', exact: true }).click();
   await expect(diagnostics.locator('.diagnostics-body')).toHaveCount(0);
   await page.getByRole('button', { name: '仅编辑器', exact: true }).click();
   await page.getByRole('button', { name: '编译文稿', exact: false }).click();
