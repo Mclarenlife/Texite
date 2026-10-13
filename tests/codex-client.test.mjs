@@ -1,6 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CodexClient } from '../apps/desktop/codex-client.cjs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { CodexClient, resolveBinary, binaryEnvironment } from '../apps/desktop/codex-client.cjs';
+
+test('app bundles and non-Codex executables are rejected before changing a working selection', async () => {
+  await fs.mkdir('.qa', { recursive: true });
+  const base = await fs.mkdtemp(path.resolve('.qa/codex-selection-'));
+  const bundle = path.join(base, 'ChatGPT.app');
+  await fs.mkdir(bundle);
+  const saved = JSON.stringify({ binary: 'previous-working-codex' });
+  await fs.writeFile(path.join(base, 'settings.json'), saved);
+  const client = new CodexClient(base, () => {}, { probe: async () => 'some-other-app 1.0' });
+  client.connection = { connected: true };
+  await assert.rejects(client.chooseBinary(bundle), /command -v codex/);
+  assert(client.connection.connected);
+  await assert.rejects(client.chooseBinary(process.execPath), /不是 Codex CLI/);
+  assert.equal(await fs.readFile(path.join(base, 'settings.json'), 'utf8'), saved);
+  assert(client.connection.connected);
+  client.probe = async () => 'codex-cli 0.162.0';
+  await client.chooseBinary(process.execPath);
+  assert.equal(
+    JSON.parse(await fs.readFile(path.join(base, 'settings.json'), 'utf8')).binary,
+    process.execPath,
+  );
+  assert.equal(client.connection, null);
+});
+
+test('missing paths and non-executable files produce actionable errors', async (t) => {
+  await assert.rejects(resolveBinary('codex'), /完整文件路径/);
+  await assert.rejects(resolveBinary(path.resolve('.qa/missing-codex-fixture')), /不存在/);
+  if (process.platform === 'win32') return;
+  const base = await fs.mkdtemp(path.resolve('.qa/codex-permission-'));
+  const file = path.join(base, 'codex');
+  await fs.writeFile(file, 'test', { mode: 0o600 });
+  await assert.rejects(resolveBinary(file), /执行权限/);
+});
+
+test('macOS GUI launches include the selected CLI bin directory for npm/nvm Node resolution', () => {
+  const env = { PATH: '/usr/bin:/bin', TEST: 'preserved' };
+  const result = binaryEnvironment('/Users/test/.nvm/versions/node/v24/bin/codex', 'darwin', env);
+  assert.equal(result.PATH.split(':')[0], '/Users/test/.nvm/versions/node/v24/bin');
+  assert(result.PATH.includes('/opt/homebrew/bin'));
+  assert.equal(result.TEST, 'preserved');
+  assert.equal(env.PATH, '/usr/bin:/bin');
+  assert.equal(binaryEnvironment('codex.exe', 'win32', env), env);
+});
 
 function fixture(readOnly = false) {
   const sent = [],
@@ -60,6 +105,12 @@ test('read-only tools and interrupted task responses cannot edit', async () => {
     id: 1,
     method: 'item/tool/call',
     params: { threadId: 'th', turnId: 'tu', tool: 'texite_apply_changes', arguments: {} },
+  });
+  assert.equal(sent.at(-1).result.success, false);
+  client.message({
+    id: 2,
+    method: 'item/tool/call',
+    params: { threadId: 'th', turnId: 'tu', tool: 'texite_compile', arguments: {} },
   });
   assert.equal(sent.at(-1).result.success, false);
   client.active.turnId = undefined;

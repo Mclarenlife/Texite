@@ -30,9 +30,34 @@ test('body and syntax overrides are independent from appearance and automatic co
   assert.equal(dark.text, '#F4D59D');
   assert.equal(dark.keyword, '#AD8DEB');
   assert.equal(dark.punctuation, '#93D7B0');
-  assert.equal(dark.comment, '#F4D59D');
+  assert.equal(dark.comment, '#9DD9B9');
   assert.equal(
     resolveEditorColors({ ...colors, keyword: 'auto' }, false, 'blue', 'standard').keyword,
     '#2861B8',
   );
+});
+
+test('fresh light and dark editors use distinct readable syntax colors', () => {
+  const auto = {
+    text: 'auto',
+    keyword: 'auto',
+    string: 'auto',
+    comment: 'auto',
+    punctuation: 'auto',
+  };
+  for (const dark of [false, true]) {
+    const colors = resolveEditorColors(auto, dark, 'mono', 'standard');
+    assert.equal(new Set(Object.values(colors)).size, 5);
+    const luminance = (hex: string) => {
+      const rgb = [1, 3, 5]
+        .map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+        .map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+    };
+    const bg = luminance(dark ? '#1E1E1E' : '#FAFAFA');
+    for (const color of Object.values(colors)) {
+      const fg = luminance(color);
+      assert((Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05) >= 4.5, color);
+    }
+  }
 });

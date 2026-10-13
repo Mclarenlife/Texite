@@ -319,6 +319,28 @@ class RuntimeManager {
       const key = line.trim().split(/\s+/)[0];
       if (key && !key.startsWith('%') && !uniqueMaps.has(key)) uniqueMaps.set(key, line);
     }
+    // updmap includes Base35 mappings separately from package addMap directives.
+    // The pinned public-domain URW map embeds the already bundled Type 1 fonts.
+    // Only expose entries whose metrics, encodings and outlines remain installed.
+    const installedFiles = new Set(
+      Object.values(state.modules).flatMap((m) =>
+        Object.keys(m.files).map((f) => path.posix.basename(f)),
+      ),
+    );
+    // Base1 encoding is distributed with dvips upstream, even for pdfTeX.
+    // Keep this small shared encoding with the app, without installing dvips.
+    await fs.mkdir(path.join(cache, 'fonts/enc'), { recursive: true });
+    await fs.copyFile(path.join(__dirname, 'fonts/8r.enc'), path.join(cache, 'fonts/enc/8r.enc'));
+    installedFiles.add('8r.enc');
+    const base35 = await fs.readFile(path.join(__dirname, 'fonts/ps2pk35.map'), 'utf8');
+    for (const line of base35.split(/\r?\n/)) {
+      const key = line.trim().split(/\s+/)[0];
+      if (!key || key.startsWith('%') || uniqueMaps.has(key) || !installedFiles.has(key + '.tfm'))
+        continue;
+      const resources = [...line.matchAll(/<<?\[?([^\s<>]+)/g)].map((match) => match[1]);
+      if (resources.length && resources.every((file) => installedFiles.has(file)))
+        uniqueMaps.set(key, line);
+    }
     await fs.writeFile(
       path.join(cache, 'fonts/map/pdftex.map'),
       [...uniqueMaps.values()].join('\n') + '\n',

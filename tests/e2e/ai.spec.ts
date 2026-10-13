@@ -18,10 +18,22 @@ async function setup(page: Page) {
       compiled: 0,
       write: () =>
         tool('texite_apply_changes', {
-          changes: [
-            { path: 'main.tex', before, after: before + '\n% AI revised' },
-            { path: 'parts/ai.tex', before: null, after: 'AI chapter' },
-          ],
+          changes: JSON.parse(run.context).inlineEdit
+            ? [
+                {
+                  path: 'main.tex',
+                  before,
+                  after:
+                    (state.outside ? 'UNREQUESTED CHANGE\n' : '') +
+                    before.slice(0, JSON.parse(run.context).inlineEdit.from) +
+                    'INLINE EDIT' +
+                    before.slice(JSON.parse(run.context).inlineEdit.to),
+                },
+              ]
+            : [
+                { path: 'main.tex', before, after: before + '\n% AI revised' },
+                { path: 'parts/ai.tex', before: null, after: 'AI chapter' },
+              ],
         }),
     };
     const state = (window as any).aiTest;
@@ -77,6 +89,7 @@ async function setup(page: Page) {
         cancel: async () => emit('done', { status: 'interrupted' }),
         start: async (input) => {
           run = input;
+          state.run = input;
           if (input.prompt === 'wait') return;
           tool('texite_read_file', { path: 'main.tex' });
         },
@@ -145,7 +158,7 @@ test('AI protects concurrent edits and read-only mode; stop ends the active task
   await page.evaluate(() => (window as any).aiTest.write());
   await expect(page.locator('.ai-task-error')).toContainText('已发生变化');
   await expect(page.getByRole('textbox', { name: 'LaTeX 源码编辑器' })).toHaveText('Human changes');
-  await page.getByLabel('AI 工作方式').selectOption('read');
+  await page.getByRole('tab', { name: '对话', exact: true }).click();
   await send(page, 'readonly');
   await expect(page.locator('.ai-task-error').last()).toContainText('只读模式');
   await send(page, 'wait');
@@ -201,4 +214,69 @@ test('failed AI transaction never applies files without the recovery journal', a
   );
   await expect(page.getByRole('button', { name: '2 个文件 · 查看差异' })).toHaveCount(0);
   expect(await page.evaluate(() => (window as any).aiTest.compiled)).toBe(0);
+});
+
+test('inline Agent replaces exactly the selected range and floating window never shrinks the workspace', async ({
+  page,
+}) => {
+  await setup(page);
+  const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
+  const workspace = await page.locator('.workspace').boundingBox();
+  const sidebar = page.getByRole('complementary', { name: '项目导航' });
+  await expect(sidebar).toBeVisible();
+  await page.getByLabel('移动 AI 浮动窗口').focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.getByRole('button', { name: '最小化 AI 窗口' }).click();
+  await editor.fill('Before\nselected text\nAfter');
+  await editor.press('Control+Home');
+  await editor.press('ArrowDown');
+  await editor.press('Home');
+  await editor.press('Shift+End');
+  await editor.press('Alt+Enter');
+  await page.getByRole('textbox', { name: '行内 AI 指令', exact: true }).fill('Improve this');
+  await page.getByRole('button', { name: '执行行内 AI 指令' }).click();
+  await expect(editor.locator('.cm-line')).toHaveText(['Before', 'INLINE EDIT', 'After']);
+  const run = await page.evaluate(() => (window as any).aiTest.run);
+  expect(JSON.parse(run.context).inlineEdit.selection).toBe('selected text');
+  expect(run.readOnly).toBe(false);
+  expect((await page.locator('.workspace').boundingBox())!.width).toBe(workspace!.width);
+  await page.screenshot({ path: '.qa/ai-floating-agent.png', animations: 'disabled' });
+});
+
+test('inline Agent refuses edits outside the captured range and preserves later typing', async ({
+  page,
+}) => {
+  await setup(page);
+  await page.getByRole('button', { name: '最小化 AI 窗口' }).click();
+  const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
+  await editor.fill('Original text');
+  await editor.press('End');
+  await editor.press('Alt+Enter');
+  await page.getByRole('textbox', { name: '行内 AI 指令', exact: true }).fill('hold');
+  await page.getByRole('button', { name: '执行行内 AI 指令' }).click();
+  await expect(page.locator('.ai-activity').last()).toContainText('读取文稿');
+  await page.evaluate(() => {
+    (window as any).aiTest.outside = true;
+    (window as any).aiTest.write();
+  });
+  await expect(page.locator('.ai-task-error').last()).toContainText('超出选区');
+  await expect(editor).toHaveText('Original text');
+  await editor.press('End');
+  await editor.press('Alt+Enter');
+  await page.getByRole('textbox', { name: '行内 AI 指令', exact: true }).fill('hold');
+  await page.getByRole('button', { name: '执行行内 AI 指令' }).click();
+  await expect(page.locator('.ai-activity').last()).toContainText('读取文稿');
+  await editor.fill('Original text with human edit');
+  await page.evaluate(() => {
+    (window as any).aiTest.outside = false;
+    (window as any).aiTest.write();
+  });
+  await expect(page.locator('.ai-task-error').last()).toContainText('已发生变化');
+  await expect(editor).toHaveText('Original text with human edit');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.setViewportSize({ width: 1024, height: 700 });
+  const box = await page.locator('.ai-panel').boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(1024);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(700);
+  await page.screenshot({ path: '.qa/ai-dark-compact.png', animations: 'disabled' });
 });

@@ -6,6 +6,46 @@ import crypto from 'node:crypto';
 import JSZip from 'jszip';
 import runtime from '../apps/desktop/runtime-manager.cjs';
 const { RuntimeManager } = runtime;
+test('Base35 maps use installed fonts, provide Base1 encoding and disappear after font removal', async () => {
+  const base = await fs.mkdtemp(path.resolve('.qa/base35-map-'));
+  const manager = new RuntimeManager(base, base);
+  const config = 'texmf-dist/web2c/texmf.cnf';
+  const tfm = 'texmf-dist/fonts/tfm/adobe/times/ptmb8r.tfm';
+  const pfb = 'texmf-dist/fonts/type1/urw/times/utmb8a.pfb';
+  const state = {
+    schema: 1,
+    initialized: true,
+    modules: {
+      'engine-pdflatex': { id: 'engine-pdflatex', files: {} },
+      'texite-config': { id: 'texite-config', files: { [config]: {} } },
+      'pkg-times': { id: 'pkg-times', files: { [tfm]: {}, [pfb]: {} } },
+    },
+  };
+  for (const m of Object.values(state.modules))
+    for (const file of Object.keys(m.files)) {
+      const target = path.join(manager.modulePath(m.id), file);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, '');
+    }
+  await manager.save(state);
+  let env = await manager.environment('pdflatex', base);
+  let map = await fs.readFile(path.join(env.cache, 'fonts/map/pdftex.map'), 'utf8');
+  assert.match(map, /^ptmb8r NimbusRomNo9L-Medi .*<8r.enc <utmb8a.pfb/m);
+  assert.doesNotMatch(
+    map,
+    /^ptmr8r /m,
+    'missing metrics and outlines must not become dangling mappings',
+  );
+  assert.equal(
+    await fs.readFile(path.join(env.cache, 'fonts/enc/8r.enc'), 'utf8'),
+    await fs.readFile('apps/desktop/fonts/8r.enc', 'utf8'),
+  );
+  delete state.modules['pkg-times'];
+  await manager.save(state);
+  env = await manager.environment('pdflatex', base);
+  map = await fs.readFile(path.join(env.cache, 'fonts/map/pdftex.map'), 'utf8');
+  assert.doesNotMatch(map, /^ptmb8r /m);
+});
 test('offline module import is checked, transactional, dependency-aware and persistent', async () => {
   await fs.mkdir('.qa', { recursive: true });
   const base = await fs.mkdtemp(path.resolve('.qa/module-test-'));

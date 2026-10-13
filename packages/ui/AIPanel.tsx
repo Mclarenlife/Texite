@@ -10,6 +10,9 @@ import {
   Sparkles,
   Square,
   X,
+  Minus,
+  Settings2,
+  MessageSquare,
 } from 'lucide-react';
 import type { AIController } from '../workbench/useAI';
 import type { AITask } from '../core/ai';
@@ -27,18 +30,68 @@ const statuses = {
 };
 export function AIPanel({
   ai,
+  focusAgent,
   projectName,
   activeFile,
   onClose,
 }: {
   ai: AIController;
+  focusAgent?: number;
   projectName: string;
   activeFile: string;
   onClose(): void;
 }) {
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = usePreference<string>('ai-model', '');
-  const [readOnly, setReadOnly] = useState(false);
+  const [mode, setMode] = usePreference<'agent' | 'chat'>('ai-mode', 'agent');
+  useEffect(() => {
+    if (focusAgent) {
+      setMode('agent');
+      setMinimized(false);
+    }
+  }, [focusAgent]);
+  const [provider, setProvider] = usePreference<'codex' | 'api'>('chat-provider', 'codex');
+  const [minimized, setMinimized] = useState(false);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
+  const panel = useRef<HTMLElement>(null);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [baseURL, setBaseURL] = useState('');
+  const [apiModel, setApiModel] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [configError, setConfigError] = useState('');
+  const custom = mode === 'chat' && provider === 'api';
+  const visibleTasks = ai.tasks.filter(
+    (t) =>
+      (t.mode || 'agent') === mode && (mode === 'agent' || (t.provider || 'codex') === provider),
+  );
+  useEffect(() => {
+    const resize = () => setPosition(null);
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+  useEffect(() => {
+    if (!panel.current) return;
+    const observer = new ResizeObserver(() => {
+      const r = panel.current?.getBoundingClientRect();
+      if (!r) return;
+      if (r.right > window.innerWidth - 8 || r.bottom > window.innerHeight - 8)
+        setPosition({
+          x: Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)),
+          y: Math.max(8, Math.min(r.top, window.innerHeight - r.height - 8)),
+        });
+    });
+    observer.observe(panel.current);
+    return () => observer.disconnect();
+  }, []);
+  const configure = () => {
+    setBaseURL(ai.chatConfig.baseURL);
+    setApiModel(ai.chatConfig.model);
+    setApiKey('');
+    setConfigError('');
+    setConfigOpen(true);
+  };
+
   const [review, setReview] = useState<AITask | null>(null);
   const [showConnection, setShowConnection] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
@@ -53,91 +106,220 @@ export function AIPanel({
     bottom.current?.scrollIntoView({ block: 'nearest' });
   }, [ai.tasks.at(-1)?.reply, ai.tasks.length]);
   const send = () => {
-    if (!prompt.trim() || ai.busy || !ai.connection?.authenticated) return;
+    if (
+      !prompt.trim() ||
+      ai.busy ||
+      (custom ? !ai.chatConfig.model : !ai.connection?.authenticated)
+    )
+      return;
     const message = prompt;
     setPrompt('');
-    void ai.start(message, selected, readOnly);
+    if (custom) void ai.startChat(message);
+    else void ai.start(message, selected, mode === 'chat');
   };
   const currentReview = review && (ai.tasks.find((t) => t.id === review.id) || review);
   return (
-    <aside className="ai-panel" aria-label="AI 助手">
-      <div className="ai-heading">
+    <aside
+      ref={panel}
+      className={'ai-panel' + (minimized ? ' ai-minimized' : '')}
+      aria-label="AI 助手"
+      style={position ? { left: position.x, top: position.y, right: 'auto' } : undefined}
+    >
+      <div
+        className="ai-heading"
+        tabIndex={0}
+        aria-label="移动 AI 浮动窗口"
+        onPointerDown={(e) => {
+          if ((e.target as HTMLElement).closest('button')) return;
+          const rect = panel.current!.getBoundingClientRect();
+          drag.current = { x: e.clientX, y: e.clientY, left: rect.left, top: rect.top };
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (!drag.current) return;
+          const rect = panel.current!.getBoundingClientRect();
+          setPosition({
+            x: Math.max(
+              8,
+              Math.min(
+                window.innerWidth - rect.width - 8,
+                drag.current.left + e.clientX - drag.current.x,
+              ),
+            ),
+            y: Math.max(
+              8,
+              Math.min(
+                window.innerHeight - rect.height - 8,
+                drag.current.top + e.clientY - drag.current.y,
+              ),
+            ),
+          });
+        }}
+        onPointerUp={() => {
+          drag.current = null;
+        }}
+        onPointerCancel={() => {
+          drag.current = null;
+        }}
+        onKeyDown={(e) => {
+          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+          e.preventDefault();
+          const r = panel.current!.getBoundingClientRect();
+          setPosition({
+            x: Math.max(
+              8,
+              Math.min(
+                window.innerWidth - r.width - 8,
+                r.left + (e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0),
+              ),
+            ),
+            y: Math.max(
+              8,
+              Math.min(
+                window.innerHeight - r.height - 8,
+                r.top + (e.key === 'ArrowUp' ? -20 : e.key === 'ArrowDown' ? 20 : 0),
+              ),
+            ),
+          });
+        }}
+      >
         <span>
           <Sparkles size={17} />
-          <strong>Codex</strong>
-          <small>项目助手</small>
+          <strong>AI 助手</strong>
+          <small>{mode === 'agent' ? 'Agent' : '对话'}</small>
         </span>
-        <button className="icon-button" aria-label="关闭 AI 面板" onClick={onClose}>
-          <X size={16} />
-        </button>
-      </div>
-      <button
-        className="ai-connection-row"
-        aria-expanded={showConnection}
-        onClick={() => setShowConnection(!showConnection)}
-      >
-        <span className={ai.connection?.authenticated ? 'ai-dot connected' : 'ai-dot'} />
-        <span>{ai.connection?.authenticated ? '已连接本机 Codex' : '连接 Codex'}</span>
-        <ChevronDown size={13} />
-      </button>
-      {(!ai.connection?.authenticated || showConnection) && (
-        <div className="ai-connection">
-          {desktop ? (
-            <>
-              <p>
-                {ai.connection?.account ||
-                  '使用本机 Codex 的登录状态。首次使用请先在终端执行 codex login。'}
-              </p>
-              {ai.connection?.version && <small>{ai.connection.version}</small>}
-              <div className="ai-inline-actions">
-                <button
-                  className="secondary-button"
-                  disabled={ai.connecting || ai.busy}
-                  onClick={() => void ai.connect()}
-                >
-                  {ai.connecting ? <LoaderCircle size={14} className="spin" /> : <Plug size={14} />}
-                  {ai.connection ? '刷新连接' : '连接本机 Codex'}
-                </button>
-                <button
-                  className="text-button"
-                  disabled={ai.connecting || ai.busy}
-                  onClick={() => void ai.chooseBinary()}
-                >
-                  选择程序
-                </button>
-              </div>
-            </>
-          ) : (
-            <p>请在 Texite 桌面版中使用 AI。桌面版可连接本机 Codex，直接编辑文稿并运行离线编译。</p>
-          )}
+        <div className="ai-window-actions">
+          <button
+            className="icon-button"
+            aria-label={minimized ? '展开 AI 窗口' : '最小化 AI 窗口'}
+            onClick={() => setMinimized(!minimized)}
+          >
+            <Minus size={15} />
+          </button>
+          <button className="icon-button" aria-label="关闭 AI 面板" onClick={onClose}>
+            <X size={16} />
+          </button>
         </div>
+      </div>
+      <div className="ai-mode-tabs" role="tablist" aria-label="AI 模式">
+        <button
+          role="tab"
+          aria-selected={mode === 'agent'}
+          disabled={ai.busy}
+          onClick={() => setMode('agent')}
+        >
+          <Sparkles size={14} />
+          Agent
+        </button>
+        <button
+          role="tab"
+          aria-selected={mode === 'chat'}
+          disabled={ai.busy}
+          onClick={() => setMode('chat')}
+        >
+          <MessageSquare size={14} />
+          对话
+        </button>
+        {mode === 'chat' && (
+          <select
+            aria-label="对话服务"
+            value={provider}
+            disabled={ai.busy}
+            onChange={(e) => setProvider(e.target.value as 'codex' | 'api')}
+          >
+            <option value="codex">Codex</option>
+            <option value="api">自定义 API</option>
+          </select>
+        )}
+      </div>
+      {custom ? (
+        <button className="ai-connection-row" onClick={configure}>
+          <Settings2 size={14} />
+          <span>{ai.chatConfig.model || '配置对话 API'}</span>
+          <ChevronDown size={13} />
+        </button>
+      ) : (
+        <>
+          <button
+            className="ai-connection-row"
+            aria-expanded={showConnection}
+            onClick={() => setShowConnection(!showConnection)}
+          >
+            <span className={ai.connection?.authenticated ? 'ai-dot connected' : 'ai-dot'} />
+            <span>{ai.connection?.authenticated ? '已连接本机 Codex' : '连接 Codex'}</span>
+            <ChevronDown size={13} />
+          </button>
+          {(!ai.connection?.authenticated || showConnection) && (
+            <div className="ai-connection">
+              {desktop ? (
+                <>
+                  <p>
+                    {ai.connection?.account ||
+                      '使用本机 Codex 的登录状态。首次使用请先在终端执行 codex login。'}
+                  </p>
+                  {ai.connection?.version && <small>{ai.connection.version}</small>}
+                  <div className="ai-inline-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={ai.connecting || ai.busy}
+                      onClick={() => void ai.connect()}
+                    >
+                      {ai.connecting ? (
+                        <LoaderCircle size={14} className="spin" />
+                      ) : (
+                        <Plug size={14} />
+                      )}
+                      {ai.connection ? '刷新连接' : '连接本机 Codex'}
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={ai.connecting || ai.busy}
+                      onClick={() => void ai.chooseBinary()}
+                    >
+                      选择 Codex CLI
+                    </button>
+                  </div>
+                  <small>选择 codex 可执行文件。Mac 可在终端运行 command -v codex 查找路径。</small>
+                </>
+              ) : (
+                <p>连接本机 Codex 需要 Texite 桌面版。网页版可在对话模式配置 API。</p>
+              )}
+            </div>
+          )}
+        </>
       )}
       <div className="ai-thread" aria-label="AI 对话记录">
-        {!ai.tasks.length && (
+        {!visibleTasks.length && (
           <div className="ai-empty">
             <div className="ai-orbit">
               <Sparkles size={25} />
             </div>
-            <h3>从这篇文稿开始</h3>
-            <p>选中文字提出修改，或让 Codex 检查整个项目。</p>
+            <h3>{mode === 'agent' ? '让想法落在文稿里' : '一起理清思路'}</h3>
+            <p>
+              {mode === 'agent'
+                ? '编辑、编译与修复，修改可查看和撤回。'
+                : '解释公式、讨论写法，不修改项目文件。'}
+            </p>
             <div className="ai-suggestions">
-              {['检查并修复编译错误', '解释当前文件中的公式', '润色选中文字，保留 LaTeX 命令'].map(
-                (s) => (
-                  <button key={s} onClick={() => setPrompt(s)}>
-                    {s}
-                    <ArrowUp size={13} />
-                  </button>
-                ),
-              )}
+              {(mode === 'agent'
+                ? ['检查并修复编译错误', '整理当前文件的结构', '润色选中文字，保留 LaTeX 命令']
+                : ['解释当前文件中的公式', '这篇文稿的结构可以如何改进？']
+              ).map((s) => (
+                <button key={s} onClick={() => setPrompt(s)}>
+                  {s}
+                  <ArrowUp size={13} />
+                </button>
+              ))}
             </div>
           </div>
         )}
-        {ai.tasks.map((task) => (
+        {visibleTasks.map((task) => (
           <article className="ai-task" key={task.id}>
             <div className="ai-user-message">{task.prompt}</div>
             <div className="ai-response-label">
               <Sparkles size={13} />
-              Codex<span>{statuses[task.status]}</span>
+              {task.provider === 'api' ? task.model || 'API' : 'Codex'}
+              <span>{statuses[task.status]}</span>
             </div>
             {task.activities.length > 0 && (
               <details className="ai-activity">
@@ -182,8 +364,8 @@ export function AIPanel({
           <span>当前项目</span>
         </div>
         <textarea
-          aria-label="发送给 Codex 的指令"
-          placeholder="描述你想修改的内容…"
+          aria-label={custom ? '发送给 API 的消息' : '发送给 Codex 的指令'}
+          placeholder={mode === 'agent' ? '描述你想修改的内容…' : '输入消息，Shift + Enter 换行…'}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           maxLength={20000}
@@ -195,38 +377,34 @@ export function AIPanel({
           }}
         />
         <div className="ai-composer-controls">
-          <select
-            aria-label="AI 工作方式"
-            disabled={ai.busy}
-            value={readOnly ? 'read' : 'edit'}
-            onChange={(e) => setReadOnly(e.target.value === 'read')}
-          >
-            <option value="edit">直接编辑</option>
-            <option value="read">只读问答</option>
-          </select>
-          <select
-            aria-label="AI 模型"
-            value={selected}
-            disabled={ai.busy || !models.length}
-            onChange={(e) => setModel(e.target.value)}
-          >
-            {!models.length && <option value="">连接后选择模型</option>}
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
+          <span className="ai-mode-label">{mode === 'agent' ? '可编辑项目' : '仅对话'}</span>
+          {custom ? (
+            <span className="ai-api-model">{ai.chatConfig.model}</span>
+          ) : (
+            <select
+              aria-label="AI 模型"
+              value={selected}
+              disabled={ai.busy || !models.length}
+              onChange={(e) => setModel(e.target.value)}
+            >
+              {!models.length && <option value="">连接后选择模型</option>}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             className="ai-send"
             aria-label={ai.busy ? '停止 AI 任务' : '发送 AI 指令'}
             disabled={
               !ai.busy &&
-              (!desktop ||
-                !ai.connection?.authenticated ||
-                !prompt.trim() ||
+              (!prompt.trim() ||
                 ai.loading ||
-                !selected)
+                (custom
+                  ? !ai.chatConfig.model
+                  : !desktop || !ai.connection?.authenticated || !selected))
             }
             onClick={() => (ai.busy ? void ai.cancel() : send())}
           >
@@ -234,9 +412,95 @@ export function AIPanel({
           </button>
         </div>
         <small className="ai-disclosure">
-          AI 需要联网；相关文稿会作为上下文发送。修改自动保留恢复记录。
+          AI 需要联网；相关文稿会作为上下文发送。
+          {mode === 'agent' ? '修改自动保留恢复记录。' : '对话模式仅回答问题，不修改文稿。'}
         </small>
       </div>
+      <Dialog
+        open={configOpen}
+        onClose={() => {
+          setConfigOpen(false);
+          setApiKey('');
+        }}
+        title="配置对话 API"
+        description="支持 OpenAI 兼容的 Chat Completions 接口。"
+      >
+        <form
+          className="api-settings"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await ai.saveChatConfig({ baseURL, model: apiModel, apiKey });
+              setConfigOpen(false);
+              setApiKey('');
+            } catch (err) {
+              setConfigError((err as Error).message);
+            }
+          }}
+        >
+          <label>
+            API 地址
+            <input
+              aria-label="API 地址"
+              value={baseURL}
+              onChange={(e) => setBaseURL(e.target.value)}
+              placeholder="https://api.openai.com/v1"
+              required
+            />
+          </label>
+          <label>
+            模型
+            <input
+              aria-label="API 模型名称"
+              value={apiModel}
+              onChange={(e) => setApiModel(e.target.value)}
+              placeholder="服务商提供的模型 ID"
+              required
+            />
+          </label>
+          <label>
+            API Key
+            <input
+              aria-label="API Key"
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={ai.chatConfig.hasKey ? '已配置，留空保留' : '本机无鉴权服务可留空'}
+            />
+          </label>
+          <p>
+            {window.texite?.chat
+              ? '密钥使用系统加密保存；系统加密不可用时仅在本次运行保留。'
+              : '网页版密钥仅在内存保留，刷新后需重新填写；接口需允许浏览器跨域访问。'}
+          </p>
+          {configError && (
+            <p className="form-error" role="alert">
+              {configError}
+            </p>
+          )}
+          <div className="ai-inline-actions">
+            <button className="primary-button" disabled={ai.busy}>
+              保存配置
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              disabled={ai.busy}
+              onClick={async () => {
+                try {
+                  await ai.saveChatConfig({ baseURL, model: apiModel, apiKey: '', clearKey: true });
+                  setApiKey('');
+                } catch (err) {
+                  setConfigError((err as Error).message);
+                }
+              }}
+            >
+              清除密钥
+            </button>
+          </div>
+        </form>
+      </Dialog>
       <Dialog
         open={!!currentReview}
         onClose={() => setReview(null)}

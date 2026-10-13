@@ -73,7 +73,7 @@ export function resolveEditorColors(
   palette: string,
   contrast: string,
 ): Record<ColorRole, string> {
-  const theme = palettes.find((p) => p.id === palette) || palettes[0];
+  const theme = palettes.find((p) => p.id === palette && p.id !== 'mono') || palettes[1];
   const base =
     contrast === 'high'
       ? dark
@@ -89,21 +89,9 @@ export function resolveEditorColors(
   const text = normalizeHex(colors.text) || base;
   return {
     text,
-    keyword:
-      normalizeHex(colors.keyword) ||
-      (contrast === 'high' ? text : dark ? theme.dark : theme.light),
-    string: normalizeHex(colors.string) || text,
-    comment:
-      normalizeHex(colors.comment) ||
-      (contrast === 'high'
-        ? text
-        : contrast === 'soft'
-          ? dark
-            ? '#AAAAAA'
-            : '#707070'
-          : dark
-            ? '#B4B4B4'
-            : '#626262'),
-    punctuation: normalizeHex(colors.punctuation) || text,
+    keyword: normalizeHex(colors.keyword) || (dark ? theme.dark : theme.light),
+    string: normalizeHex(colors.string) || (dark ? '#EBC67D' : '#875A16'),
+    comment: normalizeHex(colors.comment) || (dark ? '#9DD9B9' : '#357453'),
+    punctuation: normalizeHex(colors.punctuation) || (dark ? '#9CC5FF' : '#2861B8'),
   };
 }

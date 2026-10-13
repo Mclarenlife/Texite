@@ -30,6 +30,7 @@ export type CompileResult = {
 };
 export type DesktopAPI = {
   ai?: import('./ai').AIAPI;
+  chat?: import('./ai').ChatAPI;
   saveAIProject?(
     project: Project,
     removals: { path: string; expected: string }[],
@@ -64,6 +65,7 @@ export type DesktopAPI = {
   }>;
   compile(project: Project): Promise<CompileResult>;
   cancelCompile(): Promise<void>;
+  writeClipboard?(text: string): Promise<void>;
   onCompileLog(callback: (chunk: string) => void): () => void;
 };
 export type RuntimeModule = {
@@ -201,27 +203,62 @@ export function getReferences(files: ProjectFile[]) {
 export function parseDiagnostics(log: string): Diagnostic[] {
   const entries: Diagnostic[] = [];
   const lines = log.split(/\r?\n/);
+  const files: (string | undefined)[] = [];
+  const clean = (file: string) => file.replaceAll('\\', '/').replace(/^\.\//, '');
   for (let i = 0; i < lines.length; i++) {
-    const located = lines[i].match(/^(.+?\.tex):(\d+):\s*(.+)$/);
+    const located = lines[i].match(/^(.+?\.(?:tex|sty|cls|bib|bst)):(\d+):\s*(.+)$/);
+    const currentFile = [...files].reverse().find(Boolean);
     if (located)
       entries.push({
         severity: 'error',
-        file: located[1].replaceAll('\\', '/').replace(/^\.\//, ''),
+        file: clean(located[1]),
         line: Number(located[2]),
         message: located[3],
       });
-    else if (lines[i].startsWith('!')) {
+    else if (lines[i].startsWith('!') || /(?:pdfTeX|LuaTeX|XeTeX) error:/.test(lines[i])) {
       const n = lines
         .slice(i + 1, i + 5)
         .join(' ')
         .match(/l\.(\d+)/);
       entries.push({
         severity: 'error',
-        message: lines[i].slice(1).trim(),
+        file: currentFile,
+        message: lines[i].replace(/^!\s*/, '').trim(),
         line: n ? Number(n[1]) : undefined,
       });
-    } else if (/(?:LaTeX|Package .+) Warning:|Overfull \\[hv]box/.test(lines[i]))
-      entries.push({ severity: 'warning', message: lines[i].trim() });
+    } else if (
+      /(?:LaTeX(?: Font)?|Package .+) Warning:|(?:Over|Under)full \\[hv]box/.test(lines[i])
+    ) {
+      let message = lines[i].trim();
+      // TeX wraps warning details onto indented or package-prefixed lines.
+      while (i + 1 < lines.length && /^(?:\s+\S|\((?:Font|[\w-]+)\)\s{2,})/.test(lines[i + 1]))
+        message += ' ' + lines[++i].trim();
+      const line = message.match(/(?:on input line|at lines?)\s+(\d+)/);
+      entries.push({
+        severity: 'warning',
+        message,
+        file: currentFile,
+        line: line ? Number(line[1]) : undefined,
+      });
+    } else {
+      // File nesting in TeX logs distinguishes errors inside included sources.
+      for (const match of lines[i].matchAll(
+        /\((?:"([^"\n]+\.(?:tex|sty|cls))"|([^\s()]+\.(?:tex|sty|cls)))(?=[\s)]|$)|[()]/g,
+      )) {
+        if (match[0] === ')') files.pop();
+        else files.push(match[1] || match[2] ? clean(match[1] || match[2]) : undefined);
+      }
+    }
   }
-  return entries.slice(0, 100);
+  // Repeated compiler passes should not bury the fatal error below warnings.
+  const seen = new Set<string>();
+  return entries
+    .filter((entry) => {
+      const key = JSON.stringify(entry);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => Number(a.severity !== 'error') - Number(b.severity !== 'error'))
+    .slice(0, 100);
 }

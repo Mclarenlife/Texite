@@ -51,6 +51,35 @@ const JSZip = require('jszip');
     await page.getByRole('button', { name: '打开文件夹', exact: true }).click();
     const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
     await expect(editor).toContainText('桌面离线测试');
+    // Real Electron clipboard IPC; keep the user's previous clipboard contents.
+    const clipboardBefore = await desktop.evaluate(({ clipboard }) => clipboard.readText());
+    try {
+      await editor.fill(
+        '\\documentclass{article}\n\\begin{document}\n\\badTexiteCommand\n\\end{document}',
+      );
+      await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+      const diagnostics = page
+        .getByRole('region', { name: 'PDF 预览' })
+        .getByRole('region', { name: '编译诊断' });
+      await expect(diagnostics).toContainText('Undefined control sequence', { timeout: 60000 });
+      await diagnostics
+        .getByTitle('点击复制诊断信息')
+        .filter({ hasText: 'Undefined control sequence' })
+        .first()
+        .click();
+      expect(await desktop.evaluate(({ clipboard }) => clipboard.readText())).toContain(
+        'Undefined control sequence',
+      );
+      await diagnostics
+        .getByRole('button', { name: /定位到 main.tex:3/ })
+        .first()
+        .click();
+      await expect(page.locator('.editor-footer')).toContainText('行 3');
+      await editor.fill(source);
+      await diagnostics.getByRole('button', { name: '关闭诊断' }).click();
+    } finally {
+      await desktop.evaluate(({ clipboard }, text) => clipboard.writeText(text), clipboardBefore);
+    }
     await editor.click();
     await page.keyboard.press('Control+End');
     await page.keyboard.insertText('% saved from Texite');

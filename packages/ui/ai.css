@@ -307,29 +307,6 @@
   background: var(--tint);
   color: var(--text);
 }
-.workbench-row.ai-open {
-  gap: 12px;
-}
-.workbench-row.ai-open .workspace {
-  min-width: 0;
-}
-@media (max-width: 1450px) {
-  .ai-open .project-sidebar,
-  .ai-open .sidebar-resizer {
-    display: none;
-  }
-}
-@media (max-width: 1050px) {
-  .ai-panel {
-    position: absolute;
-    right: 16px;
-    top: 82px;
-    bottom: 38px;
-    z-index: 15;
-    width: min(370px, calc(100vw - 85px));
-    box-shadow: 0 14px 60px #0002;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .ai-panel {
     animation: none;
@@ -349,4 +326,130 @@
   border-radius: 8px;
   padding: 8px 10px;
   white-space: nowrap;
+}
+
+.ai-panel {
+  position: fixed;
+  z-index: 30;
+  right: 24px;
+  top: 88px;
+  width: 390px;
+  height: 650px;
+  max-height: calc(100vh - 110px);
+  max-width: calc(100vw - 24px);
+  min-width: min(320px, calc(100vw - 24px));
+  min-height: min(420px, calc(100vh - 32px));
+  resize: both;
+  box-shadow:
+    0 24px 90px #0003,
+    0 2px 10px #0001;
+}
+.ai-heading {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  border-bottom: 1px solid var(--line);
+  padding: 12px 14px;
+  flex-shrink: 0;
+}
+.ai-heading:active {
+  cursor: grabbing;
+}
+.ai-window-actions {
+  display: flex;
+  gap: 3px;
+}
+.ai-minimized {
+  height: auto !important;
+  min-height: 0;
+  resize: none;
+}
+.ai-minimized > :not(.ai-heading) {
+  display: none;
+}
+.ai-mode-tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 12px 14px;
+  flex-shrink: 0;
+}
+.ai-mode-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 7px 12px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.ai-mode-tabs button[aria-selected='true'] {
+  background: var(--tint);
+  color: var(--text);
+}
+.ai-mode-tabs select {
+  margin-left: auto;
+  max-width: 125px;
+  border: 0;
+  background: transparent;
+  color: var(--secondary);
+  font-size: 11px;
+}
+.ai-mode-label,
+.ai-api-model {
+  font-size: 11px;
+  color: var(--secondary);
+}
+.ai-api-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.api-settings {
+  display: grid;
+  gap: 16px;
+}
+.api-settings label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+.api-settings input {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 11px;
+  font: inherit;
+}
+.api-settings p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--secondary);
+}
+.ai-connection {
+  max-height: 210px;
+  overflow: auto;
+  flex-shrink: 0;
+}
+.ai-composer {
+  flex-shrink: 0;
+}
+@media (max-height: 650px) {
+  .ai-panel {
+    top: 16px;
+    max-height: calc(100vh - 32px);
+  }
+  .ai-empty {
+    padding: 8px 0;
+  }
+  .ai-orbit {
+    display: none;
+  }
+  .ai-composer textarea {
+    min-height: 54px;
+  }
+  .ai-connection {
+    max-height: 100px;
+  }
 }

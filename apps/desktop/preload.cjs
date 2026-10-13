@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('texite', {
+  chat: {
+    get: () => ipcRenderer.invoke('chat:get'),
+    save: (config) => ipcRenderer.invoke('chat:save', config),
+    start: (input) => ipcRenderer.invoke('chat:start', input),
+    cancel: () => ipcRenderer.invoke('chat:cancel'),
+  },
+  writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   ai: {
     connect: () => ipcRenderer.invoke('ai:connect'),
     disconnect: () => ipcRenderer.invoke('ai:disconnect'),

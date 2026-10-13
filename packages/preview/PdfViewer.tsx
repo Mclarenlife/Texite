@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { getDocument, GlobalWorkerOptions, type PDFDocumentProxy } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
@@ -18,10 +18,12 @@ export function PdfViewer({
   bytes,
   label,
   stale,
+  diagnostics,
 }: {
   bytes: Uint8Array | null;
   label: string;
   stale: boolean;
+  diagnostics?: ReactNode;
 }) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [page, setPage] = useState(1);
@@ -242,6 +244,7 @@ export function PdfViewer({
           </div>
         )}
       </div>
+      {diagnostics}
     </section>
   );
 }

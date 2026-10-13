@@ -67,6 +67,8 @@ import {
 } from '../platform/storage';
 import { SourceEditor, type EditorHandle } from '../editor/SourceEditor';
 import { PdfViewer } from '../preview/PdfViewer';
+import { CompileDiagnostics } from '../preview/CompileDiagnostics';
+import { resolveEditorColors, colorRoles } from '../ui/colors';
 import { FileTree } from './FileTree';
 import { VisualEditor } from '../editor/VisualEditor';
 import { Dialog } from '../ui/Dialog';
@@ -104,6 +106,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [mode, setMode] = useState<Mode>('split');
   const [space, setSpace] = useState(false);
+  const [inlineRun, setInlineRun] = useState(0);
   const [aiOpen, setAiOpen] = useState(false);
   const [spaceQuery, setSpaceQuery] = useState('');
   const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
@@ -273,20 +276,27 @@ export function App() {
     root.dataset.contrast = contrast;
     root.style.setProperty('--editor-font', editorFonts[fontChoice] || editorFonts.mono);
     root.style.setProperty('--editor-size', `${Math.max(12, Math.min(24, fontSize))}px`);
-    root.style.setProperty(
-      '--editor-text',
-      /^#[\da-f]{6}$/i.test(textColor) ? textColor : 'var(--text)',
-    );
-    for (const [key, value] of Object.entries({
-      keyword: syntaxKeyword,
-      string: syntaxString,
-      comment: syntaxComment,
-      punctuation: syntaxPunctuation,
-    })) {
-      if (/^#[\da-f]{6}$/i.test(value)) root.style.setProperty('--syntax-' + key, value);
-      else root.style.removeProperty('--syntax-' + key);
-    }
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const applyColors = () => {
+      const resolved = resolveEditorColors(
+        {
+          text: textColor,
+          keyword: syntaxKeyword,
+          string: syntaxString,
+          comment: syntaxComment,
+          punctuation: syntaxPunctuation,
+        },
+        theme === 'dark' || (theme === 'system' && media.matches),
+        palette,
+        contrast,
+      );
+      for (const role of colorRoles) root.style.setProperty(role.variable, resolved[role.id]);
+    };
+    applyColors();
+    media.addEventListener('change', applyColors);
+    return () => media.removeEventListener('change', applyColors);
   }, [
+    theme,
     palette,
     contrast,
     fontChoice,
@@ -523,12 +533,14 @@ export function App() {
       } else if (result.cancelled) notify('编译已取消，上次预览已保留。');
       else {
         setDiagnosticsOpen(true);
+        setMode((current) => (current === 'editor' ? 'split' : current));
         notify('编译未完成，请查看诊断信息。');
       }
       return result;
     } catch (e) {
       setLog(friendlyError(e));
       setDiagnosticsOpen(true);
+      setMode((current) => (current === 'editor' ? 'split' : current));
     } finally {
       compileRunning.current = false;
       setCompiling(false);
@@ -672,6 +684,35 @@ export function App() {
         .reduce((a, s) => a + s.length + 1, 0);
       editor.current?.jump(pos);
     }, 0);
+  }
+  async function importEditorImage(file: File) {
+    if (!projectRef.current) throw new Error('请先打开项目。');
+    if (!/\.(png|jpe?g|pdf)$/i.test(file.name) || file.size > 10 * 1024 * 1024)
+      throw new Error('请选择 10 MB 以内的 PNG、JPEG 或 PDF 图片。');
+    const projectId = projectRef.current.id;
+    const content = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1]);
+      reader.onerror = () => reject(new Error('无法读取图片。'));
+      reader.readAsDataURL(file);
+    });
+    if (projectRef.current?.id !== projectId) throw new Error('项目已切换，请重新导入。');
+    const fileName = safePath(file.name.replace(/[{}%#&~^]/g, '_'));
+    let imagePath = 'assets/' + fileName;
+    let suffix = 1;
+    while (projectRef.current.files.some((f) => f.path.toLowerCase() === imagePath.toLowerCase()))
+      imagePath = 'assets/' + suffix++ + '-' + fileName;
+    if (
+      projectRef.current.files.reduce((n, f) => n + f.content.length, 0) + content.length >
+      70 * 1024 * 1024
+    )
+      throw new Error('项目资源大小超过上限。');
+    update((p) => ({
+      ...p,
+      files: [...p.files, { path: imagePath, content, binary: true }],
+      folders: [...new Set([...(p.folders || []), 'assets'])],
+    }));
+    return imagePath;
   }
   async function addAssets(files: FileList | null) {
     if (!files || !project) return;
@@ -1253,6 +1294,19 @@ export function App() {
                   {textFile && (
                     <SourceEditor
                       ref={editor}
+                      files={project.files.map((f) => f.path)}
+                      labels={project.files
+                        .filter((f) => !f.binary)
+                        .flatMap((f) =>
+                          [...f.content.matchAll(/\\label\{([^}]+)\}/g)].map((m) => m[1]),
+                        )}
+                      aiBusy={ai.busy}
+                      onImportImage={importEditorImage}
+                      onAI={(prompt, scope) => {
+                        setInlineRun((n) => n + 1);
+                        setAiOpen(true);
+                        void ai.start(prompt, '', false, scope);
+                      }}
                       readOnly={restoreBusy}
                       projectId={project.id}
                       file={textFile}
@@ -1368,64 +1422,34 @@ export function App() {
                   bytes={pdf}
                   label={pdfLabel}
                   stale={!!pdf && pdfRevision >= 0 && pdfRevision !== project.revision}
+                  diagnostics={
+                    <CompileDiagnostics
+                      diagnostics={diagnostics}
+                      log={log}
+                      project={project}
+                      open={diagnosticsOpen}
+                      onToggle={() => setDiagnosticsOpen((v) => !v)}
+                      onNotify={notify}
+                      onLocate={(file, line) => {
+                        setMode((current) => (current === 'pdf' ? 'split' : current));
+                        setEditMode('code');
+                        jumpLine(file, line);
+                      }}
+                    />
+                  }
                 />
               </div>
             </div>
             {aiOpen && (
               <AIPanel
                 ai={ai}
+                focusAgent={inlineRun}
                 projectName={project.name}
                 activeFile={project.activeFile}
                 onClose={() => setAiOpen(false)}
               />
             )}
           </div>
-          <AnimatePresence>
-            {diagnosticsOpen && (
-              <motion.section
-                className="diagnostics"
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 220, opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-              >
-                <div className="diagnostics-heading">
-                  <span>
-                    <TriangleAlert size={15} />
-                    编译诊断 <small>{diagnostics.length} 条</small>
-                  </span>
-                  <button
-                    className="icon-button"
-                    aria-label="关闭诊断"
-                    onClick={() => setDiagnosticsOpen(false)}
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-                <div className="diagnostics-body">
-                  {diagnostics.map((d, i) => (
-                    <button
-                      key={i}
-                      onClick={() => {
-                        const file =
-                          project.files.find(
-                            (f) => f.path === d.file || d.file?.endsWith('/' + f.path),
-                          )?.path ?? project.mainFile;
-                        jumpLine(file, d.line ?? 1);
-                      }}
-                    >
-                      <span className={d.severity}>{d.severity === 'error' ? '错误' : '警告'}</span>
-                      <span>{d.message}</span>
-                      {d.line && <small>第 {d.line} 行</small>}
-                    </button>
-                  ))}
-                  <details open={!diagnostics.length}>
-                    <summary>原始日志</summary>
-                    <pre>{log || '尚无编译日志。'}</pre>
-                  </details>
-                </div>
-              </motion.section>
-            )}
-          </AnimatePresence>
           <footer className="status-bar">
             <div>
               <span className={'save-indicator ' + saved}>
@@ -1448,10 +1472,6 @@ export function App() {
               <span>{window.texite ? '桌面工作区' : '浏览器工作区'}</span>
             </div>
             <div>
-              <button onClick={() => setDiagnosticsOpen((v) => !v)}>
-                <TriangleAlert size={12} />
-                {diagnostics.length}
-              </button>
               <button onClick={() => openModal('settings')}>
                 {engineNames[project.engine]}
                 {window.texite && engineStatus

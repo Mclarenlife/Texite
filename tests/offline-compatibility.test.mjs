@@ -61,6 +61,27 @@ test(
         }
         assert.equal(result.success, true, result.log.slice(-12000));
         assert.match(result.log, /实际编译器/);
+        if (name === 'base35.tex') {
+          // Verify actual outlines are embedded, not substituted by the PDF reader.
+          for (const font of [
+            'utmb8a',
+            'utmbi8a',
+            'utmr8a',
+            'utmri8a',
+            'uhvr8a',
+            'ucrr8a',
+            'uplr8a',
+            'uncr8a',
+            'ubkl8a',
+            'uagk8a',
+            'uzcmi8a',
+            'usyr',
+            'uzdr',
+          ])
+            assert(result.log.includes(font + '.pfb'), `Missing embedded outline: ${font}`);
+          assert.match(result.log, /8r\.enc/);
+          assert.doesNotMatch(result.log, /Font .* not found|mktexpk|Missing character:/);
+        }
         assert.match(
           result.log,
           ['chinese.tex', 'fonts.tex'].includes(name) ? /This is XeTeX/ : /This is pdfTeX/,

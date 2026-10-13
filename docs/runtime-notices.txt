@@ -37,3 +37,10 @@ https://github.com/tectonic-typesetting/tectonic-texlive-bundles
 https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2022/
 
 Compilation never invokes a package manager or downloads missing resources.
+
+Texite also retains two small upstream font support files in apps/desktop/fonts:
+ps2pk35.map (Thomas Esser, public domain) from texlive-scripts, and the unchanged
+8r.enc TeX Base1 encoding vector from dvips. Their source locations and verified
+archive checksums are in apps/desktop/fonts/README.md. Original author notices
+are preserved. The dvips executable is not included. These resources allow
+pdfTeX to embed the already installed Base35 Type 1 fonts.

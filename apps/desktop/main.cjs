@@ -1,10 +1,22 @@
-const { app, BrowserWindow, ipcMain, dialog, session, protocol, net, shell } = require('electron');
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  dialog,
+  session,
+  protocol,
+  net,
+  shell,
+  clipboard,
+  safeStorage,
+} = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { Compiler, detectEngines } = require('./workspace.cjs');
 const { ProjectLibrary } = require('./projects.cjs');
 const { RuntimeManager } = require('./runtime-manager.cjs');
 const { CodexClient } = require('./codex-client.cjs');
+const { ChatClient } = require('./chat-client.cjs');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'texite',
@@ -15,6 +27,7 @@ let window;
 let compiler;
 let library;
 let ai;
+let chat;
 let fileQueue = Promise.resolve();
 // End-to-end tests also launch the packaged executable. Keep their projects and
 // first-run caches separate from the user's real profile in both launch modes.
@@ -43,6 +56,11 @@ function handleFiles(name, callback) {
   });
 }
 app.whenReady().then(async () => {
+  handle('clipboard:write', (text) => {
+    if (typeof text !== 'string' || text.length > 1_000_000)
+      throw new Error('复制内容无效或过长。');
+    clipboard.writeText(text);
+  });
   library = new ProjectLibrary(app.getPath('userData'));
   await library.init();
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
@@ -51,6 +69,13 @@ app.whenReady().then(async () => {
   ai = new CodexClient(path.join(app.getPath('userData'), 'ai'), (event) => {
     if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
   });
+  chat = new ChatClient(path.join(app.getPath('userData'), 'ai'), safeStorage, (event) => {
+    if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
+  });
+  handle('chat:get', () => chat.get());
+  handle('chat:save', (config) => chat.save(config));
+  handle('chat:start', (input) => chat.start(input));
+  handle('chat:cancel', () => chat.cancel());
   handle('ai:connect', () => ai.connect());
   handle('ai:disconnect', () => ai.disconnect());
   handle('ai:start', (input) => ai.start(input));
@@ -61,6 +86,8 @@ app.whenReady().then(async () => {
     const selected = await dialog.showOpenDialog(window, {
       properties: ['openFile'],
       title: '选择 Codex 可执行文件',
+      message:
+        '选择 codex CLI 文件。Mac 可在终端运行 command -v codex 查找路径；不要选择 ChatGPT.app 或 Codex.app。',
     });
     return selected.canceled ? null : ai.chooseBinary(selected.filePaths[0]);
   });
@@ -172,6 +199,7 @@ app.whenReady().then(async () => {
     window.on('closed', () => {
       void compiler.cancel();
       void ai.disconnect();
+      chat?.cancel();
     });
     if (devUrl) window.loadURL(devUrl);
     else window.loadURL('texite://app/index.html');
@@ -187,4 +215,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   void compiler?.cancel();
   void ai?.disconnect();
+  chat?.cancel();
 });

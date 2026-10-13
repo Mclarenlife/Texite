@@ -1021,16 +1021,24 @@ h1 {
 .diagnostics {
   border-top: 1px solid var(--line);
   background: var(--surface);
-  flex-shrink: 0;
+  flex: 0 0 auto;
   overflow: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.diagnostics.is-open {
+  flex: 0 1 260px;
+  max-height: 55%;
 }
 .diagnostics-heading {
-  padding: 7px 23px;
+  padding: 10px 14px;
+  width: 100%;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
 }
 .diagnostics-heading > span {
   display: flex;
@@ -1040,39 +1048,62 @@ h1 {
 .diagnostics-heading small {
   color: var(--muted);
 }
+.diagnostics-heading > svg {
+  transition: transform 0.18s;
+}
+.diagnostics-chevron-open {
+  transform: rotate(180deg);
+}
 .diagnostics-body {
-  height: 170px;
   overflow: auto;
-  padding: 8px 23px;
+  min-height: 0;
+  padding: 0 10px 10px;
 }
-.diagnostics-body > button {
+.diagnostic-row {
   display: flex;
-  gap: 12px;
-  font-size: 11px;
-  text-align: left;
-  padding: 6px;
-  width: 100%;
-  border-radius: 5px;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 5px 0;
+  border-top: 1px solid var(--line);
 }
-.diagnostics-body > button:hover {
+.diagnostic-locate {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.diagnostic-message {
+  min-width: 0;
+  flex: 1;
+  text-align: left;
+  padding: 5px 7px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.diagnostic-message:hover {
   background: var(--tint);
+}
+.diagnostic-meta {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+}
+.diagnostic-meta small {
+  color: var(--secondary);
+  overflow-wrap: anywhere;
 }
 .diagnostics-body .error {
   color: var(--danger);
 }
 .diagnostics-body .warning {
-  color: var(--purple);
-}
-.diagnostics-body small {
-  color: var(--muted);
-  white-space: nowrap;
-  margin-left: auto;
+  color: var(--secondary);
 }
 .diagnostics-body summary {
   font-size: 11px;
   color: var(--secondary);
   cursor: pointer;
-  padding: 5px;
+  padding: 8px 5px;
 }
 .diagnostics-body pre {
   font-size: 11px;
@@ -1080,6 +1111,7 @@ h1 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: Consolas, monospace;
+  user-select: text;
 }
 .reference-list {
   display: flex;

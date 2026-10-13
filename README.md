@@ -2,7 +2,7 @@
 
 本地 LaTeX 编辑器，使用 React、TypeScript、CodeMirror 6、Motion、KaTeX、PDF.js 与 Electron，提供网页版和 Windows / macOS 桌面版。
 
-当前版本：**0.6.0**，包含实验性的 Codex AI 助手。不包含云同步或云端编译；可选 AI 推理需要联网。
+当前版本：**0.7.0**，包含浮动 AI 助手、Agent／对话模式、行内 AI 编辑及自定义对话 API。不包含云同步或云端编译；可选 AI 推理需要联网。
 
 ## 使用与开发
 
