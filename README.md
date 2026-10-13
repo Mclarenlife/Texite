@@ -16,7 +16,7 @@ pnpm exec install-electron
 pnpm dev:desktop
 ```
 
-`runtime:prepare` 首次在**构建机器**下载约 2.9 GB 官方 TeX 资源及编译器，缓存到 `.tools/`，按固定策略裁剪为约 228 MB 的离线资源 ZIP，放在 `runtime/`。这些文件不会提交进 Git。**打包后的桌面应用已包含编译器、常用宏包和中文字体，首次启动也无需安装 TeX、Perl 或联网下载宏包。** 构建时下载量不等于最终安装包大小。
+`runtime:prepare` 在构建机器下载并校验冻结版 TeX Live 2025 的运行包，按模块组装默认 pdfLaTeX 环境与独立 XeLaTeX / LuaLaTeX 扩展。只取运行文件，不打包文档、源码或不需要的引擎。桌面安装包仅包含 `default.texite-runtime.zip`，预算上限 200 MB；安装后首次使用在本地展开模块和生成格式，无需 TeX、Perl 或联网下载。Tectonic 兼容扩展另用 `python scripts/prepare-runtime.py` 和 `python scripts/pack-tectonic.py` 构建，不进入默认安装包。
 
 ## 本版功能
 
@@ -27,7 +27,8 @@ pnpm dev:desktop
 - Code / Visual：共享同一份源码；Code 提供高亮、补全、查找替换和独立撤销历史；Visual 展示标题、嵌套文字样式、列表、常用表格、本地图片、多行公式及项目内 input/include，点击内容编辑对应 LaTeX。导言区和复杂命令保留源码，不做有损 HTML 转换。
 - 顶栏：编译 / 取消编译，选择仅编辑器、仅 PDF 或拆分视图。
 - PDF：全部页面连续排列，页码输入与前后按钮滚动定位，滚动同步当前页；总页数、缩放、适合宽度、独立暗色模式、导出 PDF。只渲染可视区域附近页面，限制单页画布像素。暗色只影响显示，导出的 PDF 不变。
-- 编译：内置 Tectonic 与精简离线 TeX 资源包；支持中文、数学、表格、TikZ / PGFPlots、Beamer、BibTeX。保留系统 XeLaTeX / pdfLaTeX / LuaLaTeX 选项。
+- 编译：默认真正的 pdfLaTeX，支持中文、数学、表格、TikZ / PGFPlots、Beamer、BibTeX。选择哪个引擎就使用哪个；未安装时明确报错，绝不自动替换。状态栏、PDF 标签与编译日志显示引擎和版本。
+- 引擎与宏包管理：设置 → 编译设置，查看占用、搜索宏包、预览并选择离线扩展模块，自动补齐包内依赖。卸载先确认并检查依赖，不更改文稿。可从随软件保留的默认资源恢复 pdfLaTeX 与常用宏包；可选引擎需从 Release 下载对应平台的扩展 ZIP 后导入。
 - 设置：外观、文字、编译分区；浅色 / 深色 / 跟随系统使用工作台缩略图，六种主题使用配色卡片。文字对比度与字体也提供预览。
 - 文字颜色：正文、命令与关键字、参数与字符串、注释、括号与符号可独立调整；内置色板、饱和度 / 明度面板、色相滑条和 HEX 输入，无系统原生取色弹窗。右侧实时预览，设置自动保存，可按项恢复跟随主题。
 - 侧栏：拖动边框调宽，也可聚焦分隔条按左右键；宽度跨重启保留。
@@ -50,11 +51,13 @@ Visual 是源码驱动的可视化编辑，自定义宏、合并单元格、复�
 
 ## 编译范围
 
-桌面默认使用 **内置 Tectonic 0.17.0**，以本地 ZIP 资源包和 `--only-cached --untrusted` 编译，不访问云端或下载资源。`\documentclass{ctexart}` / `ctexbook` / `ctexrep` 和 `\usepackage{ctex}` 默认使用内置 Fandol 宋体、黑体、楷体、仿宋；无需系统中文字体。文稿显式指定的 `fontset` 优先，指定其他字体时需要自行提供相应字体。编译使用独立临时目录，支持日志、取消、120 秒超时和失败后保留 PDF。
+桌面默认直接调用 **pdfTeX 1.40.28（TeX Live 2025 final）**，配合随软件提供的宏包、字体与 BibTeX，不依赖系统发行版或 latexmk，不下载资源。首次编译本地生成 pdflatex 格式，按需要运行多遍以解析目录、引用和参考文献；支持日志、取消、180 秒编译超时，失败保留上次 PDF。
 
-精简策略保留常用宏包依赖和西文 / 数学字体，并额外保留上游宏包代码与引用样式；主要移除大量额外字体和旧式 CJK 字体资源。支持范围、裁剪策略与验证方式见 [离线编译环境](docs/offline-runtime.md)。未保留字体或外部工具的特殊模板不保证兼容，也不会自动联网补包。
+pdfLaTeX 中文使用 CJK / CTeX 与 Arphic 字体，默认提供宋体、楷体（`\songti`、`\kaishu`）；不会把 Fandol OpenType 字体冒充为 pdfTeX 字体。需要黑体、仿宋或 `fontspec` / `unicode-math` 的文稿可自行选择并导入 XeLaTeX 或 LuaLaTeX（包含 Fandol），软件不会替用户改引擎。文稿显式指定的字体配置优先；指定未提供的字体会报错。
 
-Tectonic 基于 XeTeX，不能替代 LuaTeX、biber 或需要 shell escape 的外部程序。需要这些能力的项目可自行配置系统发行版；应用不启用 shell escape。旧项目选择 pdfLaTeX / XeLaTeX、系统不可用时会使用内置引擎，并在日志中明确标明。
+独立扩展：XeLaTeX、LuaLaTeX 使用同一冻结版 TeX Live 2025；Tectonic 0.17.0 使用旧版 TeX 2022 资源以便继续编译旧项目。已有项目保留原引擎设置，升级后若该引擎未安装，会提示导入。所有扩展来自 Release，导入时检查平台、清单、依赖与逐文件 SHA-256。扩展可能包含可执行文件，应使用可信来源。缺包不会自动联网补齐。Biber、MakeIndex、外部 shell 命令及未提供的特殊字体尚未打包。
+
+要与 Overleaf 对齐，还需要相同的 TeX Live、模板、宏包与字体版本；使用同名引擎不保证不同发行版间排版完全相同。支持范围和模块格式见 [离线编译环境](docs/offline-runtime.md)。
 
 **网页版目前不含 WASM 编译器。** 编译按钮会说明需要桌面版，不会上传文档或生成假结果。初始 PDF 是随仓库提供的预编译示例。PDF 文本搜索、选择和 SyncTeX 尚未实现。
 
@@ -71,9 +74,9 @@ pnpm dist:win
 pnpm dist:mac
 ```
 
-打包命令会校验内置资源 SHA-256、裁剪策略版本、必需文件清单及 230 MB 资源 ZIP 上限；缺少资源或策略过期会失败，防止误打包旧的完整资源。Windows/macOS 应分别在对应平台构建，输出位于 `release/`。系统 Edge 可通过 `TEXITE_BROWSER_PATH` 指定，用于浏览器测试。
+打包命令会校验默认资源 SHA-256、必需模块、完整依赖、仅含 pdfLaTeX 引擎以及 200 MB 资源 ZIP 上限。Windows/macOS 应分别在对应平台构建，输出位于 `release/`。系统 Edge 可通过 `TEXITE_BROWSER_PATH` 指定，用于浏览器测试。
 
-内置编译集成测试会对十类文稿分别建立空缓存，实际编译中文论文、图表、幻灯片、字体与参考文献，并读取 PDF 检查文字和页数；另测编译错误及取消。本机没有准备 runtime 时明确跳过，桌面打包 CI 则先准备 runtime 再测试。可用 `TEXITE_TEST_RUNTIME` 指向打包产物中的 runtime 目录重复检查。基础 CI 另测系统 latexmk。桌面回归测试涵盖实际 IPC、磁盘保存、ZIP 目录、PDF 翻页、外部冲突和重启关联。
+内置编译集成测试实际编译中文、图表、幻灯片、字体与参考文献，并读取 PDF 检查文字、页数与 pdfTeX Producer；另测四种引擎、卸载与导入、缺失依赖、损坏包、路径校验、编译错误及取消。本机没有准备 runtime 时明确跳过，桌面打包 CI 则先准备 runtime 再测试。可用 `TEXITE_TEST_RUNTIME` 指向打包产物中的 runtime 目录重复检查。基础 CI 另测系统 latexmk。桌面回归测试涵盖实际 IPC、磁盘保存、ZIP 目录、PDF 翻页、外部冲突和重启关联。
 
 默认不包含代码签名或 macOS 公证。Windows/macOS 打包工作流可在 GitHub Actions 手动触发。
 

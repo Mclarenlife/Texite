@@ -35,6 +35,10 @@ function pdfResources() {
 export default defineConfig({
   plugins: [react(), pdfResources()],
   base: './',
-  server: { port: 5173, strictPort: true },
+  server: {
+    port: 5173,
+    strictPort: true,
+    watch: { ignored: ['**/.qa/**', '**/.tools/**', '**/runtime/**', '**/release/**'] },
+  },
   build: { target: 'es2022', chunkSizeWarningLimit: 1000 },
 });

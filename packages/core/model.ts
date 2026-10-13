@@ -22,12 +22,22 @@ export type Diagnostic = {
 export type CompileResult = {
   success: boolean;
   engine?: Engine;
+  compilerLabel?: string;
   pdf?: number[];
   log: string;
   revision: number;
   cancelled?: boolean;
 };
 export type DesktopAPI = {
+  listRuntime(): Promise<RuntimeModule[]>;
+  chooseRuntimePack(): Promise<{
+    label: string;
+    platform: string;
+    modules: RuntimeModule[];
+  } | null>;
+  installRuntimePack(ids: string[]): Promise<RuntimeModule[]>;
+  removeRuntimeModule(id: string): Promise<RuntimeModule[]>;
+  restoreDefaultRuntime(): Promise<RuntimeModule[]>;
   importProject(project: Project): Promise<Project>;
   listProjects(): Promise<Project[]>;
   reopenProject(id: string): Promise<Project | null>;
@@ -45,10 +55,22 @@ export type DesktopAPI = {
     bundled: boolean;
     latexmk: boolean;
     engines: Record<Engine, boolean>;
+    details?: Partial<Record<Engine, string>>;
   }>;
   compile(project: Project): Promise<CompileResult>;
   cancelCompile(): Promise<void>;
   onCompileLog(callback: (chunk: string) => void): () => void;
+};
+export type RuntimeModule = {
+  id: string;
+  label: string;
+  version: string;
+  kind: 'engine' | 'package';
+  engine?: Engine;
+  dependencies: string[];
+  bytes: number;
+  core?: boolean;
+  requiredBy?: string[];
 };
 declare global {
   interface Window {
@@ -129,7 +151,7 @@ export function validateProject(value: unknown): Project {
     activeFile: p.files.some((f) => f.path === p.activeFile) ? p.activeFile : mainFile,
     engine: ['tectonic', 'xelatex', 'pdflatex', 'lualatex'].includes(p.engine)
       ? p.engine
-      : 'tectonic',
+      : 'pdflatex',
     revision: Number.isSafeInteger(p.revision) ? p.revision : 0,
     updatedAt: Number.isFinite(p.updatedAt) ? p.updatedAt : Date.now(),
   };

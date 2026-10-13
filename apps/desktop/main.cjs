@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, session, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, protocol, net, shell } = require('electron');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { Compiler, detectEngines } = require('./workspace.cjs');
 const { ProjectLibrary } = require('./projects.cjs');
+const { RuntimeManager } = require('./runtime-manager.cjs');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'texite',
@@ -43,7 +44,12 @@ app.whenReady().then(async () => {
   library = new ProjectLibrary(app.getPath('userData'));
   await library.init();
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
-  compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime);
+  const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
+  compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime, manager);
+  let pendingPack;
+  function checkIdle() {
+    if (compiler.active) throw new Error('请先停止编译，再更改引擎或宏包。');
+  }
   protocol.handle('texite', (request) => {
     const url = new URL(request.url);
     if (url.hostname !== 'app') return new Response('Forbidden', { status: 403 });
@@ -69,7 +75,38 @@ app.whenReady().then(async () => {
   handleFiles('project:import', (project) => library.import(project));
   handleFiles('project:list', () => library.list());
   handleFiles('project:reopen', (id) => library.reopen(id));
-  handle('compiler:detect', () => detectEngines(runtime));
+  handle('compiler:detect', () => detectEngines(runtime, manager));
+  handle('runtime:list', async () => {
+    await manager.init();
+    return manager.list();
+  });
+  handle('runtime:choose', async () => {
+    checkIdle();
+    const result = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      filters: [{ name: 'Texite 离线扩展包', extensions: ['zip'] }],
+    });
+    if (result.canceled) return null;
+    const info = await manager.inspect(result.filePaths[0]);
+    pendingPack = result.filePaths[0];
+    return info;
+  });
+  handle('runtime:install', async (ids) => {
+    checkIdle();
+    if (!pendingPack || !Array.isArray(ids) || !ids.length)
+      throw new Error('请先选择扩展包与要安装的模块。');
+    const result = await manager.install(pendingPack, ids);
+    pendingPack = null;
+    return result;
+  });
+  handle('runtime:remove', (id) => {
+    checkIdle();
+    return manager.remove(id);
+  });
+  handle('runtime:restore', () => {
+    checkIdle();
+    return manager.install(path.join(runtime, 'default.texite-runtime.zip'));
+  });
   handle('compiler:run', (project) =>
     compiler.compile(project, (chunk) => {
       if (window && !window.isDestroyed()) window.webContents.send('compiler:log', chunk);
@@ -93,7 +130,11 @@ app.whenReady().then(async () => {
         sandbox: true,
       },
     });
-    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    window.webContents.setWindowOpenHandler(({ url }) => {
+      if (url === 'https://github.com/Mclarenlife/Texite/releases/latest')
+        void shell.openExternal(url);
+      return { action: 'deny' };
+    });
     window.webContents.on('will-navigate', (event, url) => {
       if (url !== (devUrl || 'texite://app/index.html')) event.preventDefault();
     });

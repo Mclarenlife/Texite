@@ -6,7 +6,11 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'scripts/*runtime*'
+      - 'scripts/pack-tectonic.py'
+      - 'apps/desktop/**'
       - 'tests/*compiler*'
+      - 'tests/optional-engines.test.mjs'
+      - 'tests/runtime-manager.test.mjs'
       - 'tests/offline-compatibility.test.mjs'
       - 'tests/fixtures/offline/**'
       - '.github/workflows/desktop.yml'
@@ -34,6 +38,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pnpm runtime:prepare
+      - run: python scripts/prepare-runtime.py
+      - run: python scripts/pack-tectonic.py
       - run: pnpm exec install-electron
       - run: pnpm test
       - uses: actions/upload-artifact@v4
@@ -56,4 +62,6 @@ jobs:
           path: |
             release/*.exe
             release/*.dmg
+            release/engine-packs/*.zip
+            release/engine-packs/*.json
           retention-days: 7

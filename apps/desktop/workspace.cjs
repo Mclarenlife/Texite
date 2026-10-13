@@ -2,6 +2,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { RuntimeManager } = require('./runtime-manager.cjs');
+const { compileManaged } = require('./managed-compiler.cjs');
 
 const textPattern = /\.(tex|bib|sty|cls|txt|md|csv|json|bst|tikz)$/i;
 const engines = ['tectonic', 'xelatex', 'pdflatex', 'lualatex'];
@@ -220,7 +222,24 @@ function probe(command) {
     child.on('exit', (code) => finish(code === 0));
   });
 }
-async function detectEngines(runtime) {
+async function detectEngines(runtime, manager) {
+  if (runtime) {
+    manager ||= new RuntimeManager(runtime, path.join(runtime, '.detection'));
+    await manager.init();
+    const installed = await manager.list();
+    return {
+      bundled: true,
+      latexmk: false,
+      engines: Object.fromEntries(
+        engines.map((engine) => [engine, installed.some((m) => m.engine === engine)]),
+      ),
+      details: Object.fromEntries(
+        installed
+          .filter((m) => m.engine)
+          .map((m) => [m.engine, `${m.label} · ${m.version} · 离线`]),
+      ),
+    };
+  }
   const system = engines.filter((e) => e !== 'tectonic');
   const values = await Promise.all(['latexmk', ...system].map(probe));
   let bundled = false;
@@ -257,9 +276,12 @@ function buildArguments(project) {
   ];
 }
 class Compiler {
-  constructor(cache, runtime) {
+  constructor(cache, runtime, manager) {
     this.cache = cache;
     this.runtime = runtime;
+    this.manager =
+      manager ||
+      (runtime ? new RuntimeManager(runtime, path.join(cache, 'runtime-modules')) : null);
     this.active = null;
   }
   async cancel() {
@@ -297,26 +319,18 @@ class Compiler {
     let timeout;
     let log = '';
     try {
-      const available = await detectEngines(this.runtime);
-      const bundled =
-        project.engine === 'tectonic' ||
-        (project.engine !== 'lualatex' &&
-          available.bundled &&
-          (!available.latexmk || !available.engines[project.engine]));
-      if (
-        (bundled && !available.bundled) ||
-        (!bundled && (!available.latexmk || !available.engines[project.engine]))
-      )
-        return {
-          success: false,
-          revision: project.revision,
-          log: bundled
-            ? '内置编译资源不完整，请重新安装完整版本的 Texite。开发环境请先运行 runtime:prepare。'
-            : `未检测到系统 ${project.engine} / latexmk。请在设置中选择“内置 Tectonic”，或配置所需的系统引擎。`,
-        };
-      if (bundled) {
-        log = '使用内置 Tectonic · 离线 TeX 资源包\n';
-        onLog(log);
+      if (!this.manager) {
+        const available = await detectEngines();
+        if (
+          project.engine === 'tectonic' ||
+          !available.latexmk ||
+          !available.engines[project.engine]
+        )
+          return {
+            success: false,
+            revision: project.revision,
+            log: `${project.engine} 未安装。不会自动切换编译器。`,
+          };
       }
       if (job.cancelled)
         return { success: false, cancelled: true, revision: project.revision, log: '编译已取消。' };
@@ -329,56 +343,56 @@ class Compiler {
         const target = path.join(root, safeRelative(file.path));
         await fs.mkdir(path.dirname(target), { recursive: true });
         await fs.writeFile(target, file.content, file.binary ? 'base64' : 'utf8');
+        if (/\.tex$/i.test(file.path))
+          await fs.mkdir(path.join(root, '.texite-build', path.dirname(safeRelative(file.path))), {
+            recursive: true,
+          });
       }
       if (job.cancelled)
         return { success: false, cancelled: true, revision: project.revision, log: '编译已取消。' };
-      const code = await new Promise((resolve) => {
-        const binary = bundled
-          ? path.join(this.runtime, process.platform === 'win32' ? 'tectonic.exe' : 'tectonic')
-          : 'latexmk';
-        const args = bundled
-          ? [
-              '-X',
-              'compile',
-              '--bundle',
-              require('node:url').pathToFileURL(path.join(this.runtime, 'texlive.zip')).href,
-              '--only-cached',
-              '--untrusted',
-              '--synctex',
-              '--keep-logs',
-              '--print',
-              '--outdir',
-              '.texite-build',
-              './' + safeRelative(project.mainFile),
-            ]
-          : buildArguments(project);
-        const child = spawn(binary, args, {
-          cwd: root,
-          env: { ...environment(), TECTONIC_CACHE_DIR: path.join(this.cache, 'formats') },
-          windowsHide: true,
-          shell: false,
-          detached: process.platform !== 'win32',
-        });
-        job.child = child;
-        const append = (chunk) => {
-          if (log.length < 1_000_000) {
-            const text = chunk.toString().slice(0, 1_000_000 - log.length);
-            log += text;
-            onLog(text);
-          }
-        };
-        child.stdout.on('data', append);
-        child.stderr.on('data', append);
-        child.on('error', (e) => {
-          append(e.message);
-          resolve(-1);
-        });
-        child.on('close', resolve);
-        timeout = setTimeout(() => {
-          append('\n编译超过 120 秒，已停止。');
-          void this.cancel();
-        }, 120000);
-      });
+      let compilerLabel;
+      const append = (text) => {
+        if (log.length < 1_000_000) {
+          const chunk = text.slice(0, 1_000_000 - log.length);
+          log += chunk;
+          onLog(chunk);
+        }
+      };
+      const managed = this.manager ? await compileManaged(this, project, root, job, append) : null;
+      compilerLabel = managed?.label;
+      const code = managed
+        ? managed.code
+        : await new Promise((resolve) => {
+            const binary = 'latexmk';
+            const args = buildArguments(project);
+            append(`实际编译器：${project.engine} · 系统 latexmk\n`);
+            const child = spawn(binary, args, {
+              cwd: root,
+              env: { ...environment(), TECTONIC_CACHE_DIR: path.join(this.cache, 'formats') },
+              windowsHide: true,
+              shell: false,
+              detached: process.platform !== 'win32',
+            });
+            job.child = child;
+            const append = (chunk) => {
+              if (log.length < 1_000_000) {
+                const text = chunk.toString().slice(0, 1_000_000 - log.length);
+                log += text;
+                onLog(text);
+              }
+            };
+            child.stdout.on('data', append);
+            child.stderr.on('data', append);
+            child.on('error', (e) => {
+              append(e.message);
+              resolve(-1);
+            });
+            child.on('close', resolve);
+            timeout = setTimeout(() => {
+              append('\n编译超过 120 秒，已停止。');
+              void this.cancel();
+            }, 120000);
+          });
       if (job.cancelled)
         return { success: false, cancelled: true, revision: project.revision, log };
       if (code !== 0) return { success: false, revision: project.revision, log };
@@ -391,10 +405,18 @@ class Compiler {
       if (stat.size > 50 * 1024 * 1024) throw new Error('PDF 超过 50 MB。');
       return {
         success: true,
-        engine: bundled ? 'tectonic' : project.engine,
+        engine: project.engine,
+        compilerLabel: compilerLabel || `${project.engine} · 系统`,
         revision: project.revision,
         log,
         pdf: [...(await fs.readFile(pdfPath))],
+      };
+    } catch (error) {
+      return {
+        success: false,
+        cancelled: job.cancelled,
+        revision: project.revision,
+        log: log + '\n' + error.message,
       };
     } finally {
       clearTimeout(timeout);

@@ -53,6 +53,45 @@ const JSZip = require('jszip');
     expect(await fs.readFile(path.join(folder, 'main.tex'), 'utf8')).toContain('saved from Texite');
     await page.getByRole('button', { name: '编译文稿', exact: false }).click();
     await expect(page.getByRole('status')).toContainText('编译完成', { timeout: 60000 });
+    await expect(page.getByLabel('PDF 实际编译器')).toContainText('pdfLaTeX');
+    expect((await page.evaluate(() => window.texite.detectEngines())).engines).toEqual({
+      tectonic: false,
+      xelatex: false,
+      pdflatex: true,
+      lualatex: false,
+    });
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await page.getByRole('tab', { name: '编译设置' }).click();
+    await desktop.evaluate(
+      ({ dialog }, file) => {
+        dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] });
+      },
+      path.resolve(
+        `release/engine-packs/Texite-0.5.0-xelatex-${process.platform}-${process.arch}.texite-runtime.zip`,
+      ),
+    );
+    await page.getByRole('button', { name: '导入离线扩展包' }).click();
+    await page.getByRole('button', { name: '安装所选模块及依赖' }).click();
+    await expect(page.getByRole('button', { name: '卸载 XeLaTeX', exact: true })).toBeVisible({
+      timeout: 60000,
+    });
+    await page.getByLabel('编译引擎').selectOption('xelatex');
+    await page.getByRole('button', { name: '关闭弹窗' }).click();
+    await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+    await expect(page.getByLabel('PDF 实际编译器')).toContainText('XeLaTeX', { timeout: 60000 });
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await page.getByRole('tab', { name: '编译设置' }).click();
+    await page.getByRole('button', { name: '卸载 XeLaTeX', exact: true }).click();
+    await page.getByRole('button', { name: '确认卸载', exact: true }).click();
+    await expect(page.getByRole('button', { name: '卸载 XeLaTeX', exact: true })).toHaveCount(0, {
+      timeout: 30000,
+    });
+    await page.screenshot({ animations: 'disabled', path: '.qa/desktop-runtime-manager.png' });
+    await page.getByLabel('编译引擎').selectOption('pdflatex');
+    await page.getByRole('button', { name: '关闭弹窗' }).click();
+    await desktop.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [directory] });
+    }, folder);
     await expect(page.getByLabel('PDF 总页数')).toHaveText('/ 2');
     await expect(page.locator('.pdf-page')).toHaveCount(2);
     await page.getByRole('button', { name: '下一页', exact: true }).click();
@@ -134,6 +173,7 @@ const JSZip = require('jszip');
     console.log(
       JSON.stringify({
         offlineChinese: 'passed',
+        realPdfTeXAndOptionalEngineImportRemoval: 'passed',
         pdfPagination: 'passed',
         folders: 'passed',
         restoreAndPersistentBackups: 'passed',

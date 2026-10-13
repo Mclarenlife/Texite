@@ -1,40 +1,44 @@
-const fs = require('node:fs');
+const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
-async function digest(file) {
-  const hash = crypto.createHash('sha256');
-  for await (const chunk of fs.createReadStream(file)) hash.update(chunk);
-  return hash.digest('hex');
-}
+const { RuntimeManager } = require('../apps/desktop/runtime-manager.cjs');
 (async () => {
   const runtime = path.resolve(__dirname, '../runtime');
-  const manifest = JSON.parse(fs.readFileSync(path.join(runtime, 'manifest.json')));
-  const policyPath = path.resolve(__dirname, 'runtime-profile.json');
-  const policy = JSON.parse(fs.readFileSync(policyPath));
-  if (manifest.profile !== policy.profile || manifest.policySha256 !== (await digest(policyPath)))
-    throw new Error('Runtime profile is stale; rebuild the slim offline bundle.');
-  const size = fs.statSync(path.join(runtime, 'texlive.zip')).size;
-  if (size > policy.resourceBudgetBytes || size !== manifest.resourceBytes)
-    throw new Error('Runtime exceeds size budget or does not match its manifest.');
-  if (manifest.offline !== true) throw new Error('Runtime must support offline compilation.');
-  for (const [name, expected] of [
-    [process.platform === 'win32' ? 'tectonic.exe' : 'tectonic', manifest.binarySha256],
-    ['texlive.zip', manifest.bundleSha256],
-    ['inventory.json', manifest.inventorySha256],
-  ]) {
-    if ((await digest(path.join(runtime, name))) !== expected)
-      throw new Error(`Runtime checksum mismatch: ${name}`);
-  }
-  const inventory = JSON.parse(fs.readFileSync(path.join(runtime, 'inventory.json')));
-  if (Object.keys(inventory).length !== manifest.resourceCount)
-    throw new Error('Runtime inventory count does not match its manifest.');
-  for (const name of [...policy.requiredFiles, 'ctexopts.cfg', 'SHA256SUM']) {
-    if (!inventory[name]) throw new Error(`Required offline resource missing: ${name}`);
-  }
-  console.log(
-    `Verified ${manifest.profile}: ${(size / 1e6).toFixed(1)} MB, ${manifest.resourceCount} offline resources.`,
+  const metadata = JSON.parse(
+    await fs.readFile(path.join(runtime, 'modular-manifest.json'), 'utf8'),
   );
-})().catch((error) => {
-  console.error('Run pnpm runtime:prepare before packaging.', error.message);
+  const file = path.join(runtime, 'default.texite-runtime.zip');
+  const data = await fs.readFile(file);
+  if (
+    data.length > 200_000_000 ||
+    data.length !== metadata.default.bytes ||
+    crypto.createHash('sha256').update(data).digest('hex') !== metadata.default.sha256
+  )
+    throw new Error('Default runtime checksum or 200 MB budget failed.');
+  const { pack } = await new RuntimeManager(runtime, runtime).readPack(file);
+  const engines = pack.modules.filter((m) => m.kind === 'engine');
+  if (engines.length !== 1 || engines[0].engine !== 'pdflatex')
+    throw new Error('Default installer must contain only pdfLaTeX.');
+  const ids = new Set(pack.modules.map((m) => m.id));
+  for (const id of [
+    'pkg-ctex',
+    'pkg-cjk',
+    'pkg-arphic',
+    'pkg-amsmath',
+    'pkg-pgf',
+    'pkg-pgfplots',
+    'pkg-beamer',
+    'pkg-booktabs',
+    'pkg-hyperref',
+  ])
+    if (!ids.has(id)) throw new Error('Required module missing: ' + id);
+  for (const module of pack.modules)
+    for (const id of module.dependencies)
+      if (!ids.has(id)) throw new Error('Unresolved dependency: ' + id);
+  console.log(
+    `Verified real pdfLaTeX / TeX Live 2025: ${(data.length / 1e6).toFixed(1)} MB; ${ids.size} independently managed modules.`,
+  );
+})().catch((e) => {
+  console.error(e.message);
   process.exitCode = 1;
 });

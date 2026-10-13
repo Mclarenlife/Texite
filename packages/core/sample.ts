@@ -46,7 +46,7 @@ export function createProject(name = '示例项目', blank = false): Project {
     name,
     mainFile: 'main.tex',
     activeFile: 'main.tex',
-    engine: 'tectonic',
+    engine: 'pdflatex',
     revision: 0,
     updatedAt: Date.now(),
     files: [

@@ -189,7 +189,7 @@ export async function importZip(file: File): Promise<Project> {
     folders,
     mainFile: settings.mainFile ?? 'main.tex',
     activeFile: settings.mainFile ?? 'main.tex',
-    engine: settings.engine ?? 'tectonic',
+    engine: settings.engine ?? 'pdflatex',
     revision: 0,
     updatedAt: Date.now(),
   });

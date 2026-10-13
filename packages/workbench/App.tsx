@@ -71,6 +71,7 @@ import { FileTree } from './FileTree';
 import { VisualEditor } from '../editor/VisualEditor';
 import { Dialog } from '../ui/Dialog';
 import { editorFonts, usePreference } from '../ui/preferences';
+import { RuntimeSettings } from '../ui/RuntimeSettings';
 import { AppearanceSettings } from '../ui/AppearanceSettings';
 import { useEditHistory } from './useEditHistory';
 import { changeSummary, type EditRecord, type RestoreRequest } from '../core/history';
@@ -84,8 +85,8 @@ const modes: { id: Mode; label: string; icon: typeof BookOpen }[] = [
   { id: 'split', label: '拆分', icon: Columns2 },
 ];
 const engineNames: Record<Engine, string> = {
-  tectonic: '内置 Tectonic',
-  xelatex: 'XeLaTeX（系统）',
+  tectonic: 'Tectonic',
+  xelatex: 'XeLaTeX',
   pdflatex: 'pdfLaTeX',
   lualatex: 'LuaLaTeX',
 };
@@ -153,6 +154,13 @@ export function App() {
   const [engineStatus, setEngineStatus] = useState<Awaited<
     ReturnType<NonNullable<Window['texite']>['detectEngines']>
   > | null>(null);
+  useEffect(() => {
+    if (window.texite)
+      void window.texite
+        .detectEngines()
+        .then(setEngineStatus)
+        .catch(() => {});
+  }, []);
   const [editorRatio, setEditorRatio] = useState(52);
   const [dragging, setDragging] = useState(false);
   const editor = useRef<EditorHandle>(null);
@@ -493,7 +501,7 @@ export function App() {
       if (result.success && result.pdf) {
         setPdf(new Uint8Array(result.pdf));
         setPdfRevision(result.revision);
-        setPdfLabel(engineNames[result.engine ?? snapshot.engine]);
+        setPdfLabel(result.compilerLabel || engineNames[result.engine ?? snapshot.engine]);
         notify('编译完成，PDF 已更新。');
       } else if (result.cancelled) notify('编译已取消，上次预览已保留。');
       else {
@@ -1348,6 +1356,11 @@ export function App() {
               </button>
               <button onClick={() => openModal('settings')}>
                 {engineNames[project.engine]}
+                {window.texite && engineStatus
+                  ? engineStatus.engines[project.engine]
+                    ? ' · 离线'
+                    : ' · 未安装'
+                  : ''}
                 <ChevronDown size={11} />
               </button>
               <span className="version">Texite 0.4</span>
@@ -1691,7 +1704,7 @@ export function App() {
               </span>
               <p>
                 {window.texite
-                  ? 'Tectonic 与 TeX 宏包随软件提供，离线编译。系统引擎可用于需要 pdfLaTeX、LuaLaTeX 或额外程序的项目。'
+                  ? '默认搭载真正的 pdfLaTeX（TeX Live 2025），保留中文与常用宏包。所选引擎未安装时会提示导入，不会自动切换。'
                   : '初版可编辑、保存、导入导出项目和查看 PDF。浏览器 WASM 编译尚未接入；请在桌面版编译文稿。'}
               </p>
               {window.texite && (
@@ -1712,12 +1725,23 @@ export function App() {
                 <div className="engine-results">
                   {Object.entries({ ...engineStatus.engines }).map(([key, ok]) => (
                     <span key={key}>
-                      {ok ? <Check size={13} /> : <X size={13} />} {key}
+                      {ok ? <Check size={13} /> : <X size={13} />}{' '}
+                      {engineStatus.details?.[key as Engine] || `${key} · 未安装`}
                     </span>
                   ))}
                 </div>
               )}
             </div>
+            {window.texite && (
+              <RuntimeSettings
+                onChange={() => {
+                  void window
+                    .texite!.detectEngines()
+                    .then(setEngineStatus)
+                    .catch((e) => notify(friendlyError(e)));
+                }}
+              />
+            )}
             {modalError && (
               <p className="form-error" role="alert">
                 {modalError}

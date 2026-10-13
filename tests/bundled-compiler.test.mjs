@@ -9,7 +9,7 @@ test(
   { timeout: 180000 },
   async (t) => {
     try {
-      await fs.access(path.join(runtime, 'texlive.zip'));
+      await fs.access(path.join(runtime, 'default.texite-runtime.zip'));
     } catch {
       t.skip('Run runtime:prepare to test the distributable compiler.');
       return;
@@ -18,17 +18,17 @@ test(
     const base = await fs.mkdtemp(path.resolve('.qa/offline-test-'));
     const compiler = new workspace.Compiler(base, runtime);
     const project = {
-      engine: 'tectonic',
+      engine: 'pdflatex',
       mainFile: 'main.tex',
       revision: 7,
       files: [
         {
           path: 'main.tex',
-          content: String.raw`\documentclass[fontset=fandol]{ctexart}
+          content: String.raw`\documentclass{ctexart}
 \usepackage{amsmath,tikz,booktabs,hyperref}
 \begin{document}
 \section{中文离线编译}
-这是无需安装 TeX 的编译测试。\input{chapters/body}
+这是无需安装 TeX 的编译测试。\include{chapters/body}
 \begin{equation}E=mc^2\end{equation}
 \begin{tikzpicture}\draw (0,0) circle (1cm);\end{tikzpicture}
 \cite{test}\bibliographystyle{plain}\bibliography{refs}
@@ -42,10 +42,12 @@ test(
         },
       ],
     };
-    // The runtime uses a local ZIP plus --only-cached; no network resource URL is provided.
+    // The bundled pdfTeX runs against local, independently managed TeX modules.
     const result = await compiler.compile(project);
     assert.equal(result.success, true, result.log);
-    assert.equal(result.engine, 'tectonic');
+    assert.equal(result.engine, 'pdflatex');
+    assert.match(result.log, /This is pdfTeX/);
+    assert.match(result.compilerLabel, /pdfLaTeX.*2025/);
     assert.equal(Buffer.from(result.pdf).subarray(0, 5).toString(), '%PDF-');
     assert(!/download/i.test(result.log), result.log);
     await fs.writeFile(path.join(base, 'chinese.pdf'), Buffer.from(result.pdf));

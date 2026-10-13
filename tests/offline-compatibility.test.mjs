@@ -3,35 +3,39 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import workspace from '../apps/desktop/workspace.cjs';
-import JSZip from 'jszip';
+import { createRequire } from 'node:module';
+const { RuntimeManager } = createRequire(import.meta.url)('../apps/desktop/runtime-manager.cjs');
 
 const runtime = path.resolve(process.env.TEXITE_TEST_RUNTIME || 'runtime');
 const fixtures = new URL('./fixtures/offline/', import.meta.url);
 
 test(
-  'offline compatibility: independent first-run caches and real PDF contents',
+  'offline compatibility: real pdfTeX and imported XeTeX across common document fixtures',
   { timeout: 600000 },
   async (t) => {
     try {
-      await fs.access(path.join(runtime, 'texlive.zip'));
+      await fs.access(path.join(runtime, 'default.texite-runtime.zip'));
     } catch {
       t.skip('Run runtime:prepare to test the distributable compiler.');
       return;
     }
     const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    const bundle = await JSZip.loadAsync(await fs.readFile(path.join(runtime, 'texlive.zip')));
-    const fontConfig = await bundle.file('ctexopts.cfg')?.async('string');
-    assert.match(fontConfig || '', /^\\ctex_set:nn\s*\{ option \}\s*\{ fontset = fandol \}/m);
     await fs.mkdir('.qa', { recursive: true });
     const base = await fs.mkdtemp(path.resolve('.qa/compatibility-'));
+    const manager = new RuntimeManager(runtime, path.join(base, 'modules'));
+    await manager.init();
+    const suffix = process.platform + '-' + process.arch;
+    await manager.install(
+      path.resolve(`release/engine-packs/Texite-0.5.0-xelatex-${suffix}.texite-runtime.zip`),
+    );
     for (const name of (await fs.readdir(fixtures)).filter((name) => name.endsWith('.tex'))) {
       let failedCompilation = false;
       await t.test(name, async () => {
         const cache = path.join(base, name.replace('.tex', ''));
-        const compiler = new workspace.Compiler(cache, runtime);
+        const compiler = new workspace.Compiler(cache, runtime, manager);
         // No format/font cache from another case or an existing installation.
         const result = await compiler.compile({
-          engine: 'tectonic',
+          engine: ['chinese.tex', 'fonts.tex'].includes(name) ? 'xelatex' : 'pdflatex',
           mainFile: 'main.tex',
           revision: 1,
           files: [
@@ -56,8 +60,11 @@ test(
           t.diagnostic(`${name}: ${result.log.slice(-12000)}`);
         }
         assert.equal(result.success, true, result.log.slice(-12000));
-        assert.match(result.log, /generating format "latex"/);
-        assert.match(result.log, /using only cached resource files/);
+        assert.match(result.log, /实际编译器/);
+        assert.match(
+          result.log,
+          ['chinese.tex', 'fonts.tex'].includes(name) ? /This is XeTeX/ : /This is pdfTeX/,
+        );
         // Upstream Beamer Madrid's title shadow emits a nullfont "5" warning
         // with the full 2022 bundle too. Reject all other missing characters.
         const missing = (result.log.match(/.*(?:download|Missing character:).*$/gim) || []).filter(
@@ -105,7 +112,7 @@ test(
             assert(text.includes('中文演示文稿') && text.includes('中文内容'), text);
           }
           if (name === 'bibliography.tex' || name === 'biblatex.tex') {
-            assert.match(result.log, /Running BibTeX/);
+            assert.match(result.log, /BibTeX/);
             assert.match(text, /Offline reference/i);
             if (name === 'bibliography.tex') assert(text.includes('中文文献'), text);
           }

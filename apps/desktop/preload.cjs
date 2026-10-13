@@ -6,6 +6,11 @@ contextBridge.exposeInMainWorld('texite', {
   openProject: () => ipcRenderer.invoke('project:open'),
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   detectEngines: () => ipcRenderer.invoke('compiler:detect'),
+  listRuntime: () => ipcRenderer.invoke('runtime:list'),
+  chooseRuntimePack: () => ipcRenderer.invoke('runtime:choose'),
+  installRuntimePack: (ids) => ipcRenderer.invoke('runtime:install', ids),
+  removeRuntimeModule: (id) => ipcRenderer.invoke('runtime:remove', id),
+  restoreDefaultRuntime: () => ipcRenderer.invoke('runtime:restore'),
   compile: (project) => ipcRenderer.invoke('compiler:run', project),
   cancelCompile: () => ipcRenderer.invoke('compiler:cancel'),
   onCompileLog: (callback) => {

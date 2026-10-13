@@ -798,3 +798,114 @@
 .hex-field input:focus-visible {
   outline: none;
 }
+/* Local compiler library */
+.runtime-settings {
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+.runtime-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.runtime-heading p,
+.runtime-hint,
+.runtime-import p {
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.runtime-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.runtime-hint a {
+  color: var(--accent);
+}
+.runtime-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 12px 0;
+}
+.runtime-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 0 10px;
+}
+.runtime-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--secondary);
+}
+.runtime-tabs button[aria-pressed='true'] {
+  color: var(--text);
+  background: var(--tint);
+}
+.runtime-module-list {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.runtime-module,
+.runtime-import-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.runtime-module:last-child,
+.runtime-import-row:last-child {
+  border-bottom: 0;
+}
+.runtime-module strong,
+.runtime-import-row span {
+  font-size: 12px;
+  font-weight: 500;
+}
+.runtime-module small,
+.runtime-import-row small {
+  display: block;
+  font-size: 10px;
+  margin-top: 4px;
+  color: var(--secondary);
+}
+.runtime-import-row span {
+  flex: 1;
+}
+.runtime-search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: var(--text);
+  background: var(--surface);
+}
+.runtime-confirm {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.runtime-confirm button {
+  margin-right: 8px;
+}
+.runtime-settings button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

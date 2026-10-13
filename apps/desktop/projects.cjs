@@ -55,7 +55,7 @@ class ProjectLibrary {
       folders: data.folders,
       mainFile,
       activeFile: mainFile,
-      engine: data.settings.engine || 'tectonic',
+      engine: data.settings.engine || 'pdflatex',
       revision: 0,
       updatedAt: Date.now(),
       location: { kind: entry.kind, directory: entry.root },

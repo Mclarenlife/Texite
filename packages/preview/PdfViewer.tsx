@@ -124,6 +124,11 @@ export function PdfViewer({
       <div className="pane-heading pdf-header">
         <span className="pdf-heading-label" title={label}>
           PDF
+          {label && (
+            <small className="pdf-engine-label" aria-label="PDF 实际编译器">
+              {label}
+            </small>
+          )}
         </span>
         <div className="pdf-controls">
           <button
