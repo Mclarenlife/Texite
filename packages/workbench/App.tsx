@@ -484,7 +484,7 @@ export function App() {
     // Flush edits before loading another disk snapshot. Preserve recovery on external conflicts.
     await saveQueue.current.catch(() => {});
     if (projectRef.current && !alreadyFlushed) await persist(projectRef.current).catch(() => {});
-    if (openedIds.includes(next.id)) {
+    if (!refresh && !alreadyFlushed && openedIds.includes(next.id)) {
       next = drafts.current.get(next.id) ?? next;
       refresh = false;
     }

@@ -30,7 +30,7 @@ def digest(data, algorithm='sha256'):
 def fetch(url, dest, checksum, algorithm='sha512'):
     if not dest.exists():
         part = dest.with_suffix(dest.suffix + '.part')
-        subprocess.run(['curl.exe' if os.name == 'nt' else 'curl', '-fsSL', '--retry', '3', '--max-time', '180', '-o', str(part), url], check=True)
+        subprocess.run(['curl.exe' if os.name == 'nt' else 'curl', '-fsSL', '--retry', '3', '--retry-all-errors', '--max-time', '180', '-o', str(part), url], check=True)
         part.replace(dest)
     if digest(dest.read_bytes(), algorithm) != checksum:
         raise RuntimeError('Checksum mismatch: ' + str(dest))
