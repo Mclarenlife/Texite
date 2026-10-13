@@ -33,6 +33,8 @@ type Props = {
   font: string;
   onFont: (v: string) => void;
   fontSize: number;
+  uiSize: string;
+  onUiSize: (v: string) => void;
   onFontSize: (v: number) => void;
   reduceMotion: boolean;
   onReduceMotion: (v: boolean) => void;
@@ -277,6 +279,45 @@ export function AppearanceSettings(props: Props) {
                     </>
                   ),
                 }))}
+              />
+              <div className="settings-section-heading">
+                <h3>界面字号</h3>
+                <span>调整菜单与面板文字，编辑器字号单独设置</span>
+              </div>
+              <Choices
+                label="界面字号"
+                className="ui-size-choices"
+                value={props.uiSize}
+                onChange={props.onUiSize}
+                options={[
+                  {
+                    id: 'small',
+                    label: '小',
+                    content: (
+                      <span className="ui-size-preview small">
+                        小<span>轻巧紧凑</span>
+                      </span>
+                    ),
+                  },
+                  {
+                    id: 'medium',
+                    label: '中',
+                    content: (
+                      <span className="ui-size-preview medium">
+                        中<span>标准舒适</span>
+                      </span>
+                    ),
+                  },
+                  {
+                    id: 'large',
+                    label: '大',
+                    content: (
+                      <span className="ui-size-preview large">
+                        大<span>清晰易读</span>
+                      </span>
+                    ),
+                  },
+                ]}
               />
               <div className="motion-setting">
                 <div>

@@ -97,6 +97,35 @@ test('managed passes replace resolved citation warnings while preserving final p
   assert.match(bibFailure[0].message, /absent.bib/);
 });
 
+test('box diagnostics exclude shipout progress, keep wrapped locations and preserve subsequent file nesting', () => {
+  const diagnostics = parseDiagnostics(
+    [
+      '(./main.tex',
+      'Underfull \\vbox (badness 10000) has occurred while \\output is active',
+      'Underfull \\vbox (badness 10000) has occurred while \\output is active [7 <./fig.pdf>] [8] (./chapters/next.tex',
+      'LaTeX Warning: Citation missing on input line 5.',
+      ')',
+      'Underfull \\hbox (badness 4403) in paragraph',
+      '  at lines 48--49',
+      '  []\\OT1/ptm/m/n/10 A paragraph dump',
+      'Overfull \\hbox (2.0pt too wide) detected at line 60',
+      'Package example Warning: A wrapped warning',
+      '(example)    on input line 70.',
+    ].join('\n'),
+  );
+  assert.equal(diagnostics.length, 5);
+  assert.equal(
+    diagnostics[0].message,
+    'Underfull \\vbox (badness 10000) has occurred while \\output is active',
+  );
+  assert.equal(diagnostics[1].file, 'chapters/next.tex');
+  assert.equal(diagnostics[2].line, 48);
+  assert.equal(diagnostics[2].file, 'main.tex');
+  assert(!diagnostics[2].message.includes('paragraph dump'));
+  assert.equal(diagnostics[3].line, 60);
+  assert.equal(diagnostics[4].line, 70);
+});
+
 test('validates a project and recovers a missing main selection without losing assets', () => {
   const project = createProject();
   project.mainFile = 'missing.tex';

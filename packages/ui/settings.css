@@ -11,7 +11,7 @@
 .settings-dialog > [id='dialog-description'] {
   padding: 0 26px;
   margin: 0 0 18px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .settings-studio {
   display: flex;
@@ -31,7 +31,7 @@
   gap: 8px;
   padding: 13px 0;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .settings-nav button[aria-selected='true'] {
   color: var(--text);
@@ -69,12 +69,12 @@
 }
 .settings-section-heading h3 {
   margin: 0;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
   font-weight: 600;
   letter-spacing: 0.1px;
 }
 .settings-section-heading > span {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .choice-grid {
@@ -130,7 +130,7 @@
   align-items: center;
   gap: 6px;
   padding: 12px 2px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .mini-window {
   display: block;
@@ -288,11 +288,11 @@
   flex-direction: column;
   gap: 4px;
   padding: 11px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   font-weight: 550;
 }
 .palette-name small {
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--secondary);
   font-weight: 400;
 }
@@ -308,14 +308,14 @@
   border-top: 1px solid var(--line);
 }
 .motion-setting strong {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   font-weight: 500;
 }
 .motion-setting small {
   display: block;
   margin-top: 5px;
   color: var(--secondary);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
 }
 .motion-setting [role='switch'] {
   width: 34px;
@@ -349,12 +349,12 @@
   align-items: center;
   gap: 6px;
   color: var(--secondary);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   margin-bottom: 19px;
 }
 .live-preview-label > span:last-child {
   margin-left: auto;
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
 }
 .live-dot {
   width: 5px;
@@ -376,11 +376,11 @@
   height: 37px;
   padding: 0 13px;
   border-bottom: 1px solid var(--line);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
 }
 .live-editor-heading > span:last-child {
   margin-left: auto;
-  font-size: 8px;
+  font-size: calc(8px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .live-file-dot {
@@ -417,7 +417,7 @@
   display: flex;
   justify-content: space-between;
   color: var(--secondary);
-  font-size: 8px;
+  font-size: calc(8px * var(--ui-font-scale, 1));
 }
 .live-editor-footer span:first-child {
   display: flex;
@@ -429,22 +429,22 @@
   flex-direction: column;
   gap: 9px;
   text-align: center;
-  font-size: 50px;
+  font-size: calc(50px * var(--ui-font-scale, 1));
   letter-spacing: -2px;
   padding: 30px 0 24px;
   border-bottom: 1px solid var(--line);
 }
 .preview-type-specimen > span {
-  font-size: 21px;
+  font-size: calc(21px * var(--ui-font-scale, 1));
   letter-spacing: 4px;
 }
 .preview-type-specimen small {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   letter-spacing: 0.5px;
   color: var(--secondary);
 }
 .settings-preview-note {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   line-height: 1.9;
   color: var(--secondary);
   padding-top: 8px;
@@ -454,7 +454,7 @@
   align-items: center;
   gap: 4px;
   color: var(--secondary);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   padding: 0;
 }
 .editor-color-cards {
@@ -489,7 +489,7 @@
   display: flex;
   gap: 5px;
   align-items: center;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .color-token-label > span {
@@ -498,7 +498,7 @@
 .color-token-label small {
   display: block;
   margin-top: 3px;
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -532,7 +532,7 @@
   gap: 7px;
 }
 .color-studio-heading strong {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   font-weight: 550;
 }
 .color-studio-body {
@@ -599,7 +599,7 @@
   background: var(--surface);
 }
 .hex-field span {
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   padding: 0 8px;
   color: var(--secondary);
 }
@@ -607,7 +607,7 @@
   width: 100%;
   border: 0;
   background: transparent;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   font-family: ui-monospace, monospace;
   padding: 5px 2px;
   outline: none;
@@ -640,19 +640,19 @@
   gap: 5px;
   align-items: center;
   color: var(--accent);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   padding: 0;
 }
 .color-values > small {
   display: block;
   margin-top: 10px;
   color: var(--muted);
-  font-size: 8px;
+  font-size: calc(8px * var(--ui-font-scale, 1));
 }
 .color-error {
   margin: 8px 0 0;
   color: var(--danger);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
 }
 .contrast-choices {
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -662,10 +662,10 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
 }
 .contrast-glyph {
-  font-size: 27px;
+  font-size: calc(27px * var(--ui-font-scale, 1));
   font-weight: 500;
   font-family: Georgia, serif;
 }
@@ -686,19 +686,19 @@
   bottom: auto;
 }
 .font-glyph {
-  font-size: 21px;
+  font-size: calc(21px * var(--ui-font-scale, 1));
   letter-spacing: -1px;
   min-width: 62px;
 }
 .font-choices strong {
   display: block;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   font-weight: 500;
 }
 .font-choices small {
   display: block;
   margin-top: 4px;
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .font-size-control {
@@ -706,7 +706,7 @@
   display: flex;
   gap: 25px;
   align-items: center;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .font-size-control span {
   display: flex;
@@ -719,7 +719,7 @@
 }
 .font-size-control small {
   color: var(--muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
 }
 .font-size-control input {
   width: 100%;
@@ -747,7 +747,7 @@
     padding: 20px 14px;
   }
   .choice-label {
-    font-size: 10px;
+    font-size: calc(10px * var(--ui-font-scale, 1));
     gap: 3px;
   }
   .choice-label svg {
@@ -780,10 +780,10 @@
     padding: 0 20px;
   }
   .settings-nav button {
-    font-size: 11px;
+    font-size: calc(11px * var(--ui-font-scale, 1));
   }
   .settings-section-heading > span {
-    font-size: 9px;
+    font-size: calc(9px * var(--ui-font-scale, 1));
   }
   .font-choices > button {
     padding: 10px;
@@ -791,7 +791,7 @@
   }
   .font-glyph {
     min-width: 48px;
-    font-size: 18px;
+    font-size: calc(18px * var(--ui-font-scale, 1));
   }
 }
 
@@ -813,7 +813,7 @@
 .runtime-hint,
 .runtime-import p {
   color: var(--secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.65;
 }
 .runtime-hint {
@@ -871,13 +871,13 @@
 }
 .runtime-module strong,
 .runtime-import-row span {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   font-weight: 500;
 }
 .runtime-module small,
 .runtime-import-row small {
   display: block;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   margin-top: 4px;
   color: var(--secondary);
 }
@@ -899,7 +899,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.7;
 }
 .runtime-confirm button {
@@ -908,4 +908,28 @@
 .runtime-settings button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.ui-size-preview {
+  display: grid;
+  place-items: center;
+  gap: 12px;
+  padding: 14px 4px;
+  font-weight: 600;
+}
+.ui-size-choices {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ui-size-preview.small {
+  font-size: calc(18px * var(--ui-font-scale, 1));
+}
+.ui-size-preview.medium {
+  font-size: calc(23px * var(--ui-font-scale, 1));
+}
+.ui-size-preview.large {
+  font-size: calc(28px * var(--ui-font-scale, 1));
+}
+.ui-size-preview > span {
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  font-weight: 400;
+  color: var(--secondary);
 }

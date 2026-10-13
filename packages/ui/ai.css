@@ -38,13 +38,13 @@
   padding: 14px 16px;
 }
 .ai-heading strong {
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-font-scale, 1));
   font-weight: 600;
   letter-spacing: normal;
 }
 .ai-heading small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .ai-dot {
   height: 6px;
@@ -61,7 +61,7 @@
   padding: 11px;
   background: var(--rail);
   border-radius: 9px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   line-height: 1.7;
 }
 .ai-connection p {
@@ -74,7 +74,7 @@
   margin-bottom: 8px;
 }
 .ai-connection button {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .ai-thread {
   flex: 1;
@@ -97,7 +97,7 @@
   align-items: center;
   gap: 10px;
   text-align: left;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   border: 1px solid var(--line);
   padding: 8px 10px;
   border-radius: 8px;
@@ -115,14 +115,14 @@
   padding: 10px 12px;
   border-radius: 12px 12px 3px 12px;
   background: var(--rail);
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-font-scale, 1));
   line-height: 1.7;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .ai-response-label {
   margin: 16px 0 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   font-weight: 650;
 }
 .ai-response-label span {
@@ -133,11 +133,11 @@
 .ai-reply {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-font-scale, 1));
   line-height: 1.8;
 }
 .ai-activity {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--muted);
   margin: 8px 0 12px;
 }
@@ -154,7 +154,7 @@
   padding: 3px 0;
 }
 .ai-task-error {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   line-height: 1.7;
   color: var(--error, #b54747);
   overflow-wrap: anywhere;
@@ -166,7 +166,7 @@
   border-radius: 8px;
   border: 1px solid var(--line);
   background: var(--tint);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   text-align: left;
 }
 .ai-changes > span {
@@ -177,7 +177,7 @@
 }
 .ai-context {
   color: var(--secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   margin: 0 2px 10px;
 }
 .ai-context > span:nth-child(2) {
@@ -200,7 +200,7 @@
   outline: none;
   color: var(--text);
   font: inherit;
-  font-size: 14px;
+  font-size: calc(14px * var(--ui-font-scale, 1));
   line-height: 1.6;
 }
 .ai-composer-controls {
@@ -235,7 +235,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   padding: 10px;
   background: var(--rail);
   margin: 12px 0 0;
@@ -247,7 +247,7 @@
 .ai-review-footer {
   justify-content: space-between;
   margin-top: 18px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .ai-toggle[aria-pressed='true'] {
@@ -330,7 +330,7 @@
   border-radius: 6px;
   padding: 6px 9px;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .ai-mode-tabs button[aria-selected='true'] {
   background: var(--raised);
@@ -339,7 +339,7 @@
 }
 .ai-mode-label,
 .ai-api-model {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .ai-api-model {
@@ -354,7 +354,7 @@
 .api-settings label {
   display: grid;
   gap: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .api-settings input {
   border: 1px solid var(--line);
@@ -365,7 +365,7 @@
   font: inherit;
 }
 .api-settings p {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.6;
   color: var(--secondary);
 }
@@ -411,7 +411,7 @@
   background: var(--raised);
   color: var(--secondary);
   box-shadow: 0 8px 24px #0002;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   font-weight: 400;
   line-height: 1.7;
   z-index: 2;
@@ -472,13 +472,13 @@
   padding: 6px 8px;
   min-width: 0;
   max-width: 120px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   border-color: transparent;
   background: transparent;
   gap: 6px;
 }
 .ai-connection-toggle {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--secondary);
   padding: 6px 0 6px 6px;
   gap: 6px;
@@ -488,7 +488,7 @@
   margin: 0 14px 8px;
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.6;
   color: var(--secondary);
   flex-shrink: 0;
@@ -496,10 +496,10 @@
 .ai-connect-prompt .secondary-button {
   white-space: nowrap;
   padding: 7px 9px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .ai-connection {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .ai-connection .ai-inline-actions {
   margin: 10px 0;
@@ -511,7 +511,7 @@
   justify-content: flex-end;
 }
 .ai-empty-label {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .ai-input-box {
@@ -530,7 +530,7 @@
   gap: 8px;
   border-color: transparent;
   background: transparent;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .ai-composer-controls .select-trigger:hover {
   background: var(--tint);
@@ -542,8 +542,8 @@
 .ai-activity,
 .ai-task-error,
 .ai-changes {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .ai-help [role='tooltip'] {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }

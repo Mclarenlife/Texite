@@ -18,7 +18,6 @@ import {
   FileCode2,
   FilePlus2,
   FileText,
-  FolderOpen,
   FolderPlus,
   Columns2,
   PanelTop,
@@ -130,6 +129,13 @@ export function App() {
     'auto',
   );
   const [fontSize, setFontSize] = usePreference<number>('font-size', 14);
+  const [uiSize, setUiSize] = usePreference<string>('ui-size', 'medium');
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--ui-font-scale',
+      uiSize === 'large' ? '1.16' : uiSize === 'small' ? '0.92' : '1',
+    );
+  }, [uiSize]);
   const [reduceMotion, setReduceMotion] = usePreference<boolean>('reduce-motion', false);
   const [sidebarWidth, setSidebarWidth] = usePreference<number>('sidebar-width', 240);
   const editHistory = useEditHistory(project?.id);
@@ -1085,11 +1091,6 @@ export function App() {
               </div>
               {section === 'files' ? (
                 <>
-                  <button className="project-folder" onClick={() => setSelectedFolder('')}>
-                    <FolderOpen size={15} />
-                    <span>{project.name}</span>
-                    <ChevronDown size={12} />
-                  </button>
                   <FileTree
                     project={project}
                     selectedFolder={selectedFolder}
@@ -1751,6 +1752,8 @@ export function App() {
             onFont={setFontChoice}
             fontSize={fontSize}
             onFontSize={setFontSize}
+            uiSize={uiSize}
+            onUiSize={setUiSize}
             reduceMotion={reduceMotion}
             onReduceMotion={setReduceMotion}
             initialTab={modalError ? 'compiler' : 'appearance'}

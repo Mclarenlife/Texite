@@ -5,7 +5,7 @@
   color: #303a34;
   background: #f3f4ef;
   font-synthesis: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
   --bg: #f3f4ef;
   --surface: #fcfdf9;
   --raised: #fff;
@@ -102,7 +102,7 @@ button svg {
 }
 kbd {
   font-family: inherit;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
   white-space: nowrap;
 }
@@ -186,7 +186,7 @@ button[hidden],
 }
 .rail-bottom .avatar {
   border: 1px solid var(--line);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
   border-radius: 50%;
   width: 31px;
@@ -219,7 +219,7 @@ button[hidden],
 }
 .breadcrumb {
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .breadcrumb > button {
   padding: 5px 0;
@@ -239,7 +239,7 @@ button[hidden],
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   background: var(--tint);
   color: var(--accent);
   padding: 4px 7px;
@@ -259,7 +259,7 @@ button[hidden],
   align-items: center;
   gap: 9px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -288,7 +288,7 @@ button[hidden],
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 8px 12px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   background: var(--surface);
 }
 .export-button:hover {
@@ -303,13 +303,13 @@ button[hidden],
   flex-shrink: 0;
 }
 .eyebrow {
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   font-weight: 550;
   letter-spacing: 2px;
   color: var(--muted);
 }
 h1 {
-  font-size: 24px;
+  font-size: calc(24px * var(--ui-font-scale, 1));
   line-height: 1.5;
   font-weight: 550;
   letter-spacing: -0.7px;
@@ -334,7 +334,7 @@ h1 {
   gap: 6px;
   padding: 7px 12px;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   border-radius: 7px;
 }
 .mode-switch button > svg,
@@ -360,7 +360,7 @@ h1 {
   align-items: center;
   gap: 9px;
   box-shadow: 0 4px 9px #2f493219;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   white-space: nowrap;
 }
 .compile-button:hover {
@@ -395,7 +395,7 @@ h1 {
   justify-content: space-between;
   align-items: center;
   padding: 3px 4px 13px 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .sidebar-heading > div {
@@ -408,7 +408,7 @@ h1 {
   gap: 7px;
   padding: 8px 8px;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   text-align: left;
   width: 100%;
 }
@@ -434,7 +434,7 @@ h1 {
   padding: 9px 11px 9px 20px;
   border-radius: 7px;
   text-align: left;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   color: var(--secondary);
   min-height: 35px;
 }
@@ -469,10 +469,10 @@ h1 {
   justify-content: space-between;
   padding: 25px 10px 14px;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .outline-heading > span:last-child {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .outline-list {
@@ -487,24 +487,24 @@ h1 {
   text-align: left;
   padding: 8px 9px;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   border-radius: 5px;
 }
 .outline-list > button:hover {
   background: var(--tint);
 }
 .outline-list > button > span {
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--muted);
   padding-top: 2px;
 }
 .outline-list > button.subsection {
   padding-left: 28px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .sidebar-empty {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--muted);
   padding: 8px 10px;
   line-height: 1.8;
@@ -524,14 +524,14 @@ h1 {
   margin-top: 3px;
 }
 .quiet-tip p {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   line-height: 1.9;
   margin: 0;
   color: var(--secondary);
 }
 .quiet-tip p span {
   color: var(--muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
 }
 .sidebar-bottom > button {
   border-top: 1px solid var(--line);
@@ -540,7 +540,7 @@ h1 {
   gap: 8px;
   align-items: center;
   width: 100%;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .sidebar-bottom > button svg:last-child {
@@ -579,7 +579,7 @@ h1 {
   align-items: center;
   justify-content: space-between;
   padding: 0 13px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .pane-heading > div {
   display: flex;
@@ -594,7 +594,7 @@ h1 {
   height: 47px;
   position: relative;
   color: var(--accent);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -628,7 +628,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--muted);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
 }
@@ -671,7 +671,7 @@ h1 {
   background: transparent;
   border: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   padding: 0;
 }
 .source-editor .cm-lineNumbers .cm-gutterElement {
@@ -738,7 +738,7 @@ h1 {
   gap: 14px;
   padding: 0 15px;
   border-top: 1px solid var(--line);
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .editor-footer > span {
@@ -778,7 +778,7 @@ h1 {
   color: var(--secondary);
 }
 .small-label {
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--muted);
   white-space: nowrap;
 }
@@ -796,7 +796,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 9px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
 }
 .inline-tools button {
   width: 24px;
@@ -815,7 +815,7 @@ h1 {
   padding: 6px;
   border-radius: 5px;
   color: var(--secondary);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
 }
 .subtle-button:hover {
   background: var(--tint);
@@ -844,7 +844,7 @@ h1 {
   align-items: center;
   justify-content: center;
   gap: 15px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
   flex-shrink: 0;
   border-top: 1px solid var(--line);
@@ -852,7 +852,7 @@ h1 {
 .preview-notice {
   background: var(--purple-tint);
   color: var(--purple);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   padding: 6px 12px;
   flex-shrink: 0;
 }
@@ -879,14 +879,14 @@ h1 {
   margin-bottom: 30px;
 }
 .empty-paper h2 {
-  font-size: 26px;
+  font-size: calc(26px * var(--ui-font-scale, 1));
   font-weight: 500;
   line-height: 1.7;
   letter-spacing: 1px;
   margin: 0 0 14px;
 }
 .empty-paper p {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--muted);
   line-height: 2;
 }
@@ -941,15 +941,15 @@ h1 {
   gap: 5px;
 }
 .citation-lens span {
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--purple);
 }
 .citation-lens strong {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   font-weight: 500;
 }
 .citation-lens small {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -972,7 +972,7 @@ h1 {
   object-fit: contain;
 }
 .asset-preview p {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .status-bar {
@@ -984,7 +984,7 @@ h1 {
   gap: 10px;
   padding: 0 24px 0 22px;
   border-top: 1px solid var(--line);
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .status-bar > div,
@@ -1004,7 +1004,7 @@ h1 {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   color: var(--secondary);
   padding: 3px 5px;
   border-radius: 4px;
@@ -1039,7 +1039,7 @@ h1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   flex-shrink: 0;
 }
 .diagnostics-heading > span {
@@ -1078,7 +1078,7 @@ h1 {
   text-align: left;
   padding: 5px 7px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
@@ -1089,7 +1089,7 @@ h1 {
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .diagnostic-meta small {
   color: var(--secondary);
@@ -1101,14 +1101,37 @@ h1 {
 .diagnostics-body .warning {
   color: var(--secondary);
 }
+.diagnostics-summary {
+  margin: 12px 7px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  color: var(--secondary);
+}
+.diagnostic-help {
+  display: block;
+  margin: 5px 0;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  color: var(--secondary);
+  line-height: 1.7;
+}
+.diagnostics-layout {
+  border-top: 1px solid var(--line);
+}
+.diagnostics-body .diagnostics-layout > summary {
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  font-weight: 600;
+  padding: 12px 7px;
+}
+.diagnostics-layout > .diagnostic-help {
+  margin: 0 7px 12px;
+}
 .diagnostics-body summary {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--secondary);
   cursor: pointer;
   padding: 8px 5px;
 }
 .diagnostics-body pre {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--secondary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -1135,20 +1158,20 @@ h1 {
   border-color: var(--accent);
 }
 .reference-year {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--purple);
 }
 .reference-list strong {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   font-weight: 500;
   line-height: 1.6;
 }
 .reference-list small {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .reference-insert {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--accent);
   display: flex;
   gap: 5px;
@@ -1174,7 +1197,7 @@ h1 {
   background: none;
   min-width: 0;
   width: 100%;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .project-search > button {
   display: flex;
@@ -1186,12 +1209,12 @@ h1 {
   border-bottom: 1px solid var(--line);
 }
 .project-search strong {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--accent);
   font-weight: 500;
 }
 .project-search > button > span {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   line-height: 1.6;
   color: var(--secondary);
   display: -webkit-box;
@@ -1265,13 +1288,13 @@ h1 {
   margin-bottom: 10px;
 }
 .dialog-heading h2 {
-  font-size: 19px;
+  font-size: calc(19px * var(--ui-font-scale, 1));
   font-weight: 550;
   margin: 0;
   letter-spacing: -0.4px;
 }
 .dialog-content > [id='dialog-description'] {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.8;
   color: var(--muted);
   margin: 0 0 23px;
@@ -1284,7 +1307,7 @@ h1 {
   gap: 7px;
   padding: 10px 14px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .primary-button {
   background: var(--accent-strong);
@@ -1309,7 +1332,7 @@ h1 {
   display: flex;
   flex-direction: column;
   gap: 9px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .form-field input {
@@ -1317,14 +1340,14 @@ h1 {
   border-radius: 8px;
   background: var(--raised);
   padding: 12px;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
   width: 100%;
 }
 .form-field input:focus {
   border-color: var(--accent);
 }
 .form-error {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.8;
   color: var(--danger);
   padding: 10px 12px;
@@ -1367,16 +1390,16 @@ h1 {
   font-family: Georgia, serif;
 }
 .project-card strong {
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
   font-weight: 500;
   overflow-wrap: anywhere;
 }
 .project-card > span {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .project-card small {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--accent);
 }
 .settings-stack {
@@ -1391,7 +1414,7 @@ h1 {
   gap: 20px;
   padding: 15px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .setting-row > span {
   display: flex;
@@ -1399,7 +1422,7 @@ h1 {
   gap: 6px;
 }
 .setting-row small {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .setting-row select {
@@ -1407,7 +1430,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--raised);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   max-width: 180px;
 }
 .setting-row input[type='range'] {
@@ -1430,10 +1453,10 @@ h1 {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .engine-note p {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   line-height: 1.8;
   color: var(--secondary);
 }
@@ -1442,7 +1465,7 @@ h1 {
   flex-wrap: wrap;
   gap: 12px;
   margin-top: 12px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
 }
 .engine-results > span {
   display: flex;
@@ -1461,7 +1484,7 @@ h1 {
   background: none;
   border: 0;
   outline: none;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
 }
 .command-list {
   padding-top: 10px;
@@ -1477,7 +1500,7 @@ h1 {
   gap: 10px;
   text-align: left;
   padding: 12px 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   border-radius: 6px;
 }
 .command-list > button:hover {
@@ -1485,14 +1508,14 @@ h1 {
 }
 .command-list small {
   margin-left: auto;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
 .command-list svg {
   color: var(--secondary);
 }
 .help-content p {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   color: var(--secondary);
   line-height: 1.9;
 }
@@ -1501,14 +1524,14 @@ h1 {
   justify-content: space-between;
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .shortcut-row kbd {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .help-content .muted {
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .toast {
   position: fixed;
@@ -1524,7 +1547,7 @@ h1 {
   align-items: center;
   gap: 10px;
   padding: 13px 16px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   max-width: min(650px, 90vw);
   z-index: 60;
   line-height: 1.6;
@@ -1596,10 +1619,10 @@ h1 {
     gap: 12px;
   }
   h1 {
-    font-size: 20px;
+    font-size: calc(20px * var(--ui-font-scale, 1));
   }
   .eyebrow {
-    font-size: 8px;
+    font-size: calc(8px * var(--ui-font-scale, 1));
     letter-spacing: 1.4px;
   }
   .workspace-actions {
@@ -1637,7 +1660,7 @@ h1 {
     margin-left: auto;
   }
   .workspace-heading h1 {
-    font-size: 18px;
+    font-size: calc(18px * var(--ui-font-scale, 1));
   }
   .workspace-heading .eyebrow {
     display: none;
@@ -1683,7 +1706,7 @@ h1 {
   .activity-rail .brand-symbol {
     width: 30px;
     height: 32px;
-    font-size: 25px;
+    font-size: calc(25px * var(--ui-font-scale, 1));
   }
   .rail-group > button,
   .rail-bottom > button {
@@ -1702,11 +1725,11 @@ h1 {
   }
   .breadcrumb .project-title {
     max-width: 165px;
-    font-size: 11px;
+    font-size: calc(11px * var(--ui-font-scale, 1));
   }
   .export-button {
     padding: 7px;
-    font-size: 10px;
+    font-size: calc(10px * var(--ui-font-scale, 1));
   }
   .workspace-heading {
     padding: 15px 12px;
@@ -1716,7 +1739,7 @@ h1 {
     width: 100%;
   }
   .workspace-heading h1 {
-    font-size: 19px;
+    font-size: calc(19px * var(--ui-font-scale, 1));
     margin: 0;
   }
   .workspace-actions {
@@ -1725,10 +1748,10 @@ h1 {
     justify-content: space-between;
   }
   .mode-switch button {
-    font-size: 11px;
+    font-size: calc(11px * var(--ui-font-scale, 1));
   }
   .compile-button {
-    font-size: 11px;
+    font-size: calc(11px * var(--ui-font-scale, 1));
   }
   .project-sidebar {
     position: absolute;
@@ -1786,7 +1809,7 @@ h1 {
     padding-right: 10px;
   }
   .source-editor .cm-scroller {
-    font-size: 13px;
+    font-size: calc(13px * var(--ui-font-scale, 1));
   }
   .source-editor .cm-content {
     padding-top: 12px;
@@ -1898,7 +1921,7 @@ h1 {
 .edit-mode-switch button {
   padding: 4px 9px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .edit-mode-switch button[aria-pressed='true'] {
   background: var(--raised);
@@ -1932,7 +1955,7 @@ h1 {
   border-radius: 5px;
   background: var(--raised);
   padding: 4px 0;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .page-count {
   min-width: 25px;
@@ -1940,7 +1963,7 @@ h1 {
   font-variant-numeric: tabular-nums;
 }
 .zoom-value {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   padding: 4px;
   min-width: 38px;
 }
@@ -1983,10 +2006,10 @@ h1 {
 .space-mark {
   color: var(--accent);
   font-weight: 600;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
 }
 .space-header h1 {
-  font-size: 29px;
+  font-size: calc(29px * var(--ui-font-scale, 1));
   letter-spacing: -1px;
   margin: 10px 0 0;
   font-weight: 550;
@@ -2042,7 +2065,7 @@ h1 {
 }
 .project-cover .cover-number {
   font-family: Georgia, serif;
-  font-size: 100px;
+  font-size: calc(100px * var(--ui-font-scale, 1));
   opacity: 0.13;
   position: absolute;
   right: 12px;
@@ -2087,7 +2110,7 @@ h1 {
   background: var(--tint);
 }
 .visual-toolbar span {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--muted);
   margin-left: 12px;
 }
@@ -2095,7 +2118,7 @@ h1 {
   padding: 25px clamp(20px, 3vw, 50px) 60px;
   max-width: 900px;
   margin: 0 auto;
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-font-scale, 1));
   line-height: 1.8;
   font-family: Georgia, 'Microsoft YaHei', serif;
 }
@@ -2116,12 +2139,12 @@ h1 {
   background: var(--bg);
 }
 .visual-section {
-  font-size: 25px;
+  font-size: calc(25px * var(--ui-font-scale, 1));
   font-weight: 600;
   margin-top: 28px;
 }
 .visual-subsection {
-  font-size: 20px;
+  font-size: calc(20px * var(--ui-font-scale, 1));
   font-weight: 600;
 }
 .visual-block textarea {
@@ -2419,7 +2442,7 @@ h1 {
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   line-height: 28px;
   color: var(--secondary);
 }
@@ -2479,7 +2502,7 @@ h1 {
   background: var(--raised);
 }
 .text-color-picker button {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--accent);
 }
 .settings-stack {
@@ -2493,7 +2516,7 @@ h1 {
   padding: 0 10px 16px;
 }
 .history-note {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
   line-height: 1.7;
   padding: 0 5px 8px;
@@ -2515,17 +2538,17 @@ h1 {
   border-color: var(--accent);
 }
 .history-list time {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
   font-variant-numeric: tabular-nums;
 }
 .history-list strong {
   font-weight: 550;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   overflow-wrap: anywhere;
 }
 .history-list button > span {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .history-list ins,
@@ -2561,18 +2584,18 @@ h1 {
 .history-review-heading small {
   display: block;
   color: var(--secondary);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   margin-top: 6px;
 }
 .history-review-heading button {
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .diff-legend {
   display: flex;
   gap: 12px;
   padding: 8px 16px;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .diff-legend ins,
@@ -2600,7 +2623,7 @@ h1 {
   flex: none;
   color: var(--secondary);
   user-select: none;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   padding-top: 3px;
   text-align: right;
   padding-right: 8px;
@@ -2833,17 +2856,17 @@ h1 {
   background: var(--bg);
 }
 .history-restore-bar > span {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
   line-height: 1.7;
 }
 .history-restore-bar > button {
   white-space: nowrap;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .recovery-badge {
   color: var(--accent) !important;
-  font-size: 9px !important;
+  font-size: calc(9px * var(--ui-font-scale, 1)) !important;
 }
 .dialog-content.restore-dialog {
   display: flex;
@@ -2861,11 +2884,11 @@ h1 {
   justify-content: space-between;
   gap: 14px;
   padding: 12px 0;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   border-top: 1px solid var(--line);
 }
 .restore-comparison-heading span {
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .restore-preview .diff-scroll {
@@ -2884,7 +2907,7 @@ h1 {
   padding-top: 18px;
 }
 .restore-footer > span {
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--secondary);
   line-height: 1.7;
 }
@@ -2894,7 +2917,7 @@ h1 {
   margin-left: auto;
 }
 .restore-equal {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   color: var(--secondary);
 }
 .diff-scroll {
@@ -2906,7 +2929,7 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-font-scale, 1));
   font-weight: 400;
   color: var(--secondary);
 }
@@ -2926,7 +2949,7 @@ h1 {
   padding: 0 2px;
   position: relative;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   white-space: nowrap;
 }
 .preview-tab[aria-selected='true'] {
@@ -2948,7 +2971,7 @@ h1 {
   min-width: 18px;
   border-radius: 5px;
   background: var(--tint);
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-font-scale, 1));
   font-weight: 500;
 }
 .pdf-header {
@@ -2990,7 +3013,7 @@ h1 {
   padding: 6px 16px;
   border-bottom: 1px solid var(--line);
   color: var(--secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .asset-toolbar > div {
   display: flex;
@@ -3026,7 +3049,7 @@ h1 {
   border-radius: 0;
 }
 .sidebar-heading > span {
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
   font-weight: 650;
   letter-spacing: 0.02em;
   color: var(--text);
@@ -3037,7 +3060,7 @@ h1 {
   border-top: 1px solid var(--line);
 }
 .outline-heading > span:first-child {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   font-weight: 650;
   color: var(--text);
 }
@@ -3047,7 +3070,7 @@ h1 {
   gap: 5px;
 }
 .space-tabs button {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   padding: 8px 12px;
   border-radius: 8px;
   color: var(--secondary);
@@ -3068,7 +3091,7 @@ h1 {
   min-height: 46px;
   margin: 0 0 18px;
   color: var(--secondary);
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   flex-wrap: wrap;
 }
 .space-selection label {
@@ -3105,13 +3128,13 @@ h1 {
   gap: 10px;
 }
 .project-open > strong {
-  font-size: 15px;
+  font-size: calc(15px * var(--ui-font-scale, 1));
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 .project-open > span {
   color: var(--secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .project-open .project-cover {
   width: 100%;
@@ -3135,7 +3158,7 @@ h1 {
   display: grid;
   grid-template-columns: 90px 1fr;
   gap: 18px 14px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.6;
 }
 .project-attributes dt {
@@ -3149,5 +3172,12 @@ h1 {
   padding: 80px 20px;
   color: var(--secondary);
   text-align: center;
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-font-scale, 1));
+}
+.preview-tabs {
+  gap: 22px;
+}
+.preview-tab[aria-label='PDF'] {
+  min-width: 60px;
+  justify-content: center;
 }

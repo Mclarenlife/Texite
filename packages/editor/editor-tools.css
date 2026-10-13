@@ -26,7 +26,7 @@
   color: var(--text) !important;
 }
 .cm-completionLabel {
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .cm-completionMatchedText {
   color: var(--syntax-keyword);
@@ -36,7 +36,7 @@
 .cm-completionDetail {
   margin-left: auto !important;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   font-style: normal !important;
   font-family: system-ui;
 }
@@ -66,7 +66,7 @@
   align-items: center;
   margin-bottom: 6px;
   color: var(--secondary);
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .editor-tools-heading > span {
   display: flex;
@@ -92,7 +92,7 @@
   background: transparent;
   color: var(--text);
   padding: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .inline-ai-form button {
   width: 29px;
@@ -115,7 +115,7 @@
   flex: 1;
   padding: 10px 4px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: calc(11px * var(--ui-font-scale, 1));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -131,7 +131,7 @@
   margin-top: 10px;
   border-top: 1px solid var(--line);
   padding-top: 10px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .insert-form > div {
   display: flex;
@@ -204,4 +204,163 @@
   .editor-context-popover {
     animation: none;
   }
+}
+.editor-insert-popover {
+  width: min(420px, calc(100vw - 24px));
+}
+.insert-tools {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.insert-form .insert-checks {
+  flex-wrap: wrap;
+  gap: 10px 18px;
+}
+.insert-check {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.insert-check input {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+}
+.insert-form label > input:not([type='checkbox']):not([type='number']) {
+  flex: 1;
+}
+.insert-note {
+  color: var(--secondary);
+  line-height: 1.6;
+}
+.symbol-picker {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.symbol-search,
+.select-search {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 9px;
+  font: inherit;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.symbol-picker > .insert-check {
+  margin: 10px 0;
+}
+.symbol-scroll {
+  max-height: 280px;
+  overflow: auto;
+}
+.symbol-scroll h4 {
+  margin: 12px 0 8px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  color: var(--secondary);
+  font-weight: 500;
+}
+.symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px;
+}
+.symbol-grid button {
+  display: grid;
+  gap: 3px;
+  padding: 9px 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.symbol-grid button:hover,
+.symbol-grid button:focus-visible {
+  background: var(--tint);
+  border-color: var(--accent);
+}
+.symbol-grid button > span {
+  font:
+    24px 'Cambria Math',
+    serif;
+}
+.symbol-grid small {
+  font-size: calc(9px * var(--ui-font-scale, 1));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.source-editor .cm-panels {
+  background: var(--raised);
+  color: var(--text);
+  border-color: var(--line);
+}
+.texite-search {
+  padding: 12px;
+  font-family: system-ui, 'Microsoft YaHei UI', sans-serif;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  display: grid;
+  gap: 8px;
+}
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.texite-search input:not([type='checkbox']) {
+  flex: 1;
+  min-width: 120px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+.texite-search input:focus {
+  border-color: var(--accent);
+}
+.texite-search button {
+  border-radius: 7px;
+  padding: 7px 9px;
+  color: var(--text);
+  font: inherit;
+}
+.texite-search button:hover {
+  background: var(--tint);
+}
+.search-count {
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  color: var(--secondary);
+}
+.search-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  color: var(--secondary);
+}
+.search-options label {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.search-options input {
+  accent-color: var(--accent);
+}
+.texite-search .search-icon {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  flex: none;
+  font-size: calc(18px * var(--ui-font-scale, 1));
+  display: grid;
+  place-items: center;
+}
+.search-count {
+  white-space: nowrap;
+}
+.search-row button {
+  white-space: nowrap;
 }

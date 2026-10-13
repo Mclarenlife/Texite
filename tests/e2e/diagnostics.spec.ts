@@ -1,6 +1,53 @@
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 
+test('layout diagnostics are grouped, retain navigation and copy, and explain EPS without hiding warnings', async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const pdf = Array.from(new Uint8Array(await (await fetch('./sample.pdf')).arrayBuffer()));
+    window.texite = {
+      compile: async (p) => ({
+        success: true,
+        revision: p.revision,
+        pdf,
+        log: '(./main.tex\nPackage epstopdf Warning: Shell escape feature is not enabled.\nLaTeX Warning: Citation missing on input line 2.\nUnderfull \\hbox (badness 4403) in paragraph at lines 3--4\nUnderfull \\vbox (badness 10000) has occurred while \\output is active [7 <./figure.pdf>] [8]',
+      }),
+    } as NonNullable<Window['texite']>;
+  });
+  await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+  await expect(page.getByRole('status')).toContainText('编译完成');
+  await page.getByRole('tab', { name: /编译诊断/ }).click();
+  const diagnostics = page.getByRole('region', { name: '编译诊断', exact: true });
+  await expect(diagnostics.locator('.diagnostics-summary')).toHaveText(
+    '0 个错误 · 2 个警告 · 2 条排版提示',
+  );
+  await expect(
+    diagnostics.getByText('LaTeX Warning: Citation missing on input line 2.', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    diagnostics.locator('.diagnostic-message').filter({ hasText: 'epstopdf' }),
+  ).toHaveAttribute('title', /未启用 EPS 图片自动转换/);
+  await expect(diagnostics.getByText(/未启用 EPS 图片自动转换/)).toHaveCount(0);
+  const layout = diagnostics.locator('.diagnostics-layout');
+  await expect(layout.locator('.diagnostic-row').first()).toBeHidden();
+  await layout.locator('summary').click();
+  await expect(layout.locator('.diagnostic-row').first()).toBeVisible();
+  await expect(layout).not.toContainText('figure.pdf');
+  await layout.locator('.diagnostic-message').first().click();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toContain('Underfull \\hbox');
+  await layout.getByRole('button', { name: '定位到 main.tex:3', exact: true }).click();
+  await expect(page.locator('.editor-footer')).toContainText('行 3');
+  await page.screenshot({ path: '.qa/diagnostics-grouped.png', animations: 'disabled' });
+  await diagnostics.getByText('原始日志', { exact: true }).click();
+  await expect(diagnostics.locator('pre')).toContainText('[7 <./figure.pdf>] [8]');
+});
+
 test('PDF diagnostics copy separately from locating, restore Code/split, and retain editor height', async ({
   page,
   context,

@@ -13,6 +13,7 @@ import type { InlineScope } from '../core/ai';
 import { latexCompletions } from './completions';
 import { EditorTools, type EditorAnchor } from './EditorTools';
 import './editor-tools.css';
+import { localizedSearch } from './searchPanel';
 
 export type EditorHandle = {
   jump: (position: number) => void;
@@ -125,6 +126,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
     };
     const extensions = [
       basicSetup,
+      localizedSearch,
       EditorView.domEventHandlers({
         mouseup(event, v) {
           if (event.button === 0)
@@ -239,7 +241,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       ],
     });
   }, [props.file.path, props.file.content, props.fontSize, props.projectId]);
-  function insert(text: string, graphicx = false) {
+  function insert(text: string, packages: string[] = []) {
     const v = view.current;
     if (!v || !anchor) return;
     if (
@@ -252,11 +254,21 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       return;
     }
     const changes = [{ from: anchor.scope.from, to: anchor.scope.to, insert: text }];
-    if (graphicx && !/\\usepackage(?:\[[^\]]*\])?\{[^}]*\bgraphicx\b/.test(anchor.scope.before)) {
+    const missing = packages.filter(
+      (name) =>
+        !new RegExp('\\\\usepackage(?:\\[[^\\]]*\\])?\\{[^}]*\\b' + name + '\\b').test(
+          anchor.scope.before,
+        ),
+    );
+    if (missing.length) {
       const preamble = anchor.scope.before.indexOf('\\begin{document}');
       if (preamble >= 0 && !(anchor.scope.from <= preamble && anchor.scope.to > preamble))
-        changes.push({ from: preamble, to: preamble, insert: '\\usepackage{graphicx}\n' });
-      else setToolError('图片代码已插入，请在主文件导言区加载 graphicx 宏包。');
+        changes.push({
+          from: preamble,
+          to: preamble,
+          insert: `\\usepackage{${missing.join(',')}}\n`,
+        });
+      else setToolError(`代码已插入，请在主文件导言区加载 ${missing.join('、')} 宏包。`);
     }
     v.dispatch({ changes, annotations: isolateHistory.of('full') });
     v.focus();
@@ -281,6 +293,8 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
           onAI={(prompt, scope) => current.current.onAI?.(prompt, scope)}
           busy={!!props.aiBusy}
           images={(props.files || []).filter((f) => /\.(png|jpe?g|pdf)$/i.test(f))}
+          references={props.references}
+          labels={props.labels || []}
           onImportImage={props.onImportImage}
         />
       )}

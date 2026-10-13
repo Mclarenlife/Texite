@@ -17,15 +17,19 @@ export function Select({
   onValueChange,
   children,
   disabled,
+  searchable = false,
   'aria-label': label,
 }: {
   value: string;
   onValueChange(value: string): void;
   children: ReactNode;
   disabled?: boolean;
+  searchable?: boolean;
   'aria-label': string;
 }) {
-  const options = Children.toArray(children).flatMap((child) =>
+  const [query, setQuery] = useState('');
+  const searchInput = useRef<HTMLInputElement>(null);
+  const allOptions = Children.toArray(children).flatMap((child) =>
     isValidElement<{ value?: string; children: ReactNode; disabled?: boolean }>(child)
       ? [
           {
@@ -35,6 +39,9 @@ export function Select({
           },
         ]
       : [],
+  );
+  const options = allOptions.filter(
+    (o) => !searchable || String(o.label).toLowerCase().includes(query.toLowerCase()),
   );
   const [open, setOpen] = useState(false),
     [active, setActive] = useState(0);
@@ -56,7 +63,11 @@ export function Select({
   useLayoutEffect(() => {
     if (!open || !trigger.current) return;
     const r = trigger.current.getBoundingClientRect();
-    const height = Math.min(288, options.length * 38 + 12, window.innerHeight - 24);
+    const height = Math.min(
+      320,
+      Math.max(48, options.length * 38) + (searchable ? 52 : 12),
+      window.innerHeight - 24,
+    );
     const width = Math.min(window.innerWidth - 24, Math.max(180, r.width));
     setRect({
       left: Math.max(12, Math.min(r.left, window.innerWidth - width - 12)),
@@ -74,8 +85,8 @@ export function Select({
       ),
     );
     menu.current?.showPopover();
-    menu.current?.focus({ preventScroll: true });
-  }, [open]);
+    (searchable ? searchInput.current : menu.current)?.focus({ preventScroll: true });
+  }, [open, query]);
   useEffect(() => {
     if (!open) return;
     const root = menu.current;
@@ -122,15 +133,19 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={disabled}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setQuery('');
+          setOpen((v) => !v);
+        }}
         onKeyDown={(e) => {
           if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
             e.preventDefault();
+            setQuery('');
             setOpen(true);
           }
         }}
       >
-        <span>{options.find((o) => o.value === value)?.label ?? '请选择'}</span>
+        <span>{allOptions.find((o) => o.value === value)?.label ?? '请选择'}</span>
         <ChevronDown size={14} />
       </button>
       {open &&
@@ -152,11 +167,20 @@ export function Select({
                 close();
               } else if (e.key === 'Tab') {
                 close();
-              } else if (e.key === 'Enter' || e.key === ' ') {
+              } else if (e.nativeEvent.isComposing) {
+                return;
+              } else if (
+                searchable &&
+                e.target === searchInput.current &&
+                ['Home', 'End'].includes(e.key)
+              ) {
+                return;
+              } else if (e.key === 'Enter' || (e.key === ' ' && !searchable)) {
                 e.preventDefault();
                 choose(active);
               } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
                 e.preventDefault();
+                if (!options.length) return;
                 const direction = e.key === 'ArrowUp' ? -1 : 1;
                 let next =
                   e.key === 'Home'
@@ -167,7 +191,7 @@ export function Select({
                 for (let i = 0; options[next]?.disabled && i < options.length; i++)
                   next = (next + direction + options.length) % options.length;
                 setActive(next);
-              } else if (e.key.length === 1) {
+              } else if (e.key.length === 1 && !searchable) {
                 search.current.text =
                   Date.now() - search.current.time > 700 ? e.key : search.current.text + e.key;
                 search.current.time = Date.now();
@@ -180,6 +204,20 @@ export function Select({
               }
             }}
           >
+            {searchable && (
+              <input
+                ref={searchInput}
+                className="select-search"
+                aria-label={`筛选${label}`}
+                placeholder="输入名称筛选…"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setActive(0);
+                }}
+              />
+            )}
+            {!options.length && <p className="select-empty">没有匹配项</p>}
             {options.map((option, i) => (
               <button
                 key={option.value}

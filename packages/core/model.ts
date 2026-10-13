@@ -207,6 +207,14 @@ export function parseDiagnostics(log: string): Diagnostic[] {
   const lines = log.split(/\r?\n/);
   const files: (string | undefined)[] = [];
   const clean = (file: string) => file.replaceAll('\\', '/').replace(/^\.\//, '');
+  function trackFiles(text: string) {
+    for (const match of text.matchAll(
+      /\((?:"([^"\n]+\.(?:tex|sty|cls))"|([^\s()]+\.(?:tex|sty|cls)))(?=[\s)]|$)|[()]/g,
+    )) {
+      if (match[0] === ')') files.pop();
+      else files.push(match[1] || match[2] ? clean(match[1] || match[2]) : undefined);
+    }
+  }
   for (let i = 0; i < lines.length; i++) {
     // References are normally unresolved until BibTeX and subsequent TeX passes.
     // Replace transient TeX warnings at each managed pass, not just duplicates.
@@ -255,10 +263,23 @@ export function parseDiagnostics(log: string): Diagnostic[] {
       /(?:LaTeX(?: Font)?|Package .+) Warning:|(?:Over|Under)full \\[hv]box/.test(lines[i])
     ) {
       let message = lines[i].trim();
+      const box = /^(?:Over|Under)full \\[hv]box/.test(message);
       // TeX wraps warning details onto indented or package-prefixed lines.
-      while (i + 1 < lines.length && /^(?:\s+\S|\((?:Font|[\w-]+)\)\s{2,})/.test(lines[i + 1]))
+      // Box diagnostics may share a line with shipout/file progress. Those are
+      // not warning text; neither are the font/paragraph dumps on the next line.
+      const continuation = box
+        ? /^\s+(?:(?:in paragraph )?at lines?|detected at line|has occurred while \\output is active)\b/
+        : /^(?:\s+\S|\((?:Font|[\w-]+)\)\s{2,})/;
+      while (i + 1 < lines.length && continuation.test(lines[i + 1]))
         message += ' ' + lines[++i].trim();
-      const line = message.match(/(?:on input line|at lines?)\s+(\d+)/);
+      if (box) {
+        const progress = message.search(/\s+\[\d+(?=[\s\]<{])/);
+        if (progress >= 0) {
+          trackFiles(message.slice(progress));
+          message = message.slice(0, progress);
+        }
+      }
+      const line = message.match(/(?:on input line|at lines?|detected at line)\s+(\d+)/);
       entries.push({
         severity: 'warning',
         message,
@@ -267,12 +288,7 @@ export function parseDiagnostics(log: string): Diagnostic[] {
       });
     } else {
       // File nesting in TeX logs distinguishes errors inside included sources.
-      for (const match of lines[i].matchAll(
-        /\((?:"([^"\n]+\.(?:tex|sty|cls))"|([^\s()]+\.(?:tex|sty|cls)))(?=[\s)]|$)|[()]/g,
-      )) {
-        if (match[0] === ')') files.pop();
-        else files.push(match[1] || match[2] ? clean(match[1] || match[2]) : undefined);
-      }
+      trackFiles(lines[i]);
     }
   }
   // Repeated compiler passes should not bury the fatal error below warnings.

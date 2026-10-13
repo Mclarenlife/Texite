@@ -11,7 +11,7 @@
   background: var(--raised);
   color: var(--text);
   font: inherit;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   text-align: left;
   cursor: pointer;
   transition:
@@ -67,7 +67,7 @@
   min-height: 36px;
   padding: 9px 10px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
   text-align: left;
 }
 .select-menu > button > span {
@@ -95,4 +95,15 @@
 .insert-form .select-trigger {
   min-width: 0;
   flex: 1;
+}
+.select-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-bottom: 5px;
+}
+.select-empty {
+  padding: 10px;
+  color: var(--secondary);
+  font-size: calc(12px * var(--ui-font-scale, 1));
 }
