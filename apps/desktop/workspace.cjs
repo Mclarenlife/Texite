@@ -353,7 +353,7 @@ class Compiler {
       let compilerLabel;
       const append = (text) => {
         if (log.length < 1_000_000) {
-          const chunk = text.slice(0, 1_000_000 - log.length);
+          const chunk = text.toString().slice(0, 1_000_000 - log.length);
           log += chunk;
           onLog(chunk);
         }
@@ -374,13 +374,6 @@ class Compiler {
               detached: process.platform !== 'win32',
             });
             job.child = child;
-            const append = (chunk) => {
-              if (log.length < 1_000_000) {
-                const text = chunk.toString().slice(0, 1_000_000 - log.length);
-                log += text;
-                onLog(text);
-              }
-            };
             child.stdout.on('data', append);
             child.stderr.on('data', append);
             child.on('error', (e) => {

@@ -15,11 +15,17 @@ const JSZip = require('jszip');
   const launch = async () => {
     desktop = await electron.launch({
       executablePath: process.env.TEXITE_TEST_EXECUTABLE,
-      args: process.env.TEXITE_TEST_EXECUTABLE ? [] : ['.'],
+      args: [
+        ...(process.env.TEXITE_TEST_EXECUTABLE ? [] : ['.']),
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+      ],
       env: { ...process.env, TEXITE_TEST_USER_DATA: profile },
     });
-    await desktop.evaluate(({ dialog }) => {
+    await desktop.evaluate(({ dialog, BrowserWindow }) => {
       dialog.showMessageBoxSync = () => 1;
+      for (const window of BrowserWindow.getAllWindows())
+        window.webContents.setBackgroundThrottling(false);
     });
     const page = await desktop.firstWindow();
     page.on('pageerror', (e) => errors.push(e.message));
@@ -86,7 +92,9 @@ const JSZip = require('jszip');
     await expect(page.getByRole('button', { name: '卸载 XeLaTeX', exact: true })).toHaveCount(0, {
       timeout: 30000,
     });
-    await page.screenshot({ animations: 'disabled', path: '.qa/desktop-runtime-manager.png' });
+    // Hidden native windows do not reliably produce compositor frames on Windows.
+    if (process.env.TEXITE_TEST_SCREENSHOTS)
+      await page.screenshot({ animations: 'disabled', path: '.qa/desktop-runtime-manager.png' });
     await page.getByLabel('编译引擎').selectOption('pdflatex');
     await page.getByRole('button', { name: '关闭弹窗' }).click();
     await desktop.evaluate(({ dialog }, directory) => {
@@ -168,7 +176,8 @@ const JSZip = require('jszip');
     await expect(page.getByRole('status')).toContainText('项目已保存到磁盘');
     await page.getByRole('button', { name: '修改历史', exact: true }).click();
     await expect(page.locator('.recovery-badge')).toHaveCount(2);
-    await page.screenshot({ animations: 'disabled', path: '.qa/desktop-smoke.png' });
+    if (process.env.TEXITE_TEST_SCREENSHOTS)
+      await page.screenshot({ animations: 'disabled', path: '.qa/desktop-smoke.png' });
     expect(errors).toEqual([]);
     console.log(
       JSON.stringify({
