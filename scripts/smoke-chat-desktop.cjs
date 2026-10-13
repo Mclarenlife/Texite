@@ -28,7 +28,13 @@ const http = require('node:http');
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
-    const before = await editor.innerText();
+    await expect(editor).toBeVisible();
+    await expect(page.locator('.save-indicator')).toContainText('已保存');
+    // CodeMirror renders only the visible lines. Compare persisted source data,
+    // not viewport-dependent DOM text, when asserting read-only behavior.
+    const readSource = () =>
+      page.evaluate(async () => (await window.texite.listProjects())[0].files);
+    const before = await readSource();
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
     await page.getByRole('tab', { name: '对话', exact: true }).click();
     await page.getByRole('combobox', { name: '对话服务' }).click();
@@ -47,7 +53,7 @@ const http = require('node:http');
     await expect(page.getByText('已完成', { exact: true })).toBeVisible();
     expect(received.tools).toBeUndefined();
     expect(authorization).toBe('Bearer fixture-secret');
-    expect(await editor.innerText()).toBe(before);
+    expect(await readSource()).toEqual(before);
     const settings = await page.evaluate(() => window.texite.chat.get());
     expect(settings.hasKey).toBe(true);
     expect(settings.apiKey).toBeUndefined();
