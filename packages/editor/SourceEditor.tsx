@@ -19,8 +19,10 @@ export type EditorHandle = {
   search: () => void;
   insert: (text: string) => void;
   focus: () => void;
+  selection: () => string;
 };
 type Props = {
+  readOnly?: boolean;
   projectId: string;
   file: ProjectFile;
   fontSize: number;
@@ -51,6 +53,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
   const active = useRef('');
   const externalChange = useRef(false);
   const font = useRef(new Compartment());
+  const editable = useRef(new Compartment());
   const factory = useRef<((content: string) => EditorState) | null>(null);
   useImperativeHandle(
     ref,
@@ -77,6 +80,10 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       },
       focus() {
         view.current?.focus();
+      },
+      selection() {
+        const v = view.current;
+        return v ? v.state.sliceDoc(v.state.selection.main.from, v.state.selection.main.to) : '';
       },
     }),
     [],
@@ -121,6 +128,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
     };
     const extensions = [
       basicSetup,
+      editable.current.of(EditorState.readOnly.of(!!current.current.readOnly)),
       StreamLanguage.define(stex),
       syntaxHighlighting(highlighting),
       EditorView.lineWrapping,
@@ -169,6 +177,11 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
     };
   }, [props.projectId]);
   useEffect(() => {
+    view.current?.dispatch({
+      effects: editable.current.reconfigure(EditorState.readOnly.of(!!props.readOnly)),
+    });
+  }, [props.readOnly]);
+  useEffect(() => {
     const v = view.current;
     if (!v) return;
     if (active.current !== props.file.path) {
@@ -188,9 +201,10 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
     if (v.state.doc.toString() !== props.file.content)
       v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: props.file.content } });
     v.dispatch({
-      effects: font.current.reconfigure(
-        EditorView.theme({ '&': { fontSize: props.fontSize + 'px' } }),
-      ),
+      effects: [
+        editable.current.reconfigure(EditorState.readOnly.of(!!current.current.readOnly)),
+        font.current.reconfigure(EditorView.theme({ '&': { fontSize: props.fontSize + 'px' } })),
+      ],
     });
   }, [props.file.path, props.file.content, props.fontSize, props.projectId]);
   return <div className="source-editor" ref={host} />;

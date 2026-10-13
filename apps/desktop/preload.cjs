@@ -1,5 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('texite', {
+  ai: {
+    connect: () => ipcRenderer.invoke('ai:connect'),
+    disconnect: () => ipcRenderer.invoke('ai:disconnect'),
+    chooseBinary: () => ipcRenderer.invoke('ai:choose-binary'),
+    start: (input) => ipcRenderer.invoke('ai:start', input),
+    cancel: () => ipcRenderer.invoke('ai:cancel'),
+    reply: (id, result) => ipcRenderer.invoke('ai:reply', id, result),
+    onEvent: (callback) => {
+      const handler = (_event, data) => callback(data);
+      ipcRenderer.on('ai:event', handler);
+      return () => ipcRenderer.removeListener('ai:event', handler);
+    },
+  },
+  saveAIProject: (project, removals) => ipcRenderer.invoke('project:save-ai', project, removals),
   listProjects: () => ipcRenderer.invoke('project:list'),
   importProject: (project) => ipcRenderer.invoke('project:import', project),
   reopenProject: (id) => ipcRenderer.invoke('project:reopen', id),

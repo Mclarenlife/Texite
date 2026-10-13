@@ -29,6 +29,11 @@ export type CompileResult = {
   cancelled?: boolean;
 };
 export type DesktopAPI = {
+  ai?: import('./ai').AIAPI;
+  saveAIProject?(
+    project: Project,
+    removals: { path: string; expected: string }[],
+  ): Promise<unknown>;
   listRuntime(): Promise<RuntimeModule[]>;
   chooseRuntimePack(): Promise<{
     label: string;

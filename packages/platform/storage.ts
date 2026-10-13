@@ -16,6 +16,50 @@ import {
 } from '../core/model';
 
 let connection: ReturnType<typeof openDB> | undefined;
+export async function loadAITasks(projectId: string): Promise<import('../core/ai').AITask[]> {
+  const value = await (await database()).get('settings', 'ai:' + projectId);
+  return Array.isArray(value)
+    ? value.map((task) =>
+        task.status === 'running'
+          ? { ...task, status: 'interrupted', error: '上次任务已中断，已保存的修改可查看或撤回。' }
+          : task,
+      )
+    : [];
+}
+export async function saveAITasks(projectId: string, tasks: import('../core/ai').AITask[]) {
+  if (JSON.stringify(tasks).length > 12_000_000)
+    throw new Error('AI 记录超过 12 MB，请导出项目并在新项目中继续。现有恢复记录仍保留。');
+  await (await database()).put('settings', tasks, 'ai:' + projectId);
+}
+export async function commitAIProject(
+  current: Project,
+  next: Project,
+  tasks: import('../core/ai').AITask[],
+) {
+  if (JSON.stringify(tasks).length > 12_000_000)
+    throw new Error('AI 恢复记录超过 12 MB，本次修改未执行。');
+  const db = await database();
+  const tx = db.transaction(['projects', 'settings'], 'readwrite');
+  try {
+    const saved: Project | undefined = await tx.objectStore('projects').get(current.id);
+    if (
+      saved &&
+      (saved.revision > current.revision ||
+        (saved.revision === current.revision &&
+          JSON.stringify(saved.files) !== JSON.stringify(current.files)))
+    )
+      throw new Error('项目已被其他窗口修改，请重新打开后继续。');
+    await tx.objectStore('settings').put(tasks, 'ai:' + current.id);
+    await tx.objectStore('projects').put(next);
+    await tx.done;
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {}
+    await tx.done.catch(() => {});
+    throw error;
+  }
+}
 const database = () =>
   (connection ??= new Promise((resolve, reject) => {
     let blocked = false;

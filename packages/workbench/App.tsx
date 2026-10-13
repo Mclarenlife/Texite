@@ -76,6 +76,10 @@ import { AppearanceSettings } from '../ui/AppearanceSettings';
 import { useEditHistory } from './useEditHistory';
 import { changeSummary, type EditRecord, type RestoreRequest } from '../core/history';
 import { DiffLines, HistoryReview } from '../editor/HistoryReview';
+import { useAI } from './useAI';
+import { AIPanel } from '../ui/AIPanel';
+import type { AITask } from '../core/ai';
+import { commitAIProject } from '../platform/storage';
 
 type Modal =
   'projects' | 'folder' | 'new' | 'file' | 'settings' | 'commands' | 'help' | 'rename' | null;
@@ -100,6 +104,7 @@ export function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [mode, setMode] = useState<Mode>('split');
   const [space, setSpace] = useState(false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [spaceQuery, setSpaceQuery] = useState('');
   const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
   const [selectedFolder, setSelectedFolder] = useState('');
@@ -357,6 +362,10 @@ export function App() {
     setRestoreRequest({ projectId: current.id, record, expected: file.content });
   };
   async function confirmRestore() {
+    if (ai.busy) {
+      notify('请先停止 AI 任务再恢复历史版本。');
+      return;
+    }
     if (!restoreRequest || restoreLock.current) return;
     const request = restoreRequest;
     restoreLock.current = true;
@@ -415,6 +424,10 @@ export function App() {
     setModal(name);
   };
   async function chooseProject(next: Project, refresh = false, alreadyFlushed = false) {
+    if (ai.busy) {
+      notify('请先停止 AI 任务再切换项目。');
+      return;
+    }
     if (restoreLock.current) return;
     if (compileRunning.current) {
       notify('请等待或取消当前编译后再切换项目。');
@@ -457,6 +470,10 @@ export function App() {
     }
   }
   async function openDirectory() {
+    if (ai.busy) {
+      notify('请先停止 AI 任务再打开项目。');
+      return;
+    }
     try {
       if (compileRunning.current) {
         notify('请先取消编译。');
@@ -508,6 +525,7 @@ export function App() {
         setDiagnosticsOpen(true);
         notify('编译未完成，请查看诊断信息。');
       }
+      return result;
     } catch (e) {
       setLog(friendlyError(e));
       setDiagnosticsOpen(true);
@@ -516,6 +534,62 @@ export function App() {
       setCompiling(false);
     }
   }, [notify, persist]);
+  async function mutateAI(transform: (current: Project) => Project, tasks: AITask[]) {
+    if (restoreLock.current) throw new Error('项目正在保存恢复版本，请稍后重试。');
+    restoreLock.current = true;
+    setRestoreBusy(true);
+    clearTimeout(autosaveTimer.current);
+    const task = saveQueue.current
+      .catch(() => {})
+      .then(async () => {
+        const current = projectRef.current;
+        if (!current) throw new Error('当前项目不可用。');
+        const next = transform(current);
+        const removals = current.files
+          .filter((f) => !next.files.some((n) => n.path === f.path))
+          .map((f) => ({ path: f.path, expected: f.content }));
+        await commitAIProject(current, next, tasks);
+        for (const file of next.files) {
+          const before = current.files.find((f) => f.path === file.path);
+          if (!file.binary && before?.content !== file.content)
+            editHistory.record(file.path, before?.content ?? '', file.content);
+        }
+        projectRef.current = next;
+        setProject(next);
+        setProjects((items) => [next, ...items.filter((p) => p.id !== next.id)]);
+        setReview(null);
+        setSaved('saving');
+        try {
+          if (!window.texite?.saveAIProject) throw new Error('请更新桌面程序以保存 AI 修改。');
+          await window.texite.saveAIProject(next, removals);
+          setSaved('saved');
+        } catch (e) {
+          setSaved('error');
+          throw new Error('修改和备份已保存在本地，磁盘同步失败：' + friendlyError(e));
+        }
+      });
+    saveQueue.current = task;
+    try {
+      await task;
+    } finally {
+      restoreLock.current = false;
+      setRestoreBusy(false);
+    }
+  }
+  const ai = useAI({
+    projectId: project?.id,
+    getProject: () => projectRef.current,
+    getContext: () =>
+      JSON.stringify({
+        project: projectRef.current?.name,
+        activeFile: projectRef.current?.activeFile,
+        engine: projectRef.current?.engine,
+        selection: editor.current?.selection().slice(0, 50000) || '',
+      }),
+    getLog: () => log,
+    compile,
+    mutate: mutateAI,
+  });
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.defaultPrevented) return;
@@ -682,6 +756,7 @@ export function App() {
             event.target.value = '';
             if (file)
               try {
+                if (ai.busy) throw new Error('请先停止 AI 任务再导入项目。');
                 if (compileRunning.current) throw new Error('请先取消编译。');
                 let imported = await importZip(file);
                 if (window.texite) imported = await window.texite.importProject(imported);
@@ -794,10 +869,20 @@ export function App() {
               </button>
               <span className="local-badge">
                 <span />
-                仅在本地
+                本地项目
               </span>
             </div>
             <div className="header-actions">
+              <button
+                className="ai-toggle"
+                aria-label="AI 助手"
+                aria-pressed={aiOpen}
+                onClick={() => setAiOpen(!aiOpen)}
+              >
+                <Sparkles size={16} />
+                <span>AI 助手</span>
+                {ai.busy && <LoaderCircle size={12} className="spin" />}
+              </button>
               <div className="workspace-actions">
                 <div className="mode-switch" role="group" aria-label="视图切换">
                   {modes.map((item) => (
@@ -848,7 +933,11 @@ export function App() {
               </button>
             </div>
           </header>
-          <div className={'workbench-row' + (!sidebar ? ' sidebar-hidden' : '')}>
+          <div
+            className={
+              'workbench-row' + (!sidebar ? ' sidebar-hidden' : '') + (aiOpen ? ' ai-open' : '')
+            }
+          >
             <aside
               className="project-sidebar"
               aria-label="项目导航"
@@ -1164,6 +1253,7 @@ export function App() {
                   {textFile && (
                     <SourceEditor
                       ref={editor}
+                      readOnly={restoreBusy}
                       projectId={project.id}
                       file={textFile}
                       fontSize={fontSize}
@@ -1281,6 +1371,14 @@ export function App() {
                 />
               </div>
             </div>
+            {aiOpen && (
+              <AIPanel
+                ai={ai}
+                projectName={project.name}
+                activeFile={project.activeFile}
+                onClose={() => setAiOpen(false)}
+              />
+            )}
           </div>
           <AnimatePresence>
             {diagnosticsOpen && (
@@ -1363,7 +1461,7 @@ export function App() {
                   : ''}
                 <ChevronDown size={11} />
               </button>
-              <span className="version">Texite 0.4</span>
+              <span className="version">Texite</span>
             </div>
           </footer>
         </div>

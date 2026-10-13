@@ -4,6 +4,7 @@ const { pathToFileURL } = require('node:url');
 const { Compiler, detectEngines } = require('./workspace.cjs');
 const { ProjectLibrary } = require('./projects.cjs');
 const { RuntimeManager } = require('./runtime-manager.cjs');
+const { CodexClient } = require('./codex-client.cjs');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'texite',
@@ -13,6 +14,7 @@ protocol.registerSchemesAsPrivileged([
 let window;
 let compiler;
 let library;
+let ai;
 let fileQueue = Promise.resolve();
 // End-to-end tests also launch the packaged executable. Keep their projects and
 // first-run caches separate from the user's real profile in both launch modes.
@@ -46,6 +48,22 @@ app.whenReady().then(async () => {
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
   const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
   compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime, manager);
+  ai = new CodexClient(path.join(app.getPath('userData'), 'ai'), (event) => {
+    if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
+  });
+  handle('ai:connect', () => ai.connect());
+  handle('ai:disconnect', () => ai.disconnect());
+  handle('ai:start', (input) => ai.start(input));
+  handle('ai:cancel', () => ai.cancel());
+  handle('ai:reply', (id, result) => ai.reply(id, result));
+  handle('ai:choose-binary', async () => {
+    if (ai.active) throw new Error('请先停止 AI 任务。');
+    const selected = await dialog.showOpenDialog(window, {
+      properties: ['openFile'],
+      title: '选择 Codex 可执行文件',
+    });
+    return selected.canceled ? null : ai.chooseBinary(selected.filePaths[0]);
+  });
   let pendingPack;
   function checkIdle() {
     if (compiler.active) throw new Error('请先停止编译，再更改引擎或宏包。');
@@ -72,6 +90,7 @@ app.whenReady().then(async () => {
     return result.canceled ? null : library.link(result.filePaths[0]);
   });
   handleFiles('project:save', (project) => library.save(project));
+  handleFiles('project:save-ai', (project, removals) => library.save(project, removals));
   handleFiles('project:import', (project) => library.import(project));
   handleFiles('project:list', () => library.list());
   handleFiles('project:reopen', (id) => library.reopen(id));
@@ -152,6 +171,7 @@ app.whenReady().then(async () => {
     });
     window.on('closed', () => {
       void compiler.cancel();
+      void ai.disconnect();
     });
     if (devUrl) window.loadURL(devUrl);
     else window.loadURL('texite://app/index.html');
@@ -166,4 +186,5 @@ app.on('window-all-closed', () => {
 });
 app.on('before-quit', () => {
   void compiler?.cancel();
+  void ai?.disconnect();
 });

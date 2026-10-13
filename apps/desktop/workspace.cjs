@@ -141,8 +141,34 @@ async function ensureSafeDestination(root, name) {
   }
   return target;
 }
-async function saveDirectory(root, project, hashes = new Map()) {
+async function saveDirectory(root, project, hashes = new Map(), removals = []) {
   validateSnapshot(project);
+  if (!Array.isArray(removals) || removals.length > 30) throw new Error('Invalid removals');
+  const deletes = [];
+  const removalNames = new Set();
+  for (const item of removals) {
+    const name = safeRelative(item.path);
+    if (removalNames.has(name.toLowerCase())) throw new Error('Duplicate removal');
+    removalNames.add(name.toLowerCase());
+    if (
+      typeof item.expected !== 'string' ||
+      !textPattern.test(name) ||
+      name.split('/').some((part) => part.startsWith('.')) ||
+      project.files.some((f) => f.path.toLowerCase() === name.toLowerCase())
+    )
+      throw new Error('Invalid removal');
+    const target = await ensureSafeDestination(root, name);
+    let bytes;
+    try {
+      bytes = await fs.readFile(target);
+    } catch (e) {
+      if (e.code === 'ENOENT') continue;
+      throw e;
+    }
+    if (bytes.toString('utf8') !== item.expected || digest(bytes) !== hashes.get(name))
+      throw new Error(`文件 ${name} 已被外部修改，未删除。`);
+    deletes.push({ target, name, expected: digest(bytes) });
+  }
   const writes = [];
   for (const file of project.files) {
     const target = await ensureSafeDestination(root, file.path);
@@ -176,6 +202,12 @@ async function saveDirectory(root, project, hashes = new Map()) {
       await fs.rm(temp, { force: true });
     }
     hashes.set(write.name, digest(write.content));
+  }
+  for (const item of deletes) {
+    if (digest(await fs.readFile(item.target)) !== item.expected)
+      throw new Error(`文件 ${item.name} 已被外部修改，未删除。`);
+    await fs.unlink(item.target);
+    hashes.delete(item.name);
   }
   const metadata = await ensureSafeDestination(root, '.texite.json');
   await fs.writeFile(

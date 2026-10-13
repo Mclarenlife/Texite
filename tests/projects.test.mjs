@@ -3,6 +3,35 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ProjectLibrary } from '../apps/desktop/projects.cjs';
+
+test('AI undo deletes only unchanged created text files and protects external edits', async () => {
+  await fs.mkdir('.qa', { recursive: true });
+  const base = await fs.mkdtemp(path.resolve('.qa/ai-library-test-'));
+  const root = path.join(base, 'linked');
+  await fs.mkdir(root);
+  await fs.writeFile(path.join(root, 'main.tex'), 'original');
+  const library = new ProjectLibrary(path.join(base, 'app'));
+  await library.init();
+  const project = await library.link(root);
+  const edited = {
+    ...project,
+    files: [
+      { path: 'main.tex', content: 'edited' },
+      { path: 'created.tex', content: 'AI content' },
+    ],
+  };
+  await library.save(edited);
+  await fs.writeFile(path.join(root, 'created.tex'), 'external work');
+  await assert.rejects(
+    library.save(project, [{ path: 'created.tex', expected: 'AI content' }]),
+    /外部修改/,
+  );
+  assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'edited');
+  await fs.writeFile(path.join(root, 'created.tex'), 'AI content');
+  await library.save(project, [{ path: 'created.tex', expected: 'AI content' }]);
+  await assert.rejects(fs.access(path.join(root, 'created.tex')));
+  assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'original');
+});
 test('folder bindings, managed imports, empty directories and conflict baselines survive restart', async () => {
   await fs.mkdir('.qa', { recursive: true });
   const base = await fs.mkdtemp(path.resolve('.qa/library-test-'));

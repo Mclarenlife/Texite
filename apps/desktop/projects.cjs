@@ -92,7 +92,7 @@ class ProjectLibrary {
     await this.persist();
     return { ...project, id, location: { kind: entry.kind, directory: root } };
   }
-  async save(project) {
+  async save(project, removals = []) {
     validateSnapshot(project);
     let entry = this.entries.get(project.id);
     if (!entry) {
@@ -101,7 +101,7 @@ class ProjectLibrary {
       await fs.mkdir(root, { recursive: true });
       entry = { id: project.id, root, kind: 'managed', hashes: [] };
     }
-    const hashes = await saveDirectory(entry.root, project, new Map(entry.hashes));
+    const hashes = await saveDirectory(entry.root, project, new Map(entry.hashes), removals);
     entry.hashes = [...hashes];
     this.entries.set(project.id, entry);
     await this.persist();
