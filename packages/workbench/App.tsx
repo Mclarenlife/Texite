@@ -161,6 +161,7 @@ export function App() {
   const [pdfLabel, setPdfLabel] = useState('');
   const [pdfRevision, setPdfRevision] = useState(-1);
   const [compiling, setCompiling] = useState(false);
+  const [compileFailed, setCompileFailed] = useState(false);
   const [log, setLog] = useState('');
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [engineStatus, setEngineStatus] = useState<Awaited<
@@ -334,6 +335,7 @@ export function App() {
     setPdfLabel('');
     setPdfRevision(-1);
     setLog('');
+    setCompileFailed(false);
     setDiagnosticsOpen(false);
     setReview(null);
     latestText.current = null;
@@ -559,12 +561,14 @@ export function App() {
     compileRunning.current = true;
     const token = ++compileToken.current;
     setCompiling(true);
+    setCompileFailed(false);
     setLog('');
     try {
       await saveProject(snapshot);
       const result = await window.texite.compile(snapshot);
       if (projectRef.current?.id !== snapshot.id || compileToken.current !== token) return;
       setLog(result.log);
+      setCompileFailed(!result.cancelled && !(result.success && result.pdf));
       if (result.success && result.pdf) {
         setDiagnosticsOpen(false);
         setPdf(new Uint8Array(result.pdf));
@@ -580,6 +584,7 @@ export function App() {
       return result;
     } catch (e) {
       setLog(friendlyError(e));
+      setCompileFailed(true);
       setDiagnosticsOpen(true);
       setMode((current) => (current === 'editor' ? 'split' : current));
     } finally {
@@ -1442,6 +1447,7 @@ export function App() {
                     <CompileDiagnostics
                       diagnostics={diagnostics}
                       compiling={compiling}
+                      failed={compileFailed}
                       log={log}
                       project={project}
                       onNotify={notify}

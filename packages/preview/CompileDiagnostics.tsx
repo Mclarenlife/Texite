@@ -17,6 +17,7 @@ export function CompileDiagnostics({
   log,
   project,
   compiling = false,
+  failed = false,
   onLocate,
   onNotify,
 }: {
@@ -24,6 +25,7 @@ export function CompileDiagnostics({
   log: string;
   project: Project;
   compiling?: boolean;
+  failed?: boolean;
   onLocate: (file: string, line: number) => void;
   onNotify: (message: string) => void;
 }) {
@@ -76,12 +78,14 @@ export function CompileDiagnostics({
           <p className="diagnostics-empty">
             {compiling
               ? '正在编译，诊断将随编译进度更新…'
-              : log
+              : failed
+                ? '编译未完成，详情见原始日志。'
+                : log
                 ? '暂无诊断条目，可展开原始日志查看完整编译过程。'
                 : '编译后将在这里显示诊断。'}
           </p>
         )}
-        <details>
+        <details open={failed && !ordered.length}>
           <summary>原始日志</summary>
           <pre>{log || '尚无编译日志。'}</pre>
         </details>
