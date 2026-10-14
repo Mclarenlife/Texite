@@ -14,6 +14,56 @@ const project = {
   files: [{ path: 'main.tex', content: 'Hello' }],
 };
 
+test('confirmed nested deletion checks external changes before writes and removes only verified files and empty directories', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'texite-test-'));
+  const binary = {
+    path: 'notes/child/asset.bin',
+    content: Buffer.from([0, 255, 128]).toString('base64'),
+    binary: true,
+  };
+  const original = {
+    ...project,
+    folders: ['notes', 'notes/child', 'notes/empty'],
+    files: [...project.files, binary],
+  };
+  const removedFolders = original.folders;
+  const removals = [{ ...binary, expected: binary.content }];
+  try {
+    const hashes = await saveDirectory(root, original);
+    await fs.writeFile(path.join(root, 'notes', 'external.txt'), 'External');
+    await assert.rejects(
+      saveDirectory(root, project, hashes, removals, true, removedFolders),
+      /外部新增/,
+    );
+    assert.equal(
+      (await fs.readFile(path.join(root, binary.path))).toString('base64'),
+      binary.content,
+    );
+    await fs.unlink(path.join(root, 'notes', 'external.txt'));
+    await fs.writeFile(path.join(root, binary.path), 'Changed');
+    await assert.rejects(
+      saveDirectory(root, project, hashes, removals, true, removedFolders),
+      /外部修改/,
+    );
+    await fs.writeFile(path.join(root, binary.path), Buffer.from(binary.content, 'base64'));
+    await saveDirectory(root, project, hashes, removals, true, removedFolders);
+    await assert.rejects(fs.stat(path.join(root, 'notes')), { code: 'ENOENT' });
+    assert.equal(await fs.readFile(path.join(root, 'main.tex'), 'utf8'), 'Hello');
+    await saveDirectory(
+      root,
+      { ...project, files: [], mainFile: '' },
+      hashes,
+      [{ path: 'main.tex', expected: 'Hello' }],
+      true,
+    );
+    assert.equal((await readDirectory(root)).files.length, 0);
+    await assert.rejects(saveDirectory(root, project, hashes, [], true, ['../outside']), /Invalid/);
+  } finally {
+    assert(path.basename(root).startsWith('texite-test-'));
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
 test('native IPC validation prevents unsafe file names and engine injection', () => {
   for (const name of [
     '../secret',

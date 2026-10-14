@@ -47,12 +47,12 @@ test('project backups preserve all files, auto-back up before restore, and histo
   expect(zip.file('references.bib')).not.toBeNull();
 });
 
-test('file scopes and reference fuzzy search filter results, sidebar splits persist and preview underline sits on header border', async ({
+test('file scopes and literal reference search filter results, sidebar splits persist and preview underline sits on header border', async ({
   page,
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '项目搜索', exact: true }).click();
-  await expect(page.locator('.search-scope-button')).toHaveCSS('flex-direction','row');
+  await expect(page.locator('.search-scope-button')).toHaveCSS('flex-direction', 'row');
   await page.getByLabel('搜索项目内容').fill('attention');
   await expect(
     page.locator('.project-search>button').filter({ hasText: 'references.bib' }),
@@ -65,6 +65,8 @@ test('file scopes and reference fuzzy search filter results, sidebar splits pers
   ).toHaveCount(0);
   await page.getByRole('button', { name: '参考文献', exact: true }).click();
   await page.getByLabel('搜索参考文献').fill('attntion');
+  await expect(page.locator('.reference-list button')).toHaveCount(0);
+  await page.getByLabel('搜索参考文献').fill('ATTENTION');
   await expect(page.locator('.reference-list button')).toHaveCount(1);
   await page.getByLabel('搜索参考文献').fill('not-a-match');
   await expect(page.locator('.reference-list button')).toHaveCount(0);

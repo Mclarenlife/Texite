@@ -1,3 +1,7 @@
+import { Outline } from './Outline';
+import { pdfCover } from '../preview/cover';
+import { saveProjectCover } from '../platform/storage';
+import { Undo2, Redo2 } from 'lucide-react';
 import { SidebarSplit } from '../ui/SidebarSplit';
 import { ProjectBackups } from './ProjectBackups';
 import { createProjectBackup, type ProjectBackup } from '../platform/storage';
@@ -142,6 +146,19 @@ export function App() {
   const [aiOpen, setAiOpen] = useState(false);
   const [archivedProjects, setArchivedProjects] = useState<string[]>([]);
   const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
+  const [deleteTarget, setDeleteTarget] = useState<{
+    projectId: string;
+    path: string;
+    folder: boolean;
+  } | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const deleteRunning = useRef(false);
+  const [undoState, setUndoState] = useState({ undo: false, redo: false });
+  const onHistoryState = useCallback(
+    (undo: boolean, redo: boolean) =>
+      setUndoState((old) => (old.undo === undo && old.redo === redo ? old : { undo, redo })),
+    [],
+  );
   const [selectedFolder, setSelectedFolder] = useState('');
   const [sidebar, setSidebar] = useState(() => window.innerWidth > 760);
   const [section, setSection] = useState<'files' | 'references' | 'search' | 'history'>('files');
@@ -694,6 +711,60 @@ export function App() {
       setRestoreBusy(false);
     }
   }
+  async function deleteFileTarget() {
+    if (!deleteTarget || restoreLock.current || deleteRunning.current) return;
+    deleteRunning.current = true;
+    let locked = false;
+    setDeleteError('');
+    try {
+      const current = await prepareBackup();
+      if (current.id !== deleteTarget.projectId)
+        throw new Error('项目已切换，请重新选择要删除的文件。');
+      const matches = (path: string) =>
+        path === deleteTarget.path ||
+        (deleteTarget.folder && path.startsWith(deleteTarget.path + '/'));
+      const files = current.files.filter((f) => !matches(f.path));
+      const next = validateProject({
+        ...current,
+        files,
+        folders: current.folders?.filter((f) => !matches(f)),
+        revision: current.revision + 1,
+        updatedAt: Date.now(),
+      });
+      const removedFolders = (current.folders || []).filter(matches);
+      if (deleteTarget.folder && !removedFolders.includes(deleteTarget.path))
+        removedFolders.push(deleteTarget.path);
+      const removals = current.files
+        .filter((f) => matches(f.path))
+        .map((f) => ({ path: f.path, expected: f.content, binary: f.binary }));
+      restoreLock.current = true;
+      locked = true;
+      setRestoreBusy(true);
+      await createProjectBackup(current, '删除前自动备份 · ' + deleteTarget.path);
+      if (window.texite) {
+        if (!window.texite.restoreProject) throw new Error('请更新桌面程序后重试。');
+        await window.texite.restoreProject(next, removals, removedFolders);
+      } else await saveBrowserDirectory(next, removals, removedFolders);
+      await saveProject(next);
+      projectRef.current = next;
+      drafts.current.set(next.id, next);
+      setProject(next);
+      setProjects((ps) => ps.map((p) => (p.id === next.id ? next : p)));
+      setReview(null);
+      setSelectedFolder('');
+      setSaved('saved');
+      setDeleteTarget(null);
+      notify('已删除，可在备份历史中恢复。');
+    } catch (e) {
+      setDeleteError(friendlyError(e));
+    } finally {
+      deleteRunning.current = false;
+      if (locked) {
+        restoreLock.current = false;
+        setRestoreBusy(false);
+      }
+    }
+  }
   async function clearHistory(all: boolean) {
     setClearError('');
     const from = all ? 0 : clearFrom ? new Date(clearFrom).getTime() : 0,
@@ -830,6 +901,10 @@ export function App() {
   const compile = useCallback(async () => {
     const snapshot = projectRef.current;
     if (!snapshot || compileRunning.current || restoreLock.current) return;
+    if (!snapshot.mainFile) {
+      notify('请先创建 .tex 文件并设为主文件，再编译。');
+      return;
+    }
     if (!window.texite) {
       setModal('settings');
       setModalError(
@@ -855,7 +930,12 @@ export function App() {
         setPdfLocate(undefined);
         setPdfRevision(result.revision);
         setPdfLabel(result.compilerLabel || engineNames[result.engine ?? snapshot.engine]);
-        notify('编译完成，PDF 已更新。');
+        try {
+          await saveProjectCover(snapshot.id, await pdfCover(result.pdf));
+          notify('编译完成，PDF 已更新。');
+        } catch {
+          notify('编译完成，但项目封面保存失败，请重新编译重试。');
+        }
       } else if (result.cancelled) notify('编译已取消，上次预览已保留。');
       else {
         setDiagnosticsOpen(true);
@@ -971,28 +1051,16 @@ export function App() {
   const textFile =
     active && !active.binary
       ? active
-      : (latestText.current ?? project?.files.find((f) => !f.binary));
-  const outline = useMemo(
-    () => getOutline(active?.binary ? '' : (active?.content ?? '')),
-    [active],
-  );
+      : (project?.files.find((f) => f.path === latestText.current?.path && !f.binary) ??
+        project?.files.find((f) => !f.binary));
   const references = useMemo(() => getReferences(project?.files ?? []), [project?.files]);
-  const visibleReferences = references.filter((r) => {
-    const hay = Object.values(r).join(' ').normalize('NFKC').toLowerCase();
-    return referenceQuery
-      .trim()
+  const visibleReferences = references.filter((r) =>
+    Object.values(r)
+      .join(' ')
+      .normalize('NFKC')
       .toLowerCase()
-      .split(/\s+/)
-      .every((term) => {
-        let at = 0;
-        for (const c of term) {
-          at = hay.indexOf(c, at);
-          if (at < 0) return false;
-          at++;
-        }
-        return true;
-      });
-  });
+      .includes(referenceQuery.trim().normalize('NFKC').toLowerCase()),
+  );
   const selectedReference = references.find((r) => r.key === cursor.reference);
   const diagnostics = useMemo(() => parseDiagnostics(log), [log]);
   const matches = useMemo(
@@ -1455,33 +1523,18 @@ export function App() {
                       selectedFolder={selectedFolder}
                       onFolder={setSelectedFolder}
                       onFile={selectFile}
+                      onDelete={(path, folder) => {
+                        setDeleteError('');
+                        setDeleteTarget({ projectId: project.id, path, folder });
+                      }}
                     />
                   }
                   bottom={
-                    <>
-                      <div className="outline-heading">
-                        <span>文档脉络</span>
-                        <span>{outline.length.toString().padStart(2, '0')}</span>
-                      </div>
-                      <div className="outline-list">
-                        {outline.length ? (
-                          outline.map((item, index) => (
-                            <button
-                              key={item.position}
-                              className={item.level === 2 ? 'subsection' : ''}
-                              onClick={() => editor.current?.jump(item.position)}
-                            >
-                              <span>
-                                {item.level === 1 ? String(index + 1).padStart(2, '0') : '·'}
-                              </span>
-                              {item.title}
-                            </button>
-                          ))
-                        ) : (
-                          <p className="sidebar-empty">章节标题会出现在这里。</p>
-                        )}
-                      </div>
-                    </>
+                    <Outline
+                      key={project.id + ':' + active?.path}
+                      source={active?.binary ? '' : active?.content || ''}
+                      onJump={(position) => editor.current?.jump(position)}
+                    />
                   }
                 />
               ) : section === 'references' ? (
@@ -1687,6 +1740,38 @@ export function App() {
                       {review?.path || active?.path}
                       <span className="tab-dot" />
                     </span>
+                    <div className="editor-history-actions">
+                      <button
+                        className="icon-button"
+                        aria-label="撤销"
+                        title="撤销"
+                        disabled={
+                          !undoState.undo ||
+                          !!active?.binary ||
+                          editMode !== 'code' ||
+                          !!review ||
+                          restoreBusy
+                        }
+                        onClick={() => editor.current?.undo()}
+                      >
+                        <Undo2 size={15} />
+                      </button>
+                      <button
+                        className="icon-button"
+                        aria-label="重做"
+                        title="重做"
+                        disabled={
+                          !undoState.redo ||
+                          !!active?.binary ||
+                          editMode !== 'code' ||
+                          !!review ||
+                          restoreBusy
+                        }
+                        onClick={() => editor.current?.redo()}
+                      >
+                        <Redo2 size={15} />
+                      </button>
+                    </div>
                   </div>
                   <div className="editor-tools">
                     {!active?.binary && active?.path.endsWith('.tex') && (
@@ -1751,8 +1836,18 @@ export function App() {
                     (editMode === 'visual' && active?.path.endsWith('.tex'))
                   }
                 >
+                  {!active && (
+                    <div className="preview-empty">
+                      <FilePlus2 size={28} />
+                      <p>添加文件，开始编辑</p>
+                      <button className="secondary-button" onClick={() => openModal('file')}>
+                        添加文件
+                      </button>
+                    </div>
+                  )}
                   {textFile && (
                     <SourceEditor
+                      onHistoryState={onHistoryState}
                       ref={editor}
                       files={project.files.map((f) => f.path)}
                       labels={project.files
@@ -2365,6 +2460,40 @@ export function App() {
               </p>
             )}
           </AppearanceSettings>
+        </Dialog>
+        <Dialog
+          open={!!deleteTarget}
+          onClose={() => {
+            if (!restoreBusy) setDeleteTarget(null);
+          }}
+          title={deleteTarget?.folder ? '删除文件夹？' : '删除文件？'}
+          description="此操作会删除项目中的对应内容，删除前会自动备份。关联文件夹中的文件也会从磁盘删除。"
+        >
+          <p className="delete-target-path">{deleteTarget?.path}</p>
+          {deleteTarget?.folder && (
+            <p className="delete-target-note">文件夹中的所有子文件夹与文件将一并删除。</p>
+          )}
+          {deleteError && (
+            <p className="form-error" role="alert">
+              {deleteError}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <button
+              className="secondary-button"
+              disabled={restoreBusy}
+              onClick={() => setDeleteTarget(null)}
+            >
+              取消
+            </button>
+            <button
+              className="primary-button danger-button"
+              disabled={restoreBusy}
+              onClick={() => void deleteFileTarget()}
+            >
+              {restoreBusy ? '正在删除…' : '确认删除'}
+            </button>
+          </div>
         </Dialog>
         <Dialog open={modal === 'commands'} onClose={() => setModal(null)} title="你想做什么？">
           <div className="command-search">

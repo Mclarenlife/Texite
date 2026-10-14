@@ -1,11 +1,25 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useLayoutEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { EditorState, Compartment } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
 import { StreamLanguage, syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { stex } from '@codemirror/legacy-modes/mode/stex';
 import { autocompletion, type CompletionContext } from '@codemirror/autocomplete';
-import { indentWithTab, isolateHistory } from '@codemirror/commands';
+import {
+  indentWithTab,
+  isolateHistory,
+  undo,
+  redo,
+  undoDepth,
+  redoDepth,
+} from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import { tags } from '@lezer/highlight';
 import type { ProjectFile } from '../core/model';
@@ -17,6 +31,8 @@ import { localizedSearch } from './searchPanel';
 
 export type EditorHandle = {
   jump: (position: number, end?: number) => void;
+  undo: () => void;
+  redo: () => void;
   search: () => void;
   insert: (text: string) => void;
   focus: () => void;
@@ -38,6 +54,7 @@ type Props = {
   onCursor: (line: number, column: number, reference?: string) => void;
   onCompile: () => void;
   onSave: () => void;
+  onHistoryState?(undo: boolean, redo: boolean): void;
 };
 const highlighting = HighlightStyle.define([
   {
@@ -79,6 +96,18 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
           effects: EditorView.scrollIntoView(pos, { y: 'center' }),
         });
         v.focus();
+      },
+      undo() {
+        if (view.current && !current.current.readOnly) {
+          undo(view.current);
+          view.current.focus();
+        }
+      },
+      redo() {
+        if (view.current && !current.current.readOnly) {
+          redo(view.current);
+          view.current.focus();
+        }
       },
       search() {
         if (view.current) openSearchPanel(view.current);
@@ -188,6 +217,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       font.current.of(EditorView.theme({ '&': { fontSize: current.current.fontSize + 'px' } })),
       EditorView.contentAttributes.of({ 'aria-label': 'LaTeX 源码编辑器', spellcheck: 'false' }),
       EditorView.updateListener.of((update) => {
+        current.current.onHistoryState?.(undoDepth(update.state) > 0, redoDepth(update.state) > 0);
         if (update.docChanged) setAnchor(null);
         if (update.docChanged && !externalChange.current)
           current.current.onChange(update.state.doc.toString(), current.current.file.path);
@@ -217,7 +247,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       effects: editable.current.reconfigure(EditorState.readOnly.of(!!props.readOnly)),
     });
   }, [props.readOnly]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const v = view.current;
     if (!v) return;
     const key = JSON.stringify([props.projectId, props.file.path]);

@@ -42,7 +42,6 @@ function validateSnapshot(project) {
     !project ||
     !engines.includes(project.engine) ||
     !Array.isArray(project.files) ||
-    !project.files.length ||
     project.files.length > 500
   )
     throw new Error('Invalid project');
@@ -74,8 +73,9 @@ function validateSnapshot(project) {
     }
   }
   if ([...folders].some((name) => names.has(name))) throw new Error('File/folder path conflict');
-  safeRelative(project.mainFile);
+  if (project.mainFile !== '') safeRelative(project.mainFile);
   if (
+    !(project.mainFile === '' && !project.files.some((f) => !f.binary && /\.tex$/i.test(f.path))) &&
     !project.files.some((f) => f.path === project.mainFile && !f.binary && /\.tex$/i.test(f.path))
   )
     throw new Error('Missing main file');
@@ -142,11 +142,55 @@ async function ensureSafeDestination(root, name) {
   }
   return target;
 }
-async function saveDirectory(root, project, hashes = new Map(), removals = [], sync = false) {
+async function saveDirectory(
+  root,
+  project,
+  hashes = new Map(),
+  removals = [],
+  sync = false,
+  removedFolders = [],
+) {
   validateSnapshot(project);
   if (!Array.isArray(removals) || removals.length > (sync ? 500 : 30))
     throw new Error('Invalid removals');
   const deletes = [];
+  if (
+    !Array.isArray(removedFolders) ||
+    removedFolders.length > 500 ||
+    (!sync && removedFolders.length)
+  )
+    throw new Error('Invalid folder removals');
+  const foldersToDelete = [...new Set(removedFolders.map(safeRelative))].sort(
+    (a, b) => b.split('/').length - a.split('/').length,
+  );
+  for (const folder of foldersToDelete) {
+    if (
+      folder.split('/').some((part) => part.startsWith('.')) ||
+      project.folders?.some((p) => p === folder || p.startsWith(folder + '/')) ||
+      project.files.some((f) => f.path.startsWith(folder + '/'))
+    )
+      throw new Error('Invalid folder removal');
+    const target = await ensureSafeDestination(root, folder);
+    let entries;
+    try {
+      entries = await fs.readdir(target, { withFileTypes: true });
+    } catch (e) {
+      if (e.code === 'ENOENT') continue;
+      throw e;
+    }
+    for (const entry of entries) {
+      const name = folder + '/' + entry.name;
+      if (
+        entry.isSymbolicLink() ||
+        (entry.isDirectory()
+          ? !foldersToDelete.includes(name)
+          : !entry.isFile() || !removals.some((item) => item.path === name))
+      )
+        throw new Error(
+          `文件夹 ${folder} 含有未载入或外部新增内容，未删除。请重新打开项目后重试。`,
+        );
+    }
+  }
   const removalNames = new Set();
   for (const item of removals) {
     const name = safeRelative(item.path);
@@ -215,6 +259,14 @@ async function saveDirectory(root, project, hashes = new Map(), removals = [], s
     hashes.delete(item.name);
   }
   const metadata = await ensureSafeDestination(root, '.texite.json');
+  // Only remove empty directories after individually verified files; never recurse over unknown disk content.
+  for (const folder of foldersToDelete) {
+    try {
+      await fs.rmdir(await ensureSafeDestination(root, folder));
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+  }
   await fs.writeFile(
     metadata,
     JSON.stringify(
@@ -349,6 +401,7 @@ class Compiler {
   }
   async compile(project, onLog = () => {}) {
     validateSnapshot(project);
+    if (!project.mainFile) throw new Error('请先创建 .tex 文件并设为主文件，再编译。');
     if (this.active) throw new Error('已有编译正在进行。');
     const job = { child: null, cancelled: false };
     this.active = job;

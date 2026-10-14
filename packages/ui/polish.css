@@ -1,0 +1,272 @@
+.app-shell > .app-header {
+  min-height: 58px;
+}
+.workbench-row {
+  padding: 12px;
+  gap: 12px;
+}
+.workspace {
+  grid-template-columns: minmax(0, var(--editor-ratio)) 12px minmax(0, 1fr);
+}
+.file-tree button {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 35px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 7px;
+  color: var(--secondary);
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  gap: 9px;
+}
+.file-tree button:hover {
+  background: var(--tint);
+}
+.file-tree button.selected {
+  background: var(--tint);
+  color: var(--text);
+}
+.file-tree button > svg {
+  flex-shrink: 0;
+}
+.file-tree button > span:not(.main-dot) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-context-menu {
+  position: fixed;
+  z-index: 90;
+  padding: 5px;
+  min-width: 150px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px #0002;
+}
+.file-context-menu button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  text-align: left;
+  border-radius: 6px;
+  color: var(--text);
+}
+.file-context-menu button:hover,
+.file-context-menu button:focus-visible {
+  background: var(--tint);
+}
+.delete-target-path {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  padding: 13px 15px;
+  border-radius: 8px;
+  background: var(--tint);
+}
+.delete-target-note {
+  color: var(--secondary);
+  line-height: 1.6;
+}
+.project-open {
+  align-items: stretch;
+}
+.project-open > strong,
+.project-open > span {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+.project-open .project-cover {
+  overflow: hidden;
+  position: relative;
+}
+.project-pdf-cover {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  inset: 0;
+  object-fit: cover;
+  object-position: top;
+}
+.editor-history-actions {
+  display: flex;
+  gap: 2px;
+  padding-left: 8px;
+  flex-shrink: 0;
+}
+.editor-history-actions .icon-button {
+  width: 28px;
+  height: 28px;
+}
+.editor-history-actions button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.outline-heading .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.outline-tree .outline-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+}
+.outline-tree .outline-toggle {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 22px;
+  padding: 0;
+  min-height: 24px;
+}
+.outline-tree .outline-leaf {
+  width: 22px;
+  flex-shrink: 0;
+}
+.outline-tree .outline-title {
+  flex: 1;
+  min-width: 0;
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 6px 5px;
+  text-align: left;
+  color: var(--secondary);
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  border-radius: 5px;
+}
+.outline-tree button:hover {
+  background: var(--tint);
+}
+.pdf-selection-popover {
+  position: fixed;
+  z-index: 48;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 4px 18px #0002;
+}
+.pdf-selection-popover .pdf-selection-locate {
+  position: static;
+  border: 0;
+  box-shadow: none;
+  width: 30px;
+  height: 28px;
+  border-radius: 5px;
+}
+.pdf-selection-locate:hover {
+  background: var(--tint);
+}
+.pdf-selection-count {
+  padding: 0 9px;
+  border-left: 1px solid var(--line);
+  color: var(--secondary);
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.about-settings {
+  max-width: 760px;
+  margin: 0 auto;
+}
+.about-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 0 24px;
+}
+.about-brand > svg {
+  padding: 12px;
+  width: 60px;
+  height: 60px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.about-brand h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+}
+.about-brand span {
+  color: var(--secondary);
+  font-size: 12px;
+}
+.about-links {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 30px;
+}
+.about-links a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  padding: 16px;
+  border-radius: 12px;
+  color: var(--text);
+  text-decoration: none;
+}
+.about-links a:hover {
+  background: var(--tint);
+}
+.about-links a > span:not(.about-author) {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+}
+.about-links small {
+  display: block;
+  margin-top: 5px;
+  color: var(--secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.about-author {
+  font-size: 17px;
+  font-weight: 600;
+}
+.about-changelog h3 {
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+.about-changelog section {
+  border-top: 1px solid var(--line);
+  padding: 16px 0;
+}
+.about-changelog h4 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.about-changelog time {
+  color: var(--secondary);
+  font-size: 11px;
+  font-weight: 400;
+}
+.about-changelog ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--secondary);
+}
+@media (max-width: 650px) {
+  .about-links {
+    grid-template-columns: 1fr;
+  }
+}

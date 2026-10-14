@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
 import {
+  Info,
   Check,
   Cloud,
   Sun,
@@ -12,6 +13,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import './settings.css';
+import { AboutSettings } from './AboutSettings';
 import { editorFonts } from './preferences';
 import { ColorPicker } from './ColorPicker';
 import {
@@ -154,6 +156,7 @@ export function AppearanceSettings(props: Props) {
     { id: 'text', name: '编辑器文字', icon: Type },
     { id: 'compiler', name: '编译设置', icon: Terminal },
     { id: 'sync', name: '同步与存储', icon: Cloud },
+    { id: 'about', name: '关于', icon: Info },
   ];
   return (
     <div className="settings-studio">
@@ -186,7 +189,8 @@ export function AppearanceSettings(props: Props) {
       </div>
       <div
         className={
-          'settings-layout' + (['compiler', 'sync'].includes(tab) ? ' compiler-layout' : '')
+          'settings-layout' +
+          (['compiler', 'sync', 'about'].includes(tab) ? ' compiler-layout' : '')
         }
       >
         <div
@@ -461,6 +465,7 @@ export function AppearanceSettings(props: Props) {
               </label>
             </>
           )}
+          {tab === 'about' && <AboutSettings />}
           {tab === 'sync' && props.sync}
           {tab === 'compiler' && (
             <div className="compiler-settings">
@@ -472,7 +477,7 @@ export function AppearanceSettings(props: Props) {
             </div>
           )}
         </div>
-        {!['compiler', 'sync'].includes(tab) && (
+        {!['compiler', 'sync', 'about'].includes(tab) && (
           <aside className="settings-live-preview" aria-label="编辑器实时预览">
             <div className="live-preview-label">
               <span className="live-dot" />

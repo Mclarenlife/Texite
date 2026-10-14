@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { readProjectCovers } from '../platform/storage';
+import { useEffect, useState } from 'react';
 import {
   FileText,
   Cloud,
@@ -44,6 +45,23 @@ export function ProjectSpace({
   onSync(): Promise<void>;
   onUpload(ids: string[]): Promise<void>;
 }) {
+  const [covers, setCovers] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let live = true;
+    const refresh = () => {
+      void readProjectCovers(projects.map((p) => p.id))
+        .then((value) => {
+          if (live) setCovers(value);
+        })
+        .catch(() => {});
+    };
+    refresh();
+    window.addEventListener('texite-cover-updated', refresh);
+    return () => {
+      live = false;
+      window.removeEventListener('texite-cover-updated', refresh);
+    };
+  }, [projects]);
   const [query, setQuery] = useState(''),
     [trash, setTrash] = useState(false),
     [selected, setSelected] = useState<string[]>([]);
@@ -252,9 +270,19 @@ export function ProjectSpace({
               }}
             >
               <div className={'project-cover cover-' + (index % 3)}>
-                <span className="cover-number">{String(index + 1).padStart(2, '0')}</span>
-                <FileText size={40} />
-                <span>LaTeX</span>
+                {covers[p.id] ? (
+                  <img
+                    className="project-pdf-cover"
+                    src={covers[p.id]}
+                    alt={`${p.name} · PDF 首页`}
+                  />
+                ) : (
+                  <>
+                    <span className="cover-number">{String(index + 1).padStart(2, '0')}</span>
+                    <FileText size={40} />
+                    <span>LaTeX</span>
+                  </>
+                )}
               </div>
               <strong>{p.name}</strong>
               <span>

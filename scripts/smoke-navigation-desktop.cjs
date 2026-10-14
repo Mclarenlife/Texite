@@ -14,6 +14,9 @@ const path = require('node:path');
   await fs.writeFile(path.join(folder, 'main.tex'), source);
   await fs.writeFile(path.join(folder, 'chapter.tex'), 'Included chapter text.');
   await fs.writeFile(path.join(folder, 'asset.bin'), Buffer.from([0, 255, 13, 128]));
+  await fs.mkdir(path.join(folder, 'notes', 'nested'), { recursive: true });
+  await fs.mkdir(path.join(folder, 'notes', 'empty'), { recursive: true });
+  await fs.writeFile(path.join(folder, 'notes', 'nested', 'draft.txt'), 'Deletion recovery text');
   let desktop;
   const errors = [];
   try {
@@ -61,12 +64,15 @@ const path = require('node:path');
     await span.evaluate((el) => {
       document.activeElement?.blur();
       const r = document.createRange();
-      r.selectNodeContents(el);
+      const from = el.textContent.indexOf('Selected second page words.');
+      r.setStart(el.firstChild, from);
+      r.setEnd(el.firstChild, from + 'Selected second page words.'.length);
       const s = window.getSelection();
       s.removeAllRanges();
       s.addRange(r);
     });
     await span.dispatchEvent('mouseup');
+    await expect(page.getByLabel('选中文字词数')).toHaveText('4 词');
     await page.getByRole('button', { name: '定位到源码', exact: true }).click();
     await expect
       .poll(() => page.evaluate(() => window.getSelection()?.toString()))
@@ -126,13 +132,57 @@ const path = require('node:path');
     await expect(page.locator('.backup-row')).toHaveCount(3);
     expect([...(await fs.readFile(path.join(folder, 'new-image.bin')))]).toEqual([0, 17, 255]);
     // A conflicting external edit must be preserved, and restoration must report the conflict.
+    await page.getByRole('button', { name: '项目文件', exact: true }).click();
+    await page.locator('.file-tree button[title="notes"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: '删除文件夹', exact: true }).click();
+    await page.getByRole('button', { name: '取消', exact: true }).click();
+    expect(await fs.readFile(path.join(folder, 'notes/nested/draft.txt'), 'utf8')).toBe(
+      'Deletion recovery text',
+    );
+    await page.locator('.file-tree button[title="notes"]').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: '删除文件夹', exact: true }).click();
+    await page.getByRole('button', { name: '确认删除', exact: true }).click();
+    await expect(page.locator('.file-tree button[title="notes"]')).toHaveCount(0);
+    await expect(fs.access(path.join(folder, 'notes'))).rejects.toThrow();
+    await page.getByRole('button', { name: '修改历史', exact: true }).click();
+    await page
+      .getByRole('button', { name: '还原备份 删除前自动备份 · notes', exact: true })
+      .click();
+    await expect(page.locator('.backup-row')).toHaveCount(5);
+    expect(await fs.readFile(path.join(folder, 'notes/nested/draft.txt'), 'utf8')).toBe(
+      'Deletion recovery text',
+    );
+    await page.getByRole('button', { name: '项目首页' }).click();
+    await expect(page.locator('.project-pdf-cover')).toBeVisible();
+    expect(
+      await page.locator('.project-pdf-cover').evaluate((el) => el.naturalWidth),
+    ).toBeGreaterThan(400);
+    await page.getByRole('button', { name: '打开项目 Navigation test', exact: true }).click();
+    await desktop.evaluate(({ shell }) => {
+      global.texiteExternalLinks = [];
+      shell.openExternal = async (url) => {
+        global.texiteExternalLinks.push(url);
+      };
+    });
+    await page.getByRole('button', { name: '设置', exact: true }).click();
+    await page.getByRole('tab', { name: '关于', exact: true }).click();
+    await expect(page.getByRole('tabpanel')).toContainText(
+      await desktop.evaluate(({ app }) => app.getVersion()),
+    );
+    await page.getByRole('link', { name: /GitHub 项目/ }).click();
+    await page.getByRole('link', { name: /作者官网/ }).click();
+    await expect
+      .poll(() => desktop.evaluate(() => global.texiteExternalLinks))
+      .toEqual(['https://github.com/Mclarenlife/Texite', 'https://mclarenlife.github.io/']);
+    await page.getByRole('button', { name: '关闭弹窗' }).click();
+    await page.getByRole('button', { name: '修改历史', exact: true }).click();
     await fs.writeFile(path.join(folder, 'main.tex'), source + '% external edit');
     await page.getByRole('button', { name: '还原备份 Native baseline', exact: true }).click();
     await expect(page.locator('.project-backups [role="alert"]')).toContainText(/外部|修改/);
     expect(await fs.readFile(path.join(folder, 'main.tex'), 'utf8')).toContain('% external edit');
     expect(errors).toEqual([]);
     console.log(
-      'PASS native PDF forward/inverse location, full-project restore and external-edit protection',
+      'PASS native PDF forward/inverse location, selection word count, persistent cover, confirmed folder deletion, full-project restore and external-edit protection',
       base,
     );
   } finally {

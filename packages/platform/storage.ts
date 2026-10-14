@@ -23,6 +23,19 @@ export type ProjectBackup = {
   note: string;
   project: Project;
 };
+export async function saveProjectCover(id: string, image: string) {
+  await (await database()).put('settings', image, 'cover:' + id);
+  window.dispatchEvent(new CustomEvent('texite-cover-updated'));
+}
+export async function readProjectCovers(ids: string[]): Promise<Record<string, string>> {
+  const db = await database();
+  const pairs = await Promise.all(
+    ids.map(async (id) => [id, await db.get('settings', 'cover:' + id)]),
+  );
+  return Object.fromEntries(
+    pairs.filter(([, value]) => typeof value === 'string' && value.startsWith('data:image/')),
+  );
+}
 export async function readProjectBackups(id: string): Promise<ProjectBackup[]> {
   const prefix = 'backup:' + id + ':';
   return (
@@ -406,6 +419,7 @@ export async function reopenBrowserProject(project: Project) {
 export async function saveBrowserDirectory(
   project: Project,
   removals: { path: string; expected: string; binary?: boolean }[] = [],
+  removedFolders: string[] = [],
 ) {
   const db = await database();
   const binding: Binding | undefined = await db.get('settings', 'folder:' + project.id);
@@ -419,6 +433,38 @@ export async function saveBrowserDirectory(
     return handle;
   }
   const deletes = [];
+  const foldersToDelete = [...new Set(removedFolders.map(safePath))].sort(
+    (a, b) => b.split('/').length - a.split('/').length,
+  );
+  const folderDeletes: { parent: Directory; name: string }[] = [];
+  for (const folder of foldersToDelete) {
+    if (
+      project.folders?.some((p) => p === folder || p.startsWith(folder + '/')) ||
+      project.files.some((f) => f.path.startsWith(folder + '/'))
+    )
+      throw new Error('无效的文件夹删除请求。');
+    const parts = folder.split('/'),
+      name = parts.pop()!;
+    let parent = binding.handle;
+    try {
+      for (const part of parts) parent = (await parent.getDirectoryHandle(part)) as Directory;
+      const handle = (await parent.getDirectoryHandle(name)) as Directory;
+      for await (const [child, entry] of handle.entries()) {
+        const path = folder + '/' + child;
+        if (
+          entry.kind === 'directory'
+            ? !foldersToDelete.includes(path)
+            : !removals.some((r) => r.path === path)
+        )
+          throw new Error(
+            '文件夹 ' + folder + ' 含有未载入或外部新增内容，未删除。请重新打开项目后重试。',
+          );
+      }
+      folderDeletes.push({ parent, name });
+    } catch (e) {
+      if ((e as DOMException).name !== 'NotFoundError') throw e;
+    }
+  }
   for (const item of removals) {
     const parts = safePath(item.path).split('/'),
       name = parts.pop()!;
@@ -475,6 +521,7 @@ export async function saveBrowserDirectory(
     await item.parent.removeEntry(item.name);
     delete binding.hashes[item.path];
   }
+  for (const { parent, name } of folderDeletes) await parent.removeEntry(name);
   const metadata = await (
     await binding.handle.getFileHandle('.texite.json', { create: true })
   ).createWritable();

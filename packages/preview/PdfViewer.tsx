@@ -225,7 +225,7 @@ export function PdfViewer({
     if (!rect) return;
     const scale = Number(element.dataset.scale) || 1;
     setSelection({
-      left: Math.max(8, Math.min(window.innerWidth - 48, rect.left)),
+      left: Math.max(8, Math.min(window.innerWidth - 138, rect.left)),
       top: Math.max(8, Math.min(window.innerHeight - 40, rect.top - 38)),
       page: Number(element.dataset.page),
       x: (rect.left - bounds.left) / scale,
@@ -392,19 +392,32 @@ export function PdfViewer({
       {selection &&
         !diagnosticsOpen &&
         createPortal(
-          <button
-            className="pdf-selection-locate"
-            aria-label="定位到源码"
-            title="定位到源码"
+          <div
+            className="pdf-selection-popover"
             style={{ left: selection.left, top: selection.top }}
             onMouseDown={(e) => e.preventDefault()}
-            onClick={() => {
-              onLocateSource?.(selection);
-              setSelection(null);
-            }}
           >
-            <LocateFixed size={17} />
-          </button>,
+            <button
+              className="pdf-selection-locate"
+              aria-label="定位到源码"
+              title="定位到源码"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onLocateSource?.(selection);
+                setSelection(null);
+              }}
+            >
+              <LocateFixed size={17} />
+            </button>
+            <span className="pdf-selection-count" aria-label="选中文字词数">
+              {
+                [
+                  ...new Intl.Segmenter('zh', { granularity: 'word' }).segment(selection.text),
+                ].filter((part) => part.isWordLike).length
+              }{' '}
+              词
+            </span>
+          </div>,
           document.body,
         )}
       {diagnosticsOpen && diagnostics}

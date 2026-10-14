@@ -79,6 +79,7 @@ export type DesktopAPI = {
   restoreProject?(
     project: Project,
     removals: { path: string; expected: string; binary?: boolean }[],
+    removedFolders?: string[],
   ): Promise<unknown>;
   listRuntime(): Promise<RuntimeModule[]>;
   chooseRuntimePack(): Promise<{
@@ -173,13 +174,7 @@ export function safePath(path: string): string {
 }
 export function validateProject(value: unknown): Project {
   const p = value as Project;
-  if (
-    !p ||
-    !Array.isArray(p.files) ||
-    !p.files.length ||
-    p.files.length > 500 ||
-    typeof p.name !== 'string'
-  )
+  if (!p || !Array.isArray(p.files) || p.files.length > 500 || typeof p.name !== 'string')
     throw new Error('无效的项目数据。');
   const paths = new Set<string>();
   let total = 0;
@@ -202,15 +197,17 @@ export function validateProject(value: unknown): Project {
   );
   const mainFile =
     p.files.find((f) => f.path === p.mainFile && /\.tex$/i.test(f.path) && !f.binary)?.path ??
-    p.files.find((f) => /\.tex$/i.test(f.path) && !f.binary)?.path;
-  if (!mainFile) throw new Error('项目中没有 .tex 主文件。');
+    p.files.find((f) => /\.tex$/i.test(f.path) && !f.binary)?.path ??
+    '';
   return {
     ...p,
     folders,
     id: typeof p.id === 'string' ? p.id : crypto.randomUUID(),
     name: p.name.slice(0, 100),
     mainFile,
-    activeFile: p.files.some((f) => f.path === p.activeFile) ? p.activeFile : mainFile,
+    activeFile: p.files.some((f) => f.path === p.activeFile)
+      ? p.activeFile
+      : mainFile || p.files[0]?.path || '',
     engine: ['tectonic', 'xelatex', 'pdflatex', 'lualatex'].includes(p.engine)
       ? p.engine
       : 'pdflatex',
@@ -239,8 +236,14 @@ export function validateFolders(folders: string[], files: string[]) {
 }
 export function getOutline(source: string) {
   return [
-    ...source.matchAll(/^\s*\\(subsection|section|chapter)\*?(?:\[[^\]]*\])?\{([^}]+)\}/gm),
-  ].map((m) => ({ title: m[2], level: m[1] === 'subsection' ? 2 : 1, position: m.index! }));
+    ...source.matchAll(
+      /^[\t ]*\\(subsubsection|subsection|section|chapter|part)\*?(?:\[[^\]]*\])?\{([^}]+)\}/gm,
+    ),
+  ].map((m, _, matches) => {
+    const ranks = ['part', 'chapter', 'section', 'subsection', 'subsubsection'];
+    const base = Math.min(...matches.map((item) => ranks.indexOf(item[1])));
+    return { title: m[2], level: ranks.indexOf(m[1]) - base + 1, position: m.index! };
+  });
 }
 export function getReferences(files: ProjectFile[]) {
   return files

@@ -145,7 +145,9 @@ app.whenReady().then(async () => {
   });
   handleFiles('project:save', (project) => library.save(project));
   handleFiles('project:save-ai', (project, removals) => library.save(project, removals));
-  handleFiles('project:restore', (project, removals) => library.save(project, removals, true));
+  handleFiles('project:restore', (project, removals, removedFolders) =>
+    library.save(project, removals, true, removedFolders),
+  );
   handleFiles('project:import', (project) => library.import(project));
   handleFiles('project:list', () => library.list());
   handleFiles('project:reopen', (id) => library.reopen(id));
@@ -206,7 +208,13 @@ app.whenReady().then(async () => {
       },
     });
     window.webContents.setWindowOpenHandler(({ url }) => {
-      if (url === 'https://github.com/Mclarenlife/Texite/releases/latest')
+      if (
+        [
+          'https://github.com/Mclarenlife/Texite/releases/latest',
+          'https://github.com/Mclarenlife/Texite',
+          'https://mclarenlife.github.io/',
+        ].includes(url)
+      )
         void shell.openExternal(url);
       return { action: 'deny' };
     });

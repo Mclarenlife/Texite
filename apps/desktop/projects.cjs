@@ -111,14 +111,15 @@ class ProjectLibrary {
   snapshot(entry, data) {
     const mainFile =
       data.files.find((f) => f.path === data.settings.mainFile)?.path ||
-      data.files.find((f) => /\.tex$/i.test(f.path))?.path;
+      data.files.find((f) => /\.tex$/i.test(f.path))?.path ||
+      '';
     return {
       id: entry.id,
       name: entry.name || data.settings.name || path.basename(entry.root),
       files: data.files,
       folders: data.folders,
       mainFile,
-      activeFile: mainFile,
+      activeFile: mainFile || data.files[0]?.path || '',
       engine: data.settings.engine || 'pdflatex',
       revision: 0,
       updatedAt: Date.now(),
@@ -169,7 +170,7 @@ class ProjectLibrary {
     await this.persist();
     return { ...project, id, location: { kind: entry.kind, directory: root } };
   }
-  async save(project, removals = [], sync = false) {
+  async save(project, removals = [], sync = false, removedFolders = []) {
     validateSnapshot(project);
     let entry = this.entries.get(project.id);
     if (!entry) {
@@ -177,7 +178,14 @@ class ProjectLibrary {
       const root = await this.createProjectDirectory(project.name);
       entry = { id: project.id, root, kind: 'managed', hashes: [] };
     }
-    const hashes = await saveDirectory(entry.root, project, new Map(entry.hashes), removals, sync);
+    const hashes = await saveDirectory(
+      entry.root,
+      project,
+      new Map(entry.hashes),
+      removals,
+      sync,
+      removedFolders,
+    );
     entry.hashes = [...hashes];
     entry.name = project.name;
     this.entries.set(project.id, entry);

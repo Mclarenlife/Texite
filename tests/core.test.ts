@@ -136,9 +136,13 @@ test('validates a project and recovers a missing main selection without losing a
   assert.throws(() =>
     validateProject({ ...project, files: [...project.files, { path: 'MAIN.tex', content: '' }] }),
   );
-  assert.throws(() =>
-    validateProject({ ...project, files: [{ path: 'readme.txt', content: 'hi' }] }),
+  assert.equal(
+    validateProject({ ...project, files: [{ path: 'readme.txt', content: 'hi' }] }).mainFile,
+    '',
   );
+  const empty = validateProject({ ...project, files: [] });
+  assert.equal(empty.mainFile, '');
+  assert.equal(empty.activeFile, '');
 });
 test('indexes sections, citations and located compiler errors', () => {
   const project = createProject();
