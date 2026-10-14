@@ -25,6 +25,7 @@ import {
 } from './colors';
 
 type Props = {
+  onPrepareUpdate(): Promise<void>;
   theme: string;
   onTheme: (v: string) => void;
   palette: string;
@@ -465,7 +466,7 @@ export function AppearanceSettings(props: Props) {
               </label>
             </>
           )}
-          {tab === 'about' && <AboutSettings />}
+          {tab === 'about' && <AboutSettings onPrepareUpdate={props.onPrepareUpdate} />}
           {tab === 'sync' && props.sync}
           {tab === 'compiler' && (
             <div className="compiler-settings">

@@ -90,7 +90,7 @@ test('undo redo, hierarchical outline and About settings use consistent workspac
   await page.screenshot({ path: '.qa/preview-0.9.5-workspace.png', animations: 'disabled' });
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('tab', { name: '关于', exact: true }).click();
-  await expect(page.getByRole('tabpanel')).toContainText('0.9.0-preview.5');
+  await expect(page.getByRole('tabpanel')).toContainText('0.9.0-preview.6');
   await expect(page.getByRole('link', { name: /作者官网/ })).toHaveAttribute(
     'href',
     'https://mclarenlife.github.io/',

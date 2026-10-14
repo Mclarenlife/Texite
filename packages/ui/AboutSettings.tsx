@@ -1,7 +1,8 @@
 import { ArrowUpRight, Code2 } from 'lucide-react';
 import packageInfo from '../../package.json';
+import { UpdateSettings } from './UpdateSettings';
 
-export function AboutSettings() {
+export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<void> }) {
   return (
     <div className="about-settings">
       <div className="about-brand">
@@ -30,12 +31,21 @@ export function AboutSettings() {
         </a>
       </div>
       <div className="about-changelog">
+        <UpdateSettings onPrepare={onPrepareUpdate} />
         <h3>更新日志</h3>
         <section>
           <h4>
             {packageInfo.version}
             <time>2026.10.14</time>
           </h4>
+          <ul>
+            <li>最近删除支持永久删除与可选本地文件清理。</li>
+            <li>拖入文件或目标文件夹导入，底栏展示导入进度。</li>
+            <li>WebDAV 未同步提醒、诊断状态颜色与 GitHub Release 更新入口。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>0.9.0-preview.5</h4>
           <ul>
             <li>文件与文件夹右键删除，二次确认并保留备份。</li>
             <li>成功编译后以 PDF 首页生成项目封面。</li>

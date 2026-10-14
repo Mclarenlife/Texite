@@ -210,6 +210,35 @@ export async function readArchivedProjects(): Promise<string[]> {
   const value = await (await database()).get('settings', 'archivedProjects');
   return Array.isArray(value) ? value.filter((id) => typeof id === 'string') : [];
 }
+export async function deleteBrowserFiles(id: string) {
+  const binding: Binding | undefined = await (await database()).get('settings', 'folder:' + id);
+  if (!binding) return;
+  if ((await binding.handle.requestPermission({ mode: 'readwrite' })) !== 'granted')
+    throw new Error('需要文件夹读写权限，尚未删除项目。');
+  for await (const [name] of binding.handle.entries())
+    await binding.handle.removeEntry(name, { recursive: true });
+}
+export async function permanentlyDeleteStoredProject(id: string) {
+  const db = await database(),
+    tx = db.transaction(['projects', 'settings', 'recoveries'], 'readwrite');
+  await tx.objectStore('projects').delete(id);
+  const settings = tx.objectStore('settings');
+  for (const key of await settings.getAllKeys()) {
+    if (
+      ['history:', 'ai:', 'cover:', 'folder:'].some((p) => key === p + id) ||
+      String(key).startsWith('backup:' + id + ':')
+    )
+      await settings.delete(key);
+  }
+  for (const point of await tx.objectStore('recoveries').index('projectId').getAll(id))
+    await tx.objectStore('recoveries').delete(point.id);
+  await settings.put(
+    ((await settings.get('archivedProjects')) || []).filter((value: string) => value !== id),
+    'archivedProjects',
+  );
+  if ((await settings.get('lastProject')) === id) await settings.delete('lastProject');
+  await tx.done;
+}
 export async function archiveProjects(ids: string[], archive: boolean) {
   const db = await database();
   const tx = db.transaction('settings', 'readwrite');

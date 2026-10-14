@@ -68,7 +68,11 @@ class WebDAV {
       username: this.config.username,
       hasPassword: !!this.config.password,
       persistent: this.storage.isEncryptionAvailable(),
-      projects: Object.entries(this.bindings).map(([id, b]) => ({ id, time: b.time })),
+      projects: Object.entries(this.bindings).map(([id, b]) => ({
+        id,
+        time: b.time,
+        hash: b.hash,
+      })),
     };
   }
   async configure(input) {

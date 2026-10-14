@@ -27,6 +27,7 @@ export function ProjectSpace({
   onNew,
   onRename,
   onArchive,
+  onDelete,
   syncedIds = [],
   syncBusy = false,
   onSync,
@@ -40,6 +41,7 @@ export function ProjectSpace({
   onNew(): void;
   onRename(project: Project, name: string): Promise<void>;
   onArchive(ids: string[], remove: boolean): Promise<void>;
+  onDelete(ids: string[], deleteFiles: boolean): Promise<void>;
   syncedIds?: string[];
   syncBusy?: boolean;
   onSync(): Promise<void>;
@@ -65,6 +67,8 @@ export function ProjectSpace({
   const [query, setQuery] = useState(''),
     [trash, setTrash] = useState(false),
     [selected, setSelected] = useState<string[]>([]);
+  const [permanent, setPermanent] = useState<string[]>([]),
+    [deleteFiles, setDeleteFiles] = useState(false);
   const [info, setInfo] = useState<Project | null>(null),
     [rename, setRename] = useState<Project | null>(null),
     [name, setName] = useState('');
@@ -172,19 +176,33 @@ export function ProjectSpace({
           <>
             <span>已选 {selected.length} 项</span>
             {trash ? (
-              <button
-                className="secondary-button"
-                disabled={busy}
-                onClick={() =>
-                  void act(
-                    () => onArchive(selected, false),
-                    () => setSelected([]),
-                  )
-                }
-              >
-                <RotateCcw size={14} />
-                恢复项目
-              </button>
+              <>
+                <button
+                  className="secondary-button"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(
+                      () => onArchive(selected, false),
+                      () => setSelected([]),
+                    )
+                  }
+                >
+                  <RotateCcw size={14} />
+                  恢复项目
+                </button>
+                <button
+                  className="secondary-button danger-text"
+                  disabled={busy}
+                  onClick={() => {
+                    setPermanent(selected);
+                    setDeleteFiles(false);
+                    setError('');
+                  }}
+                >
+                  <Trash2 size={14} />
+                  永久删除
+                </button>
+              </>
             ) : (
               <>
                 <button
@@ -230,7 +248,7 @@ export function ProjectSpace({
           </>
         )}
       </div>
-      {error && !rename && !deleting.length && (
+      {error && !rename && !deleting.length && !permanent.length && (
         <p className="form-error" role="alert">
           {error}
         </p>
@@ -353,6 +371,62 @@ export function ProjectSpace({
             <dd>{new Date(info.updatedAt).toLocaleString()}</dd>
           </dl>
         )}
+      </Dialog>
+      <Dialog
+        open={!!permanent.length}
+        onClose={() => !busy && setPermanent([])}
+        title={`永久删除 ${permanent.length} 个项目？`}
+        description="将清除所选项目的记录、修改历史、备份与封面，无法从最近删除恢复。云端项目不受影响。"
+      >
+        <div className="permanent-projects">
+          {projects
+            .filter((p) => permanent.includes(p.id))
+            .map((p) => (
+              <div key={p.id}>
+                <strong>{p.name}</strong>
+                <small>{p.location?.directory || '浏览器本地存储'}</small>
+              </div>
+            ))}
+        </div>
+        <label className="permanent-files">
+          <input
+            type="checkbox"
+            checked={deleteFiles}
+            disabled={busy}
+            onChange={(e) => setDeleteFiles(e.target.checked)}
+          />
+          同时删除本地文件
+        </label>
+        <p className="settings-note">
+          {deleteFiles
+            ? '上方列出的本地项目目录及其全部内容将被删除。浏览器关联目录仅删除内容，保留空文件夹。'
+            : '磁盘上的项目文件夹和文件将保留。'}
+        </p>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button className="secondary-button" disabled={busy} onClick={() => setPermanent([])}>
+            取消
+          </button>
+          <button
+            className="primary-button danger-button"
+            disabled={busy}
+            onClick={() =>
+              void act(
+                () => onDelete(permanent, deleteFiles),
+                () => {
+                  setPermanent([]);
+                  setSelected([]);
+                },
+              )
+            }
+          >
+            {busy ? '正在删除…' : '确认永久删除'}
+          </button>
+        </div>
       </Dialog>
       <Dialog
         open={!!rename}

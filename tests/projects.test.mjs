@@ -4,6 +4,46 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ProjectLibrary } from '../apps/desktop/projects.cjs';
 
+test('permanent deletion retains files by default, explicitly deletes only a registered independent directory', async () => {
+  await fs.mkdir('.qa', { recursive: true });
+  const base = await fs.mkdtemp(path.resolve('.qa/permanent-delete-'));
+  const library = new ProjectLibrary(path.join(base, 'profile'));
+  await library.init();
+  const sample = {
+    id: 'sample',
+    name: 'Delete test',
+    revision: 0,
+    engine: 'pdflatex',
+    mainFile: 'main.tex',
+    files: [{ path: 'main.tex', content: 'Keep me' }],
+  };
+  const retained = await library.import(sample);
+  await library.remove(retained.id);
+  assert.equal(
+    await fs.readFile(path.join(retained.location.directory, 'main.tex'), 'utf8'),
+    'Keep me',
+  );
+  const deleted = await library.import(sample);
+  await library.remove(deleted.id, true);
+  await assert.rejects(fs.access(deleted.location.directory));
+  const restart = new ProjectLibrary(path.join(base, 'profile'));
+  await restart.init();
+  assert.equal((await restart.list()).length, 0);
+  const parent = await library.link(retained.location.directory);
+  const childRoot = path.join(retained.location.directory, 'child');
+  await fs.mkdir(childRoot);
+  await fs.writeFile(path.join(childRoot, 'main.tex'), 'nested');
+  const child = await library.link(childRoot);
+  await assert.rejects(library.remove(parent.id, true), /其他项目/);
+  await assert.rejects(library.remove(child.id, true), /其他项目/);
+  await library.remove(child.id, false);
+  await assert.rejects(library.remove(parent.id, true, [parent.location.directory]), /系统目录/);
+  assert.equal(await fs.readFile(path.join(childRoot, 'main.tex'), 'utf8'), 'nested');
+  await assert.rejects(library.remove(parent.id, 'yes'), /无效/);
+  await library.remove(parent.id, true);
+  await assert.rejects(fs.access(parent.location.directory));
+});
+
 test('managed directories use safe project names, preserve collisions and survive restart', async () => {
   await fs.mkdir('.qa', { recursive: true });
   const base = await fs.mkdtemp(path.resolve('.qa/named-projects-'));

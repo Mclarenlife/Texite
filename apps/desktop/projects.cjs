@@ -160,6 +160,52 @@ class ProjectLibrary {
     }
     return projects;
   }
+  async remove(id, deleteFiles = false, protectedPaths = []) {
+    if (typeof id !== 'string' || typeof deleteFiles !== 'boolean')
+      throw new Error('无效的删除请求。');
+    const entry = this.entries.get(id);
+    if (!entry) return;
+    if (deleteFiles) {
+      const root = path.resolve(entry.root);
+      const same = (a, b) =>
+        process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+      const contains = (a, b) =>
+        same(a, b) ||
+        (process.platform === 'win32'
+          ? b.toLowerCase().startsWith(a.toLowerCase() + path.sep)
+          : b.startsWith(a + path.sep));
+      if (
+        same(root, path.parse(root).root) ||
+        [this.directory, this.projectsRoot, ...protectedPaths].some((p) =>
+          contains(root, path.resolve(p)),
+        ) ||
+        [...this.entries.values()].some(
+          (p) =>
+            p.id !== id &&
+            (contains(root, path.resolve(p.root)) || contains(path.resolve(p.root), root)),
+        )
+      )
+        throw new Error(
+          '该目录包含其他项目或系统目录，不能删除本地文件；可取消勾选后移除项目记录。',
+        );
+      try {
+        const actual = await fs.realpath(root);
+        if (!same(actual, root) || (await fs.lstat(root)).isSymbolicLink())
+          throw new Error('项目目录路径发生变化，未删除本地文件。');
+        // The checked registered project directory is the only recursive deletion target.
+        await fs.rm(root, { recursive: true, force: false });
+      } catch (e) {
+        if (e.code !== 'ENOENT') throw e;
+      }
+    }
+    this.entries.delete(id);
+    try {
+      await this.persist();
+    } catch (e) {
+      this.entries.set(id, entry);
+      throw e;
+    }
+  }
   async import(project) {
     validateSnapshot(project);
     const id = randomUUID();

@@ -39,6 +39,20 @@ export type SyncNode = {
   height: number;
 };
 export type DesktopAPI = {
+  deleteProject?(id: string, deleteFiles: boolean): Promise<void>;
+  updates?: {
+    status(): Promise<{
+      info: UpdateInfo | null;
+      busy: boolean;
+      ready: boolean;
+      progress: number;
+      error: string;
+    }>;
+    check(): Promise<UpdateInfo>;
+    download(): Promise<boolean>;
+    install(): Promise<void>;
+    onProgress(callback: (percent: number) => void): () => void;
+  };
   platform?: string;
   windowControl?(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
   storage?: {
@@ -122,7 +136,15 @@ export type WebDAVConfig = {
   username: string;
   hasPassword: boolean;
   persistent: boolean;
-  projects: { id: string; time: number }[];
+  projects: { id: string; time: number; hash?: string }[];
+};
+export type UpdateInfo = {
+  version: string;
+  current: string;
+  available: boolean;
+  supported: boolean;
+  notes: string;
+  size: number;
 };
 export type RuntimeModule = {
   id: string;

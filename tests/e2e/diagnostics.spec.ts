@@ -20,6 +20,7 @@ test('layout diagnostics are grouped, retain navigation and copy, and explain EP
   });
   await page.getByRole('button', { name: '编译文稿', exact: false }).click();
   await expect(page.getByRole('status')).toContainText('编译完成');
+  await expect(page.locator('.diagnostic-count')).toHaveClass(/diagnostic-warning/);
   await page.getByRole('tab', { name: /编译诊断/ }).click();
   const diagnostics = page.getByRole('region', { name: '编译诊断', exact: true });
   await expect(diagnostics.locator('.diagnostics-summary')).toHaveText(
@@ -81,6 +82,7 @@ test('PDF diagnostics copy separately from locating, restore Code/split, and ret
   const preview = page.getByRole('region', { name: 'PDF 预览' });
   const diagnostics = preview.getByRole('region', { name: '编译诊断' });
   await expect(diagnostics).toContainText('Undefined control sequence');
+  await expect(page.locator('.diagnostic-count')).toHaveClass(/diagnostic-error/);
   await expect(preview.locator('.pdf-scroll')).toBeHidden();
   await expect(preview.getByRole('tab', { name: /编译诊断/ })).toHaveAttribute(
     'aria-selected',

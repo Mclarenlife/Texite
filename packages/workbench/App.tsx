@@ -2,6 +2,8 @@ import { Outline } from './Outline';
 import { pdfCover } from '../preview/cover';
 import { saveProjectCover } from '../platform/storage';
 import { Undo2, Redo2 } from 'lucide-react';
+import { permanentlyDeleteStoredProject, deleteBrowserFiles } from '../platform/storage';
+import { syncFingerprint } from '../core/syncState';
 import { SidebarSplit } from '../ui/SidebarSplit';
 import { ProjectBackups } from './ProjectBackups';
 import { createProjectBackup, type ProjectBackup } from '../platform/storage';
@@ -145,6 +147,29 @@ export function App() {
   const [inlineRun, setInlineRun] = useState(0);
   const [aiOpen, setAiOpen] = useState(false);
   const [archivedProjects, setArchivedProjects] = useState<string[]>([]);
+  const [syncDirty, setSyncDirty] = useState(false);
+  useEffect(() => {
+    let live = true;
+    const timer = setTimeout(() => {
+      void Promise.all(
+        (davConfig?.projects || [])
+          .filter((p) => !archivedProjects.includes(p.id))
+          .map(async (binding) => {
+            const local =
+              project?.id === binding.id ? project : projects.find((p) => p.id === binding.id);
+            return !!local && !!binding.hash && (await syncFingerprint(local)) !== binding.hash;
+          }),
+      )
+        .then((values) => {
+          if (live) setSyncDirty(values.some(Boolean));
+        })
+        .catch(() => {});
+    }, 180);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [davConfig, project, projects, archivedProjects]);
   const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
   const [deleteTarget, setDeleteTarget] = useState<{
     projectId: string;
@@ -217,6 +242,9 @@ export function App() {
   const [modalError, setModalError] = useState('');
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [importProgress, setImportProgress] = useState<number | null>(null);
+  const importRunning = useRef(false);
+  const permanentRunning = useRef(false);
   const [saved, setSaved] = useState<'saving' | 'saved' | 'error'>('saving');
   const [cursor, setCursor] = useState({
     line: 1,
@@ -259,8 +287,8 @@ export function App() {
     toastTimer.current = setTimeout(() => setToast(''), 4500);
   }, []);
   const persist = useCallback(
-    (snapshot: Project) => {
-      if (restoreLock.current) return Promise.resolve();
+    (snapshot: Project, duringImport = false) => {
+      if (restoreLock.current && !duringImport) return Promise.resolve();
       setSaved('saving');
       const task = saveQueue.current
         .catch(() => {})
@@ -842,6 +870,49 @@ export function App() {
     }
     notify('项目名称已更新，文件夹名称保持不变。');
   }
+  async function permanentlyDeleteProjects(ids: string[], deleteFiles: boolean) {
+    if (permanentRunning.current) return;
+    permanentRunning.current = true;
+    let locked = false;
+    try {
+      await prepareSpaceMutation();
+      if (!ids.length || ids.some((id) => !archivedProjects.includes(id)))
+        throw new Error('只能永久删除最近删除中的项目。');
+      restoreLock.current = true;
+      locked = true;
+      setRestoreBusy(true);
+      for (const id of ids) {
+        await editHistory.flush(id);
+        if (window.texite) {
+          if (!window.texite.deleteProject) throw new Error('请更新桌面应用后再删除。');
+          await window.texite.deleteProject(id, deleteFiles);
+        } else if (deleteFiles) await deleteBrowserFiles(id);
+        await permanentlyDeleteStoredProject(id);
+        drafts.current.delete(id);
+        setOpenedIds((values) => values.filter((v) => v !== id));
+        setArchivedProjects((values) => values.filter((v) => v !== id));
+        setProjects((values) => values.filter((v) => v.id !== id));
+        if (projectRef.current?.id === id) {
+          const next =
+            projects.find((p) => !ids.includes(p.id) && !archivedProjects.includes(p.id)) ||
+            createProject('未命名项目', true);
+          projectRef.current = next;
+          setProject(next);
+          await saveProject(next);
+        }
+      }
+      if (window.texite?.webdav) setDavConfig(await window.texite.webdav.get());
+      setReview(null);
+      setSaved('saved');
+      notify('所选项目已永久删除。');
+    } finally {
+      permanentRunning.current = false;
+      if (locked) {
+        restoreLock.current = false;
+        setRestoreBusy(false);
+      }
+    }
+  }
   async function archiveSpaceProjects(ids: string[], archive: boolean) {
     await prepareSpaceMutation();
     setArchivedProjects(await archiveProjects(ids, archive));
@@ -1125,37 +1196,83 @@ export function App() {
     }));
     return imagePath;
   }
-  async function addAssets(files: FileList | null) {
-    if (!files || !project) return;
+  async function addAssets(files: FileList | File[] | null, targetFolder = selectedFolder) {
+    if (!files?.length || !projectRef.current || importRunning.current) return;
+    const projectId = projectRef.current.id;
+    importRunning.current = true;
+    let locked = false;
     try {
-      let total = project.files.reduce((n, f) => n + f.content.length, 0);
+      await prepareSpaceMutation();
+      const current = projectRef.current!;
+      if (current.id !== projectId) throw new Error('项目已切换，请重新导入。');
+      restoreLock.current = true;
+      locked = true;
+      setRestoreBusy(true);
+      setImportProgress(0);
+      const inputs = Array.from(files),
+        names = new Set(current.files.map((f) => f.path.toLowerCase()));
+      if (current.files.length + inputs.length > 500) throw new Error('最多支持 500 个文件。');
+      const total = inputs.reduce((sum, f) => sum + f.size, 0);
+      if (
+        current.files.reduce((sum, f) => sum + f.content.length, 0) + total * 1.4 >
+        70 * 1024 * 1024
+      )
+        throw new Error('项目大小超过初版上限。');
+      const paths = inputs.map((file) => {
+        const path = safePath((targetFolder ? targetFolder + '/' : '') + file.name);
+        if (names.has(path.toLowerCase())) throw new Error(path + ' 已存在，请先重命名。');
+        names.add(path.toLowerCase());
+        return path;
+      });
+      let read = 0;
       const additions: ProjectFile[] = [];
-      for (const file of Array.from(files)) {
-        if (total + file.size * 1.4 > 70 * 1024 * 1024) throw new Error('项目大小超过初版上限。');
-        const path = safePath((selectedFolder ? selectedFolder + '/' : '') + file.name);
-        if (project.files.some((f) => f.path.toLowerCase() === path.toLowerCase()))
-          throw new Error(path + ' 已存在，请先重命名。');
-        total += file.size * 1.4;
-        if (isTextFile(path)) additions.push({ path, content: await file.text() });
+      for (let i = 0; i < inputs.length; i++) {
+        const file = inputs[i];
+        const bytes = await new Promise<ArrayBuffer>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onprogress = (e) =>
+            setImportProgress(Math.floor(((read + e.loaded) / Math.max(total, 1)) * 90));
+          reader.onload = () => resolve(reader.result as ArrayBuffer);
+          reader.onerror = () => reject(new Error(file.name + ' 读取失败。'));
+          reader.onabort = () => reject(new Error('文件读取已取消。'));
+          reader.readAsArrayBuffer(file);
+        });
+        if (isTextFile(paths[i]))
+          additions.push({ path: paths[i], content: new TextDecoder().decode(bytes) });
         else {
-          const content = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result).split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-          additions.push({ path, content, binary: true });
+          const data = new Uint8Array(bytes);
+          let raw = '';
+          for (let n = 0; n < data.length; n += 8192)
+            raw += String.fromCharCode(...data.subarray(n, n + 8192));
+          additions.push({ path: paths[i], content: btoa(raw), binary: true });
         }
+        read += file.size;
+        setImportProgress(Math.floor((read / Math.max(total, 1)) * 90));
       }
-      if (project.files.length + additions.length > 500) throw new Error('最多支持 500 个文件。');
-      update((p) => ({
-        ...p,
-        files: [...p.files, ...additions],
-        activeFile: additions[0]?.path ?? p.activeFile,
-      }));
+      const next = validateProject({
+        ...current,
+        files: [...current.files, ...additions],
+        activeFile: additions[0].path,
+        revision: current.revision + 1,
+        updatedAt: Date.now(),
+      });
+      setImportProgress(94);
+      projectRef.current = next;
+      setProject(next);
+      setSaved('saving');
+      await persist(next, true);
+      setImportProgress(100);
       notify('文件已加入项目。');
+      await new Promise((resolve) => setTimeout(resolve, 650));
     } catch (e) {
       notify(friendlyError(e));
+    } finally {
+      importRunning.current = false;
+      setImportProgress(null);
+      if (locked) {
+        restoreLock.current = false;
+        setRestoreBusy(false);
+      }
     }
   }
   const actions = [
@@ -1295,12 +1412,24 @@ export function App() {
               <Settings2 size={19} />
             </button>
             <button
+              className="sync-rail-button"
               aria-label="WebDAV 同步"
-              title={syncBusy ? '正在同步…' : '同步本地云项目并拉取云端项目'}
+              title={
+                syncBusy
+                  ? '正在同步…'
+                  : syncDirty
+                    ? '有本地更改尚未同步，点击同步'
+                    : '同步本地云项目并拉取云端项目'
+              }
               disabled={syncBusy}
               onClick={() => void syncWorkspace('sync')}
             >
               <RefreshCw size={20} className={syncBusy ? 'spin' : undefined} />
+              {syncDirty && (
+                <span className="sync-pending-badge" aria-label="有本地更改未同步">
+                  !
+                </span>
+              )}
             </button>
           </div>
         </nav>
@@ -1523,6 +1652,8 @@ export function App() {
                       selectedFolder={selectedFolder}
                       onFolder={setSelectedFolder}
                       onFile={selectFile}
+                      onImport={(files, folder) => void addAssets(files, folder)}
+                      onImportError={notify}
                       onDelete={(path, folder) => {
                         setDeleteError('');
                         setDeleteTarget({ projectId: project.id, path, folder });
@@ -1961,6 +2092,9 @@ export function App() {
                   diagnosticsOpen={diagnosticsOpen}
                   onDiagnosticsChange={setDiagnosticsOpen}
                   diagnosticCount={diagnostics.length}
+                  diagnosticSeverity={
+                    diagnostics.some((d) => d.severity === 'error') ? 'error' : 'warning'
+                  }
                   stale={!!pdf && pdfRevision >= 0 && pdfRevision !== project.revision}
                   diagnostics={
                     <CompileDiagnostics
@@ -1990,42 +2124,62 @@ export function App() {
               />
             )}
           </div>
-          <footer className="status-bar">
-            <div>
-              <span className={'save-indicator ' + saved}>
-                {saved === 'saved' ? (
-                  <CheckCheck size={13} />
-                ) : saved === 'saving' ? (
-                  <LoaderCircle size={13} className="spin" />
-                ) : (
-                  <TriangleAlert size={13} />
-                )}
-                <span>
-                  {saved === 'saved'
-                    ? '本地恢复副本已保存'
-                    : saved === 'saving'
-                      ? '正在保存…'
-                      : '保存失败 · 请导出备份'}
-                </span>
-              </span>
-              <span className="status-separator" />
-              <span>{window.texite ? '桌面工作区' : '浏览器工作区'}</span>
-            </div>
-            <div>
-              <button
-                title={pdfLabel ? `上次编译：${pdfLabel}` : undefined}
-                onClick={() => openModal('settings')}
+          <footer className={'status-bar' + (importProgress !== null ? ' importing' : '')}>
+            {importProgress !== null ? (
+              <div
+                className="import-progress"
+                role="progressbar"
+                aria-label="文件导入进度"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={importProgress}
               >
-                {engineNames[project.engine]}
-                {window.texite && engineStatus
-                  ? engineStatus.engines[project.engine]
-                    ? ' · 离线'
-                    : ' · 未安装'
-                  : ''}
-                <ChevronDown size={11} />
-              </button>
-              <span className="version">Texite</span>
-            </div>
+                <div className="import-progress-fill" style={{ width: importProgress + '%' }} />
+                <span>导入 {importProgress}%</span>
+                <span
+                  className="import-progress-inverse"
+                  aria-hidden="true"
+                  style={{ clipPath: `inset(0 ${100 - importProgress}% 0 0)` }}
+                >
+                  导入 {importProgress}%
+                </span>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <span className={'save-indicator ' + saved}>
+                    {saved === 'saved' ? (
+                      <CheckCheck size={13} />
+                    ) : saved === 'saving' ? (
+                      <LoaderCircle size={13} className="spin" />
+                    ) : (
+                      <TriangleAlert size={13} />
+                    )}
+                    <span>
+                      {saved === 'saved'
+                        ? '本地恢复副本已保存'
+                        : saved === 'saving'
+                          ? '正在保存…'
+                          : '保存失败 · 请导出备份'}
+                    </span>
+                  </span>
+                </div>
+                <div>
+                  <button
+                    title={pdfLabel ? `上次编译：${pdfLabel}` : undefined}
+                    onClick={() => openModal('settings')}
+                  >
+                    {engineNames[project.engine]}
+                    {window.texite && engineStatus
+                      ? engineStatus.engines[project.engine]
+                        ? ' · 离线'
+                        : ' · 未安装'
+                      : ''}
+                    <ChevronDown size={11} />
+                  </button>
+                </div>
+              </>
+            )}
           </footer>
         </div>
         <AnimatePresence>
@@ -2059,6 +2213,7 @@ export function App() {
             onNew={() => openModal('new')}
             onRename={renameSpaceProject}
             onArchive={archiveSpaceProjects}
+            onDelete={permanentlyDeleteProjects}
           />
         </section>
         <Dialog open={scopeOpen} onClose={() => setScopeOpen(false)} title="限定搜索文件">
@@ -2338,6 +2493,7 @@ export function App() {
           }}
         >
           <AppearanceSettings
+            onPrepareUpdate={prepareSpaceMutation}
             theme={theme}
             onTheme={setTheme}
             palette={palette}

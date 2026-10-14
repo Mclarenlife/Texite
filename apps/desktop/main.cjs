@@ -19,6 +19,7 @@ const { RuntimeManager } = require('./runtime-manager.cjs');
 const { CodexClient } = require('./codex-client.cjs');
 const { ChatClient } = require('./chat-client.cjs');
 const { WebDAV } = require('./webdav.cjs');
+const { Updates } = require('./updates.cjs');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'texite',
@@ -66,6 +67,33 @@ app.whenReady().then(async () => {
   library = new ProjectLibrary(app.getPath('userData'));
   await library.init();
   const dav = new WebDAV(app.getPath('userData'), safeStorage, library);
+  const updates = new Updates(path.join(app.getPath('userData'), 'updates'), {
+    version: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+    open: (file) => shell.openPath(file),
+    progress: (percent) => {
+      if (window && !window.isDestroyed()) window.webContents.send('updates:progress', percent);
+    },
+  });
+  handle('updates:check', () => updates.check());
+  handle('updates:status', () => updates.status());
+  handle('updates:download', () => updates.download());
+  handleFiles('updates:install', () => {
+    if (compiler.active || ai.active) throw new Error('请先结束编译或 AI 任务。');
+    return updates.install();
+  });
+  handleFiles('project:delete', async (id, deleteFiles) => {
+    if (compiler.active || ai.active) throw new Error('请先结束编译或 AI 任务。');
+    await library.remove(id, deleteFiles, [
+      app.getPath('home'),
+      app.getPath('documents'),
+      app.getPath('desktop'),
+      app.getPath('downloads'),
+      app.getAppPath(),
+    ]);
+    await dav.detach(id);
+  });
   handleFiles('webdav:get', () => dav.get());
   handleFiles('webdav:configure', (input) => dav.configure(input));
   handleFiles('webdav:list', () => dav.list());

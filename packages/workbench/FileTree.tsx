@@ -17,13 +17,18 @@ export function FileTree({
   onFolder,
   onFile,
   onDelete,
+  onImport,
+  onImportError,
 }: {
   project: Project;
   selectedFolder: string;
   onFolder: (path: string) => void;
   onFile: (path: string) => void;
   onDelete: (path: string, folder: boolean) => void;
+  onImport(files: File[], folder: string): void;
+  onImportError(message: string): void;
 }) {
+  const [dropFolder, setDropFolder] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; path: string; folder: boolean } | null>(
     null,
   );
@@ -72,7 +77,11 @@ export function FileTree({
           .map((folder) => (
             <div key={folder}>
               <button
-                className={selectedFolder === folder ? 'folder selected' : 'folder'}
+                className={
+                  (selectedFolder === folder ? 'folder selected' : 'folder') +
+                  (dropFolder === folder ? ' drop-target' : '')
+                }
+                data-import-folder={folder}
                 style={{ paddingLeft: 10 + depth * 14 }}
                 title={folder}
                 onContextMenu={(e) => context(e, folder, true)}
@@ -100,6 +109,7 @@ export function FileTree({
               key={file.path}
               style={{ paddingLeft: 12 + depth * 14 }}
               title={file.path}
+              data-import-folder={root}
               onContextMenu={(e) => context(e, file.path, false)}
               className={project.activeFile === file.path ? 'selected' : ''}
               onClick={() => {
@@ -124,7 +134,36 @@ export function FileTree({
     );
   }
   return (
-    <div className="file-tree">
+    <div
+      className={'file-tree' + (dropFolder === '' ? ' drop-root' : '')}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'copy';
+        setDropFolder(
+          (e.target as Element).closest<HTMLElement>('[data-import-folder]')?.dataset
+            .importFolder || '',
+        );
+      }}
+      onDragLeave={(e) => {
+        if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget))
+          setDropFolder(null);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const folder =
+          (e.target as Element).closest<HTMLElement>('[data-import-folder]')?.dataset
+            .importFolder || '';
+        setDropFolder(null);
+        if ([...e.dataTransfer.items].some((item) => item.webkitGetAsEntry?.()?.isDirectory)) {
+          onImportError('请拖入文件；导入整个项目请使用打开文件夹或导入 ZIP。');
+          return;
+        }
+        onImport([...e.dataTransfer.files], folder);
+      }}
+    >
       {tree()}
       {menu &&
         createPortal(

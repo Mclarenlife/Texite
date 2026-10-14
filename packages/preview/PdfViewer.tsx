@@ -24,6 +24,7 @@ export function PdfViewer({
   diagnosticsOpen = false,
   onDiagnosticsChange,
   diagnosticCount = 0,
+  diagnosticSeverity,
   regionLabel = 'PDF 预览',
   downloadName = 'document.pdf',
   locate,
@@ -35,6 +36,7 @@ export function PdfViewer({
   diagnosticsOpen?: boolean;
   onDiagnosticsChange?(open: boolean): void;
   diagnosticCount?: number;
+  diagnosticSeverity?: 'error' | 'warning';
   regionLabel?: string;
   downloadName?: string;
   locate?: PdfLocate;
@@ -267,7 +269,15 @@ export function PdfViewer({
               aria-selected={diagnosticsOpen}
               onClick={() => onDiagnosticsChange?.(true)}
             >
-              编译诊断<span className="diagnostic-count">{diagnosticCount}</span>
+              编译诊断
+              <span
+                className={
+                  'diagnostic-count' +
+                  (diagnosticCount && diagnosticSeverity ? ' diagnostic-' + diagnosticSeverity : '')
+                }
+              >
+                {diagnosticCount}
+              </span>
             </button>
           )}
         </div>

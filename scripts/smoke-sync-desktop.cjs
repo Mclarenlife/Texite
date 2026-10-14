@@ -117,6 +117,17 @@ const crypto = require('node:crypto');
     await expect(page.locator('.toast')).toContainText('云端与本地已检查');
     await page.getByRole('button', { name: '取消项目选择' }).click();
     await page.getByRole('button', { name: '打开项目 示例项目', exact: true }).click();
+    const sourceEditor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
+    await expect(page.locator('.sync-pending-badge')).toHaveCount(0);
+    await sourceEditor.fill('Local unsynchronized changes');
+    await expect(page.locator('.sync-pending-badge')).toBeVisible();
+    await page.getByRole('button', { name: '撤销', exact: true }).click();
+    await expect(page.locator('.sync-pending-badge')).toHaveCount(0);
+    await sourceEditor.fill('Local changes to upload');
+    await expect(page.locator('.sync-pending-badge')).toBeVisible();
+    await page.getByRole('button', { name: 'WebDAV 同步', exact: true }).click();
+    await expect(page.locator('.toast')).toContainText('上传 1 个');
+    await expect(page.locator('.sync-pending-badge')).toHaveCount(0);
     const edited = JSON.parse(cloud.get(originalKey));
     edited.project.files = [{ path: 'main.tex', content: 'remote-change-visible-in-editor' }];
     cloud.set(originalKey, JSON.stringify(edited));
@@ -157,7 +168,10 @@ const crypto = require('node:crypto');
       'PASS: native WebDAV batch upload, cloud pull, deduplication, sidebar sync, editor refresh, named folders and window controls',
     );
   } finally {
-    if (desktop) await desktop.close();
+    if (desktop) {
+      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => {});
+      await desktop.close();
+    }
     await new Promise((resolve) => {
       server.close(resolve);
       server.closeAllConnections();

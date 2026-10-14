@@ -1,6 +1,18 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('texite', {
   platform: process.platform,
+  deleteProject: (id, deleteFiles) => ipcRenderer.invoke('project:delete', id, deleteFiles),
+  updates: {
+    status: () => ipcRenderer.invoke('updates:status'),
+    check: () => ipcRenderer.invoke('updates:check'),
+    download: () => ipcRenderer.invoke('updates:download'),
+    install: () => ipcRenderer.invoke('updates:install'),
+    onProgress: (callback) => {
+      const handler = (_event, percent) => callback(percent);
+      ipcRenderer.on('updates:progress', handler);
+      return () => ipcRenderer.removeListener('updates:progress', handler);
+    },
+  },
   windowControl: (action) => ipcRenderer.invoke('window:control', action),
   storage: {
     get: () => ipcRenderer.invoke('storage:get'),
