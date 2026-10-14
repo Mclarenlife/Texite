@@ -84,6 +84,10 @@ test('permanent deletion defaults to keeping files, can cancel, and remains dele
   await page.getByRole('button', { name: '永久删除', exact: true }).click();
   await page.screenshot({ path: '.qa/preview-0.9.6-permanent.png', animations: 'disabled' });
   await dialog.getByRole('button', { name: '确认永久删除', exact: true }).click();
+  // The card disappears before the replacement workspace finishes saving.
+  // Wait for the confirmed operation to finish before simulating a restart.
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole('status')).toContainText('所选项目已永久删除');
   await expect(page.locator('.project-card')).toHaveCount(0);
   await page.reload();
   await page.getByRole('button', { name: '项目首页', exact: true }).click();
