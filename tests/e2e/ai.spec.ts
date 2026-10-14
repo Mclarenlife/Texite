@@ -100,6 +100,7 @@ async function setup(page: Page) {
           }
           if (stage === 'texite_read_file') {
             before = result.value.content;
+            state.readRunId = run.runId;
             if (run.prompt === 'hold') return;
             state.write();
           } else if (stage === 'texite_apply_changes') tool('texite_compile', {});
@@ -254,18 +255,20 @@ test('inline Agent refuses edits outside the captured range and preserves later 
   await editor.press('Alt+Enter');
   await page.getByRole('textbox', { name: '行内 AI 指令', exact: true }).fill('hold');
   await page.getByRole('button', { name: '执行行内 AI 指令' }).click();
-  await expect(page.locator('.ai-activity').last()).toContainText('读取文稿');
+  await expect.poll(() => page.evaluate(() => (window as any).aiTest.readRunId)).toBeTruthy();
   await page.evaluate(() => {
     (window as any).aiTest.outside = true;
     (window as any).aiTest.write();
   });
   await expect(page.locator('.ai-task-error').last()).toContainText('超出选区');
   await expect(editor).toHaveText('Original text');
+  const firstRun = await page.evaluate(() => (window as any).aiTest.readRunId);
   await editor.press('End');
   await editor.press('Alt+Enter');
   await page.getByRole('textbox', { name: '行内 AI 指令', exact: true }).fill('hold');
   await page.getByRole('button', { name: '执行行内 AI 指令' }).click();
-  await expect(page.locator('.ai-activity').last()).toContainText('读取文稿');
+  // Wait for this run's read result; the previous task retains the same activity label.
+  await expect.poll(() => page.evaluate(() => (window as any).aiTest.readRunId)).not.toBe(firstRun);
   await editor.fill('Original text with human edit');
   await page.evaluate(() => {
     (window as any).aiTest.outside = false;
