@@ -3,7 +3,29 @@ const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { validateSnapshot } = require('./workspace.cjs');
 const hash = (data) => createHash('sha256').update(JSON.stringify(data)).digest('hex');
-const validKey = (key) => typeof key === 'string' && /^[a-f0-9-]{36}$/.test(key);
+const validKey = (key) =>
+  typeof key === 'string' &&
+  key.length > 0 &&
+  Buffer.byteLength(key) <= 220 &&
+  !/[<>:"/\\|?*%#\x00-\x1f]/.test(key) &&
+  !/^[. ]|[. ]$/.test(key) &&
+  !/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(key);
+const validId = (id) => typeof id === 'string' && /^[a-f0-9-]{36}$/.test(id);
+function projectKey(name) {
+  let key =
+    Array.from(
+      String(name)
+        .normalize('NFC')
+        .replace(/[<>:"/\\|?*%#\x00-\x1f]/g, '_')
+        .replace(/^[. ]+|[. ]+$/g, ''),
+    )
+      .slice(0, 60)
+      .join('')
+      .replace(/[. ]+$/g, '') || '未命名项目';
+  if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(key)) key = '_' + key;
+  return key;
+}
+const resource = (key) => `Texite/${encodeURIComponent(key)}.texite.json`;
 function payload(project) {
   validateSnapshot(project);
   if (typeof project.name !== 'string' || project.name.length > 100)
@@ -163,18 +185,29 @@ class WebDAV {
     for (const key of keys) {
       const remote = await this.read(key);
       if (remote)
-        projects.push({ key, name: remote.project.name, files: remote.project.files.length });
+        projects.push({
+          key,
+          id: remote.id,
+          name: remote.project.name,
+          files: remote.project.files.length,
+        });
     }
     return projects;
   }
   async read(key) {
     if (!validKey(key)) throw new Error('云端项目标识无效。');
-    const response = await this.request(`Texite/${key}.texite.json`);
+    const response = await this.request(resource(key));
     if (response.status === 404) return null;
     if (response.status !== 200) throw new Error('无法读取云端项目。');
     const data = JSON.parse(await this.body(response));
     if (data.format !== 'texite-webdav-1') throw new Error('云端项目格式无效。');
-    return { project: payload(data.project), etag: response.headers.get('etag') };
+    if (data.id !== undefined && !validId(data.id)) throw new Error('云端项目身份无效。');
+    return {
+      project: payload(data.project),
+      id: data.id || key,
+      storedId: !!data.id,
+      etag: response.headers.get('etag'),
+    };
   }
   async download(key) {
     await this.init();
@@ -185,7 +218,13 @@ class WebDAV {
       updatedAt: Date.now(),
       activeFile: remote.project.mainFile,
     });
-    this.bindings[project.id] = { key, hash: hash(remote.project), time: Date.now() };
+    this.bindings[project.id] = {
+      key,
+      id: remote.id,
+      name: remote.project.name,
+      hash: hash(remote.project),
+      time: Date.now(),
+    };
     await this.persist();
     return project;
   }
@@ -231,14 +270,14 @@ class WebDAV {
         });
       }
     }
-    const linked = new Set(Object.values(this.bindings).map((b) => b.key));
+    const linked = new Set(Object.values(this.bindings).map((b) => b.id || b.key));
     for (const item of remote) {
-      if (linked.has(item.key)) continue;
+      if (linked.has(item.id)) continue;
       try {
         const project = await this.download(item.key);
         projects.push(project);
         results.push({ id: project.id, name: project.name, status: 'downloaded' });
-        linked.add(item.key);
+        linked.add(item.id);
       } catch (error) {
         results.push({ name: item.name, status: 'failed', error: error.message });
       }
@@ -250,8 +289,20 @@ class WebDAV {
     const local = payload(project),
       localHash = hash(local);
     const binding = this.bindings[project.id];
-    const key = binding?.key || randomUUID();
-    const remote = await this.read(key);
+    let key = binding?.key;
+    let remote = key ? await this.read(key) : null;
+    const expectedId = binding?.id || binding?.key;
+    // Another device may have renamed the cloud file. Follow its stable identity.
+    if (binding && (!remote || remote.id !== expectedId)) {
+      const matches = (await this.list()).filter((item) => item.id === expectedId);
+      if (matches.length > 1) throw new Error('云端存在多个同身份副本，请先确认保留的版本。');
+      if (matches.length) {
+        key = matches[0].key;
+        remote = await this.read(key);
+      } else if (remote) throw new Error('云端文件已被另一个项目替换，未覆盖。');
+    }
+    const id = validId(remote?.id || expectedId) ? remote?.id || expectedId : randomUUID();
+    if (!key) key = await this.availableKey(project.name);
     const remoteHash = remote && hash(remote.project);
     if (remote && remoteHash !== localHash && remoteHash !== binding?.hash) {
       // Both sides changed: import a separate local copy, leaving both originals intact.
@@ -269,6 +320,7 @@ class WebDAV {
         this.bindings[project.id] = {
           ...binding,
           key,
+          id,
           conflictHash: remoteHash,
           conflictId: copy.id,
         };
@@ -292,30 +344,82 @@ class WebDAV {
         .filter((f) => !next.files.some((n) => n.path === f.path))
         .map((f) => ({ path: f.path, expected: f.content, binary: f.binary }));
       await this.library.save(next, removed, true);
-      this.bindings[project.id] = { key, hash: remoteHash, time: Date.now() };
+      this.bindings[project.id] = {
+        key,
+        id,
+        name: remote.project.name,
+        hash: remoteHash,
+        time: Date.now(),
+      };
       await this.persist();
       return { status: 'downloaded', project: next };
     }
-    if (!remote || localHash !== remoteHash) {
+    let changed = false;
+    if (!remote || localHash !== remoteHash || (upload && !remote.storedId)) {
       if (!upload) return { status: 'local-only' };
       if (remote && (!remote.etag || remote.etag.startsWith('W/')))
         throw new Error(
           '服务未提供强 ETag，无法安全覆盖云端项目。请更换支持条件写入的 WebDAV 服务。',
         );
-      const response = await this.request(`Texite/${key}.texite.json`, 'PUT', {
+      const response = await this.request(resource(key), 'PUT', {
         headers: {
           'Content-Type': 'application/json',
           ...(remote ? { 'If-Match': remote.etag } : { 'If-None-Match': '*' }),
         },
-        body: JSON.stringify({ format: 'texite-webdav-1', project: local }),
+        body: JSON.stringify({ format: 'texite-webdav-1', id, project: local }),
       });
       if (response.status === 412)
         throw new Error('同步期间云端内容发生变化，未覆盖。请再次同步。');
       if (![200, 201, 204].includes(response.status)) throw new Error('上传失败，原文件保持不变。');
+      changed = true;
     }
-    this.bindings[project.id] = { key, hash: localHash, time: Date.now() };
+    const base = projectKey(project.name);
+    const named =
+      key === base || (key.startsWith(base + ' (') && /^\d+\)$/.test(key.slice(base.length + 2)));
+    if (upload && (!named || (binding?.name && binding.name !== project.name))) {
+      const target = await this.availableKey(project.name, key);
+      if (target !== key) {
+        const latest = await this.read(key);
+        if (
+          !latest ||
+          hash(latest.project) !== localHash ||
+          !latest.etag ||
+          latest.etag.startsWith('W/')
+        )
+          throw new Error('云端内容已变化或缺少强 ETag，未重命名。请再次同步。');
+        const moved = await this.request(resource(key), 'MOVE', {
+          headers: {
+            Destination: new URL(resource(target), this.config.url).href,
+            Overwrite: 'F',
+            'If-Match': latest.etag,
+          },
+        });
+        if (moved.status === 412)
+          throw new Error('同步期间云端内容发生变化或名称被占用，未覆盖。请再次同步。');
+        if (![201, 204].includes(moved.status))
+          throw new Error(
+            '服务不支持安全重命名，内容已保存在原云端文件，请检查 WebDAV MOVE 权限。',
+          );
+        key = target;
+        changed = true;
+      }
+    }
+    this.bindings[project.id] = { key, id, name: project.name, hash: localHash, time: Date.now() };
     await this.persist();
-    return { status: remoteHash === localHash ? 'unchanged' : 'uploaded' };
+    return { status: changed ? 'uploaded' : 'unchanged' };
+  }
+  async availableKey(name, current) {
+    const base = projectKey(name);
+    const used = new Set(
+      (await this.list())
+        .filter((p) => p.key !== current)
+        .map((p) => p.key.normalize('NFC').toLowerCase()),
+    );
+    for (let n = 1; n <= 10000; n++) {
+      const candidate = n === 1 ? base : `${base} (${n})`;
+      if (!used.has(candidate.toLowerCase())) return candidate;
+    }
+    throw new Error('同名云端项目过多，请修改项目名称。');
   }
 }
-module.exports = { WebDAV };
+module.exports = { WebDAV, projectKey };

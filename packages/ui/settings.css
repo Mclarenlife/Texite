@@ -3,12 +3,20 @@
   padding: 0;
   overflow: hidden;
   border-radius: 22px;
+  inset: 24px 16px;
+  margin: auto;
+  height: min(780px, calc(100dvh - 48px));
+  max-height: none;
+  transform: none;
+  display: flex;
+  flex-direction: column;
+  animation: fade-in 0.15s;
 }
 .settings-dialog > .dialog-heading {
   padding: 22px 26px 0;
   margin-bottom: 4px;
 }
-.settings-dialog > [id='dialog-description'] {
+.settings-dialog > .dialog-description {
   padding: 0 26px;
   margin: 0 0 18px;
   font-size: calc(11px * var(--ui-font-scale, 1));
@@ -17,8 +25,10 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  flex: 1;
 }
 .settings-nav {
+  flex-shrink: 0;
   display: flex;
   padding: 0 26px;
   gap: 24px;
@@ -49,10 +59,11 @@
 .settings-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 318px;
-  height: min(630px, calc(85dvh - 144px));
-  min-height: 220px;
+  flex: 1;
+  min-height: 0;
 }
 .settings-options {
+  min-height: 0;
   overflow: auto;
   padding: 24px 26px 30px;
   scrollbar-gutter: stable;
@@ -767,7 +778,7 @@
 @media (max-width: 680px) {
   .settings-layout {
     display: block;
-    height: min(630px, calc(85dvh - 144px));
+    min-height: 0;
   }
   .settings-options {
     height: 100%;

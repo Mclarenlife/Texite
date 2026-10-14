@@ -4,6 +4,20 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CodexClient, resolveBinary, binaryEnvironment } from '../apps/desktop/codex-client.cjs';
 
+test('clearing a mode discards only matching Codex contexts; active tasks are protected', () => {
+  const client = new CodexClient('.qa/clear-context', () => {});
+  client.threads = { 'p:m:false': 'agent', 'p:m:true': 'chat', 'q:m:false': 'other' };
+  client.clearHistory('p', 'chat');
+  assert.deepEqual(client.threads, { 'p:m:false': 'agent', 'q:m:false': 'other' });
+  client.active = {};
+  assert.throws(() => client.clearHistory(null), /结束/);
+  client.active = null;
+  client.clearHistory('p', 'agent');
+  assert.deepEqual(client.threads, { 'q:m:false': 'other' });
+  client.clearHistory(null);
+  assert.deepEqual(client.threads, {});
+});
+
 test('app bundles and non-Codex executables are rejected before changing a working selection', async () => {
   await fs.mkdir('.qa', { recursive: true });
   const base = await fs.mkdtemp(path.resolve('.qa/codex-selection-'));

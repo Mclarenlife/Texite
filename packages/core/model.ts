@@ -56,6 +56,7 @@ export type DesktopAPI = {
   platform?: string;
   windowControl?(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
   storage?: {
+    clearSyncBackups?(): Promise<void>;
     get(): Promise<string>;
     choose(): Promise<string | null>;
     relocate(project: Project): Promise<Project>;

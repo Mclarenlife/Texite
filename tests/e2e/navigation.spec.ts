@@ -39,6 +39,7 @@ test('project backups preserve all files, auto-back up before restore, and histo
     .last()
     .click({ button: 'right' });
   await page.getByRole('menuitem', { name: '删除备份' }).click();
+  await page.getByRole('button', { name: '确认删除备份', exact: true }).click();
   await expect(page.locator('.backup-row')).toHaveCount(2);
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();

@@ -30,14 +30,23 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
           <ArrowUpRight size={16} />
         </a>
       </div>
+      <UpdateSettings onPrepare={onPrepareUpdate} />
       <div className="about-changelog">
-        <UpdateSettings onPrepare={onPrepareUpdate} />
         <h3>更新日志</h3>
         <section>
           <h4>
             {packageInfo.version}
             <time>2026.10.14</time>
           </h4>
+          <ul>
+            <li>修复设置页滚动遮挡，扩大顶栏空白处的窗口拖动区域。</li>
+            <li>AI 差异窗口可调整大小、横向滚动，支持按模式清空记录。</li>
+            <li>WebDAV 使用项目名保存，兼容旧命名并保留多设备同步关联。</li>
+            <li>同步与存储中可清理备份、修改历史及 AI 记录。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>0.9.0-preview.6</h4>
           <ul>
             <li>最近删除支持永久删除与可选本地文件清理。</li>
             <li>拖入文件或目标文件夹导入，底栏展示导入进度。</li>
@@ -61,7 +70,7 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
           </ul>
         </section>
         <section>
-          <h4>0.9.0</h4>
+          <h4>0.9.0-preview</h4>
           <ul>
             <li>WebDAV 同步、多项目选项卡，以及同步与存储设置。</li>
           </ul>

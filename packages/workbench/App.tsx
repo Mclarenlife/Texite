@@ -97,6 +97,8 @@ import { Dialog } from '../ui/Dialog';
 import { editorFonts, usePreference } from '../ui/preferences';
 import { RuntimeSettings } from '../ui/RuntimeSettings';
 import { AppearanceSettings } from '../ui/AppearanceSettings';
+import { StorageCleanup } from '../ui/StorageCleanup';
+import { clearStoredRecords, type CleanupKind } from '../platform/storage';
 import { useEditHistory } from './useEditHistory';
 import { changeSummary, type EditRecord, type RestoreRequest } from '../core/history';
 import { DiffLines, HistoryReview } from '../editor/HistoryReview';
@@ -148,6 +150,7 @@ export function App() {
   const [aiOpen, setAiOpen] = useState(false);
   const [archivedProjects, setArchivedProjects] = useState<string[]>([]);
   const [syncDirty, setSyncDirty] = useState(false);
+  const [backupGeneration, setBackupGeneration] = useState(0);
   useEffect(() => {
     let live = true;
     const timer = setTimeout(() => {
@@ -703,6 +706,25 @@ export function App() {
     await prepareSpaceMutation();
     if (!projectRef.current) throw new Error('请先打开项目。');
     return structuredClone(projectRef.current);
+  }
+  async function cleanupStorage(kind: CleanupKind) {
+    await prepareSpaceMutation();
+    restoreLock.current = true;
+    setRestoreBusy(true);
+    try {
+      if (kind === 'history') {
+        await editHistory.clearAll();
+        setReview(null);
+      } else if (kind === 'ai') await ai.clearHistory(undefined, true);
+      else {
+        await window.texite?.storage?.clearSyncBackups?.();
+        await clearStoredRecords('backups');
+        setBackupGeneration((v) => v + 1);
+      }
+    } finally {
+      restoreLock.current = false;
+      setRestoreBusy(false);
+    }
   }
   async function restoreBackup(backup: ProjectBackup) {
     const current = await prepareBackup();
@@ -1708,6 +1730,7 @@ export function App() {
                   id="backup-history-ratio"
                   top={
                     <ProjectBackups
+                      key={project.id + ':' + backupGeneration}
                       project={project}
                       onPrepare={prepareBackup}
                       onRestore={restoreBackup}
@@ -2527,11 +2550,14 @@ export function App() {
             onReduceMotion={setReduceMotion}
             initialTab={modalError ? 'compiler' : settingsTab}
             sync={
-              <SyncSettings
-                project={project}
-                onChange={setDavConfig}
-                onRelocate={relocateProject}
-              />
+              <>
+                <SyncSettings
+                  project={project}
+                  onChange={setDavConfig}
+                  onRelocate={relocateProject}
+                />
+                <StorageCleanup onCleanup={cleanupStorage} />
+              </>
             }
           >
             <label className="setting-row">

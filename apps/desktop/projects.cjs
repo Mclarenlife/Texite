@@ -206,6 +206,21 @@ class ProjectLibrary {
       throw e;
     }
   }
+  async clearSyncBackups() {
+    const root = path.join(this.directory, 'sync-backups');
+    try {
+      if ((await fs.lstat(root)).isSymbolicLink())
+        throw new Error('备份目录路径发生变化，未清理。');
+      const actual = await fs.realpath(root),
+        parent = await fs.realpath(this.directory);
+      if (path.dirname(actual) !== parent) throw new Error('备份目录不在应用存储目录中，未清理。');
+      for (const entry of await fs.readdir(root, { withFileTypes: true }))
+        if (entry.isFile() && /^[a-f0-9-]{36}\.json$/.test(entry.name))
+          await fs.unlink(path.join(actual, entry.name));
+    } catch (e) {
+      if (e.code !== 'ENOENT') throw e;
+    }
+  }
   async import(project) {
     validateSnapshot(project);
     const id = randomUUID();

@@ -15,6 +15,7 @@ import {
   Settings2,
   MessageSquare,
   CircleHelp,
+  Trash2,
 } from 'lucide-react';
 import type { AIController } from '../workbench/useAI';
 import type { AITask } from '../core/ai';
@@ -105,6 +106,8 @@ export function AIPanel({
   };
 
   const [review, setReview] = useState<AITask | null>(null);
+  const [clearMode, setClearMode] = useState<'agent' | 'chat' | null>(null);
+  const [clearError, setClearError] = useState('');
   const [showConnection, setShowConnection] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
   const desktop = !!window.texite?.ai;
@@ -129,7 +132,7 @@ export function AIPanel({
     if (custom) void ai.startChat(message);
     else void ai.start(message, selected, mode === 'chat');
   };
-  const currentReview = review && (ai.tasks.find((t) => t.id === review.id) || review);
+  const currentReview = review && ai.tasks.find((t) => t.id === review.id);
   return (
     <aside
       ref={panel}
@@ -243,6 +246,18 @@ export function AIPanel({
             对话
           </button>
         </div>
+        <button
+          className="icon-button ai-clear-history"
+          aria-label={mode === 'agent' ? '清空当前项目 Agent 记录' : '清空当前项目对话记录'}
+          title={mode === 'agent' ? '清空 Agent 记录' : '清空对话记录'}
+          disabled={ai.busy || ai.loading || !ai.tasks.some((t) => (t.mode || 'agent') === mode)}
+          onClick={() => {
+            setClearMode(mode);
+            setClearError('');
+          }}
+        >
+          <Trash2 size={15} />
+        </button>
         <div className="ai-service-controls">
           {mode === 'chat' && (
             <Select
@@ -607,6 +622,7 @@ export function AIPanel({
         title="AI 修改差异"
         description="检查这次任务的全部修改。撤回会保留修改记录；有后续编辑的文件不会被覆盖。"
         className="ai-diff-dialog"
+        resizable
       >
         {currentReview && (
           <>
@@ -645,6 +661,55 @@ export function AIPanel({
             )}
           </>
         )}
+      </Dialog>
+      <Dialog
+        open={!!clearMode}
+        onClose={() => !ai.busy && setClearMode(null)}
+        title={clearMode === 'agent' ? '清空 Agent 记录？' : '清空对话记录？'}
+        description={
+          '仅清理当前项目「' +
+          projectName +
+          '」的' +
+          (clearMode === 'agent' ? 'Agent' : 'Codex 和 API 对话') +
+          '记录，无法撤销。'
+        }
+      >
+        <p className="cleanup-confirm">
+          {clearMode === 'agent'
+            ? '文稿修改会保留，任务记录与对应的撤回记录将被删除。'
+            : '文稿文件和 Agent 记录保持不变。'}
+          之后的对话将从新上下文开始。
+        </p>
+        {clearError && (
+          <p role="alert" className="form-error">
+            {clearError}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button
+            className="secondary-button"
+            disabled={ai.busy}
+            onClick={() => setClearMode(null)}
+          >
+            取消
+          </button>
+          <button
+            className="primary-button"
+            disabled={ai.busy}
+            onClick={async () => {
+              if (!clearMode) return;
+              try {
+                await ai.clearHistory(clearMode);
+                setClearMode(null);
+                setReview(null);
+              } catch (e) {
+                setClearError((e as Error).message);
+              }
+            }}
+          >
+            {ai.busy ? '正在清理…' : '确认清空'}
+          </button>
+        </div>
       </Dialog>
     </aside>
   );

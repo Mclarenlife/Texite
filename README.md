@@ -2,7 +2,7 @@
 
 本地 LaTeX 编辑器，使用 React、TypeScript、CodeMirror 6、Motion、KaTeX、PDF.js 与 Electron，提供网页版和 Windows / macOS 桌面版。
 
-当前版本：**0.9.0-preview.3**，包含项目空间 WebDAV 拉取与批量上传、侧栏一键双向同步、按项目名保存的目录、清晰的视图切换和内置 JetBrains Mono。包含浮动 AI 助手、Agent／对话模式、行内 AI 编辑及自定义对话 API。支持桌面 WebDAV 手动同步，不包含云端编译；可选 AI 推理需要联网。
+当前版本：**0.9.0**，支持按项目名保存的本地目录与 WebDAV 快照、多项目选项卡、双向 PDF 定位、项目备份和记录清理。浮动 AI 助手包含 Agent／对话模式、行内编辑、可调整大小的差异窗口及自定义对话 API。支持桌面 WebDAV 手动同步，不包含云端编译；可选 AI 推理需要联网。
 
 ## 使用与开发
 
@@ -50,7 +50,13 @@ Visual 是源码驱动的可视化编辑，自定义宏、合并单元格、复�
 
 ## 保存位置
 
-桌面应用管理目录为 Electron 的 `userData/projects/<uuid>`，通常为 Windows `%APPDATA%/texite/projects` 或 macOS `~/Library/Application Support/texite/projects`。具体位置显示在导入项目卡片中。这样更新、重装程序不会把项目放进只读安装目录。打开文件夹时始终写回所选原目录。
+桌面应用管理目录为 Electron 的 `userData/projects/<项目名>`，同名项目自动加序号。默认位于 Windows `%APPDATA%/texite/projects` 或 macOS `~/Library/Application Support/texite/projects`，也可在设置 → 同步与存储中更改新项目的保存位置。具体位置显示在项目卡片中。更新、重装程序不会把项目放进只读安装目录。打开文件夹时始终写回所选原目录。
+
+WebDAV 使用 `Texite/<项目名>.texite.json` 保存完整快照；上传时对同名项目加序号，非法路径字符替换为下划线。旧版编码文件会在同步时迁移为项目名，通过稳定项目身份保持新版设备之间的关联。重命名依赖服务的 MOVE、强 ETag 和条件写入支持；不支持时明确报错并保留原文件。建议同步设备一并升级至 0.9.0。
+
+设置 → 同步与存储可分别清理本机所有项目的备份、修改历史、AI 记录，每项均需二次确认。AI 助手的垃圾桶按钮只清理当前项目、当前模式的记录；对话模式包含 Codex 与自定义 API。清理 Agent 记录也移除任务撤回记录，但保留已应用的文稿修改。项目源码与云端项目不会被清理。
+
+设置 → 关于可检查 GitHub 最新正式版、下载匹配当前平台的安装包，并在 SHA-256 校验后打开安装包；不会自动降级。Mac 仍需将应用拖入应用程序目录，此流程不会绕过系统签名或下载隔离检查。
 
 浏览器项目保存在 IndexedDB；Chrome / Edge 支持通过 File System Access API 关联本地文件夹。其他浏览器可使用 ZIP。浏览器安全限制不允许网页写入桌面软件的数据目录，因此 Web ZIP 项目保存在浏览器本地存储。
 
@@ -70,7 +76,7 @@ pdfLaTeX 中文使用 CJK / CTeX 与 Arphic 字体，默认提供宋体、楷体
 
 要与 Overleaf 对齐，还需要相同的 TeX Live、模板、宏包与字体版本；使用同名引擎不保证不同发行版间排版完全相同。支持范围和模块格式见 [离线编译环境](docs/offline-runtime.md)。
 
-**网页版目前不含 WASM 编译器。** 编译按钮会说明需要桌面版，不会上传文档或生成假结果。初始 PDF 是随仓库提供的预编译示例。PDF 文本搜索、选择和 SyncTeX 尚未实现。
+**网页版目前不含 WASM 编译器。** 编译按钮会说明需要桌面版，不会上传文档或生成假结果。初始 PDF 是随仓库提供的预编译示例。支持 PDF 文本选择和词数统计；桌面编译支持源码与 PDF 双向定位。
 
 ## 验证和打包
 

@@ -5,6 +5,7 @@ import {
   readRecoveries,
   writeHistory,
   clearProjectHistory,
+  clearStoredRecords,
 } from '../platform/storage';
 
 export function useEditHistory(projectId: string | undefined) {
@@ -124,5 +125,16 @@ export function useEditHistory(projectId: string | undefined) {
       setRecoveries(retained);
     }
   }
-  return { records, recoveries, rememberRecovery, record, error, flush, clear };
+  async function clearAll() {
+    await Promise.all([...reads.current.values()]);
+    for (const id of new Set([...pending.current.keys(), ...writes.current.keys()]))
+      await flush(id);
+    await clearStoredRecords('history');
+    cache.current.clear();
+    recoveryCache.current.clear();
+    setRecords([]);
+    setRecoveries([]);
+    setError('');
+  }
+  return { records, recoveries, rememberRecovery, record, error, flush, clear, clearAll };
 }

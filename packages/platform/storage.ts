@@ -16,6 +16,25 @@ import {
 } from '../core/model';
 
 let connection: ReturnType<typeof openDB> | undefined;
+export type CleanupKind = 'backups' | 'history' | 'ai';
+export async function clearStoredRecords(kind: CleanupKind) {
+  const db = await database();
+  const tx = db.transaction(['settings', 'recoveries'], 'readwrite');
+  try {
+    const settings = tx.objectStore('settings');
+    const prefix = { backups: 'backup:', history: 'history:', ai: 'ai:' }[kind];
+    for (const key of await settings.getAllKeys())
+      if (String(key).startsWith(prefix)) await settings.delete(key);
+    if (kind === 'history') await tx.objectStore('recoveries').clear();
+    await tx.done;
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {}
+    await tx.done.catch(() => {});
+    throw error;
+  }
+}
 export type ProjectBackup = {
   id: string;
   projectId: string;

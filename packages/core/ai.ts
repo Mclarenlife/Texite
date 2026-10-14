@@ -69,6 +69,7 @@ export type AIEvent =
       arguments: unknown;
     };
 export type AIAPI = {
+  clearHistory?(projectId: string | null, mode?: 'agent' | 'chat'): Promise<void>;
   connect(): Promise<AIConnection>;
   chooseBinary(): Promise<string | null>;
   disconnect(): Promise<void>;

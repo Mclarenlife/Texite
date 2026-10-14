@@ -557,6 +557,17 @@ class CodexClient {
     this.pending.clear();
     this.finish('failed', error.message);
   }
+  clearHistory(projectId, mode) {
+    if (this.active) throw new Error('请先结束 AI 任务。');
+    if (projectId !== null && typeof projectId !== 'string') throw new Error('项目标识无效。');
+    if (mode !== undefined && !['agent', 'chat'].includes(mode)) throw new Error('AI 模式无效。');
+    for (const key of Object.keys(this.threads))
+      if (
+        (projectId === null || key.startsWith(projectId + ':')) &&
+        (!mode || key.endsWith(mode === 'chat' ? ':true' : ':false'))
+      )
+        delete this.threads[key];
+  }
   async disconnect() {
     const child = this.child;
     this.child = null;

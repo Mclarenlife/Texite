@@ -13,7 +13,7 @@ import {
   type AITask,
 } from '../core/ai';
 import { safePath, parseDiagnostics, type Project, type CompileResult } from '../core/model';
-import { loadAITasks, saveAITasks } from '../platform/storage';
+import { loadAITasks, saveAITasks, clearStoredRecords } from '../platform/storage';
 import { streamChat, chatEndpoint } from '../../apps/desktop/chat-transport.mjs';
 
 type Options = {
@@ -95,6 +95,7 @@ export function useAI(options: Options) {
   const operationQueue = useRef(Promise.resolve());
   const journalQueue = useRef(Promise.resolve());
   const journalPaused = useRef(false);
+  const cleaning = useRef(false);
   const journalTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const aiCompiling = useRef(false);
   const replace = (next: AITask[]) => {
@@ -333,7 +334,7 @@ export function useAI(options: Options) {
   }
   async function start(prompt: string, model: string, readOnly: boolean, scope?: InlineScope) {
     const project = current.current.getProject();
-    if (!project || busy || active.current || loading || !prompt.trim()) return;
+    if (!project || busy || cleaning.current || active.current || loading || !prompt.trim()) return;
     const api = window.texite?.ai;
     if (!api) {
       setError('AI 编辑需要桌面版和本机 Codex。');
@@ -416,7 +417,7 @@ export function useAI(options: Options) {
   }
   async function startChat(prompt: string) {
     const project = current.current.getProject();
-    if (!project || busy || active.current || loading || !prompt.trim()) return;
+    if (!project || busy || cleaning.current || active.current || loading || !prompt.trim()) return;
     if (!chatConfig.model) {
       setError('请先配置对话 API。');
       return;
@@ -533,7 +534,7 @@ export function useAI(options: Options) {
     }
   }
   async function undo(task: AITask) {
-    if (busy) return;
+    if (busy || cleaning.current) return;
     setError('');
     setBusy(true);
     const next = tasksRef.current.map((t) =>
@@ -553,7 +554,31 @@ export function useAI(options: Options) {
       setBusy(false);
     }
   }
+  async function clearHistory(mode?: 'agent' | 'chat', allProjects = false) {
+    if (busy || loading || active.current || cleaning.current)
+      throw new Error('请先结束 AI 任务或等待记录加载。');
+    const id = current.current.projectId;
+    if (!id) return;
+    cleaning.current = true;
+    setBusy(true);
+    try {
+      await operationQueue.current;
+      await persist();
+      journalPaused.current = true;
+      await window.texite?.ai?.clearHistory?.(allProjects ? null : id, mode);
+      const next = mode ? tasksRef.current.filter((t) => (t.mode || 'agent') !== mode) : [];
+      if (allProjects) await clearStoredRecords('ai');
+      else await saveAITasks(id, next);
+      replace(next);
+      setError('');
+    } finally {
+      journalPaused.current = false;
+      cleaning.current = false;
+      setBusy(false);
+    }
+  }
   return {
+    clearHistory,
     tasks,
     chatConfig,
     saveChatConfig,

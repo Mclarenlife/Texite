@@ -1,6 +1,6 @@
 {
   "name": "texite",
-  "version": "0.9.0-preview.6",
+  "version": "0.9.0",
   "private": true,
   "description": "A local-first LaTeX writing studio for the web, Windows and macOS.",
   "type": "module",

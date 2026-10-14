@@ -4,6 +4,24 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ProjectLibrary } from '../apps/desktop/projects.cjs';
 
+test('backup cleanup touches only native sync snapshot files, preserving project sources', async () => {
+  const base = await fs.mkdtemp(path.resolve('.qa/cleanup-native-'));
+  const library = new ProjectLibrary(base);
+  await library.init();
+  await fs.mkdir(path.join(base, 'sync-backups'));
+  const backup = path.join(base, 'sync-backups', '11111111-1111-4111-8111-111111111111.json');
+  await fs.writeFile(backup, '{}');
+  await fs.writeFile(path.join(base, 'main.tex'), 'preserved');
+  await fs.writeFile(path.join(base, 'sync-backups', 'unrelated.txt'), 'preserved');
+  await library.clearSyncBackups();
+  await assert.rejects(fs.access(backup));
+  assert.equal(await fs.readFile(path.join(base, 'main.tex'), 'utf8'), 'preserved');
+  assert.equal(
+    await fs.readFile(path.join(base, 'sync-backups', 'unrelated.txt'), 'utf8'),
+    'preserved',
+  );
+});
+
 test('permanent deletion retains files by default, explicitly deletes only a registered independent directory', async () => {
   await fs.mkdir('.qa', { recursive: true });
   const base = await fs.mkdtemp(path.resolve('.qa/permanent-delete-'));

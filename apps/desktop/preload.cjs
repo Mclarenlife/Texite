@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('texite', {
   },
   windowControl: (action) => ipcRenderer.invoke('window:control', action),
   storage: {
+    clearSyncBackups: () => ipcRenderer.invoke('storage:clear-sync-backups'),
     get: () => ipcRenderer.invoke('storage:get'),
     choose: () => ipcRenderer.invoke('storage:choose'),
     relocate: (project) => ipcRenderer.invoke('storage:relocate', project),
@@ -36,6 +37,7 @@ contextBridge.exposeInMainWorld('texite', {
   },
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   ai: {
+    clearHistory: (projectId, mode) => ipcRenderer.invoke('ai:clear-history', projectId, mode),
     connect: () => ipcRenderer.invoke('ai:connect'),
     disconnect: () => ipcRenderer.invoke('ai:disconnect'),
     chooseBinary: () => ipcRenderer.invoke('ai:choose-binary'),

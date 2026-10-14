@@ -1330,7 +1330,7 @@ h1 {
   margin: 0;
   letter-spacing: -0.4px;
 }
-.dialog-content > [id='dialog-description'] {
+.dialog-content > .dialog-description {
   font-size: calc(12px * var(--ui-font-scale, 1));
   line-height: 1.8;
   color: var(--muted);
@@ -3236,7 +3236,7 @@ h1 {
   padding-right: 0;
 }
 .app-header button,
-.project-tabs,
+.project-tab,
 .window-controls {
   -webkit-app-region: no-drag;
 }

@@ -6,6 +6,7 @@ import http from 'node:http';
 import { createHash } from 'node:crypto';
 import { ProjectLibrary } from '../apps/desktop/projects.cjs';
 import { WebDAV } from '../apps/desktop/webdav.cjs';
+import { randomUUID } from 'node:crypto';
 
 const sample = {
   name: '中文项目',
@@ -53,6 +54,17 @@ async function setup(t) {
     }
     const data = files.get(req.url);
     const etag = data && '"' + createHash('sha256').update(data).digest('hex') + '"';
+    if (req.method === 'MOVE') {
+      const target = new URL(req.headers.destination).pathname;
+      if (!data || req.headers['if-match'] !== etag || files.has(target)) {
+        res.writeHead(412).end();
+        return;
+      }
+      files.set(target, data);
+      files.delete(req.url);
+      res.writeHead(201).end();
+      return;
+    }
     if (req.method === 'GET') {
       res.writeHead(data ? 200 : 404, data ? { ETag: weak ? 'W/' + etag : etag } : {}).end(data);
       return;
@@ -106,6 +118,7 @@ test('WebDAV round trip preserves Chinese names, binary assets and folders; pass
   assert.equal((await a.dav.sync(project)).status, 'uploaded');
   const list = await b.dav.list();
   assert.equal(list[0].name, '中文项目');
+  assert.equal(list[0].key, '中文项目');
   const copy = await b.dav.download(list[0].key);
   assert.deepEqual(
     copy.files.find((f) => f.binary),
@@ -120,6 +133,47 @@ test('WebDAV round trip preserves Chinese names, binary assets and folders; pass
   const restart = new WebDAV(a.directory, secure, a.library);
   assert.equal((await restart.get()).projects.length, 1);
   assert.equal((await restart.get()).hasPassword, true);
+});
+
+test('project names are collision-safe and legacy cloud names migrate without duplicate projects on other devices', async (t) => {
+  const env = await setup(t),
+    a = await env.device('names-a'),
+    b = await env.device('names-b');
+  const legacy = randomUUID();
+  env.files.set(
+    '/dav/Texite/' + legacy + '.texite.json',
+    JSON.stringify({ format: 'texite-webdav-1', project: sample }),
+  );
+  const pa = await a.dav.download(legacy),
+    pb = await b.dav.download(legacy);
+  await a.dav.sync(pa);
+  assert.equal(env.files.size, 1);
+  assert.equal((await a.dav.list())[0].key, '中文项目');
+  assert.equal((await b.dav.batch({ mode: 'sync' })).projects.length, 1);
+  assert.equal((await b.library.list()).length, 1);
+  assert.equal(b.dav.bindings[pb.id].key, '中文项目');
+  const second = await a.library.import(sample);
+  await a.dav.sync(second);
+  assert.deepEqual((await a.dav.list()).map((p) => p.key).sort(), ['中文项目', '中文项目 (2)']);
+  await a.library.save({ ...pa, name: '改名后的论文' });
+  await a.dav.sync({ ...pa, name: '改名后的论文' });
+  const pulled = await b.dav.batch({ mode: 'pull' });
+  assert.equal(pulled.projects.find((p) => p.id === pb.id).name, '改名后的论文');
+  assert.equal((await b.library.list()).length, 2);
+  assert(!env.files.has('/dav/Texite/' + encodeURIComponent('中文项目') + '.texite.json'));
+  assert.equal(env.files.size, 2);
+  const restart = new WebDAV(b.directory, secure, b.library);
+  assert.equal(
+    (await restart.batch({ mode: 'sync' })).results.some((r) => r.status === 'failed'),
+    false,
+  );
+  for (const name of ['../unsafe:name', 'CON', 'x%2fy', '😀名称']) {
+    const p = await a.library.import({ ...sample, name });
+    await a.dav.sync(p);
+  }
+  assert.equal((await a.dav.list()).length, 6);
+  for (const key of ['../x', 'a/b', '%2e%2e', '..', 'CON', 'x#z'])
+    await assert.rejects(a.dav.read(key), /标识无效/);
 });
 
 test('remote-only changes download with durable backup and binary deletions; simultaneous changes preserve both sides', async (t) => {

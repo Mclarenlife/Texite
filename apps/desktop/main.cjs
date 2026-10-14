@@ -102,6 +102,10 @@ app.whenReady().then(async () => {
   handleFiles('webdav:download', (key) => dav.download(key));
   handleFiles('webdav:detach', (id) => dav.detach(id));
   handleFiles('storage:get', () => library.projectsRoot);
+  handleFiles('storage:clear-sync-backups', () => {
+    if (compiler.active || ai.active) throw new Error('请先结束编译或 AI 任务。');
+    return library.clearSyncBackups();
+  });
   handleFiles('storage:relocate', (project) => library.relocate(project));
   handleFiles('storage:choose', async () => {
     const result = await dialog.showOpenDialog(window, {
@@ -133,6 +137,7 @@ app.whenReady().then(async () => {
   handle('chat:cancel', () => chat.cancel());
   handle('ai:connect', () => ai.connect());
   handle('ai:disconnect', () => ai.disconnect());
+  handle('ai:clear-history', (projectId, mode) => ai.clearHistory(projectId, mode));
   handle('ai:start', (input) => ai.start(input));
   handle('ai:cancel', () => ai.cancel());
   handle('ai:reply', (id, result) => ai.reply(id, result));

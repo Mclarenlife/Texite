@@ -23,6 +23,7 @@ export function ProjectBackups({
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const reload = () => readProjectBackups(project.id).then(setItems);
   useEffect(() => {
     let active = true;
@@ -126,7 +127,8 @@ export function ProjectBackups({
             onClick={() => {
               const id = menu.id;
               setMenu(null);
-              void act(() => deleteProjectBackup(project.id, id));
+              setError('');
+              setDeleting(id);
             }}
           >
             <Trash2 size={14} />
@@ -171,6 +173,39 @@ export function ProjectBackups({
             </button>
           </div>
         </form>
+      </Dialog>
+      <Dialog
+        open={!!deleting}
+        onClose={() => !busy && setDeleting(null)}
+        title="删除备份？"
+        description="仅删除这个备份，不修改当前项目文件。此操作无法撤销。"
+      >
+        <p className="cleanup-confirm">
+          {items.find((i) => i.id === deleting)?.note || '未添加备注'}
+        </p>
+        {error && (
+          <p role="alert" className="form-error">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button className="secondary-button" disabled={busy} onClick={() => setDeleting(null)}>
+            取消
+          </button>
+          <button
+            className="primary-button"
+            disabled={busy}
+            onClick={() => {
+              if (deleting)
+                void act(async () => {
+                  await deleteProjectBackup(project.id, deleting);
+                  setDeleting(null);
+                });
+            }}
+          >
+            确认删除备份
+          </button>
+        </div>
       </Dialog>
     </>
   );
