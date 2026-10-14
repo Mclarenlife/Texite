@@ -85,7 +85,9 @@ const crypto = require('node:crypto');
     await page.getByRole('button', { name: '更改目录' }).click();
     await expect(page.locator('.storage-path')).toContainText(destination);
     await page.getByRole('button', { name: '迁移当前项目到此目录' }).click();
-    await expect(page.locator('.sync-settings')).toContainText('原目录保留为备份');
+    await expect(page.locator('.sync-settings [role="status"]')).toHaveText(
+      '当前项目已迁移到所选目录，原目录保留为备份。',
+    );
     const children = await fs.readdir(destination);
     expect(children.length).toBe(1);
     expect(await fs.readFile(path.join(destination, children[0], 'main.tex'), 'utf8')).toContain(
