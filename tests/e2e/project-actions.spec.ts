@@ -8,13 +8,11 @@ test('drag files into the root or a folder, show progress, persist bytes and rej
   const zip = new JSZip();
   zip.file('main.tex', 'Original source');
   zip.folder('figures');
-  await page
-    .locator('input[accept=".zip"]')
-    .setInputFiles({
-      name: 'Drop test.zip',
-      mimeType: 'application/zip',
-      buffer: await zip.generateAsync({ type: 'nodebuffer' }),
-    });
+  await page.locator('input[accept=".zip"]').setInputFiles({
+    name: 'Drop test.zip',
+    mimeType: 'application/zip',
+    buffer: await zip.generateAsync({ type: 'nodebuffer' }),
+  });
   await expect(page.locator('.file-tree button[title="figures"]')).toBeVisible();
   const drop = await page.evaluateHandle(() => {
     const data = new DataTransfer();
@@ -30,6 +28,18 @@ test('drag files into the root or a folder, show progress, persist bytes and rej
   await expect(page.getByRole('progressbar')).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'LaTeX 源码编辑器' })).toContainText(
     'Dropped text',
+  );
+  await page.locator('input[type="file"][multiple]').setInputFiles({
+    name: 'toolbar.tex',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Toolbar import persists'),
+  });
+  await expect(page.locator('.file-tree button[title="toolbar.tex"]')).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('文件已加入项目');
+  await expect(page.getByRole('progressbar')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole('textbox', { name: 'LaTeX 源码编辑器' })).toContainText(
+    'Toolbar import persists',
   );
   const binary = await page.evaluateHandle(() => {
     const data = new DataTransfer();

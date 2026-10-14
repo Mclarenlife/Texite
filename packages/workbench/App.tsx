@@ -1198,6 +1198,8 @@ export function App() {
   }
   async function addAssets(files: FileList | File[] | null, targetFolder = selectedFolder) {
     if (!files?.length || !projectRef.current || importRunning.current) return;
+    // File inputs are cleared by their change handler; capture the live FileList before awaiting.
+    const inputs = Array.from(files);
     const projectId = projectRef.current.id;
     importRunning.current = true;
     let locked = false;
@@ -1209,8 +1211,7 @@ export function App() {
       locked = true;
       setRestoreBusy(true);
       setImportProgress(0);
-      const inputs = Array.from(files),
-        names = new Set(current.files.map((f) => f.path.toLowerCase()));
+      const names = new Set(current.files.map((f) => f.path.toLowerCase()));
       if (current.files.length + inputs.length > 500) throw new Error('最多支持 500 个文件。');
       const total = inputs.reduce((sum, f) => sum + f.size, 0);
       if (
