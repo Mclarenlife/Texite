@@ -8,6 +8,7 @@ on:
       - 'scripts/*runtime*'
       - 'scripts/pack-tectonic.py'
       - 'apps/desktop/**'
+      - 'packages/**'
       - 'tests/*compiler*'
       - 'tests/optional-engines.test.mjs'
       - 'tests/runtime-manager.test.mjs'

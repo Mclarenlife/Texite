@@ -52,6 +52,7 @@ test('file scopes and reference fuzzy search filter results, sidebar splits pers
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '项目搜索', exact: true }).click();
+  await expect(page.locator('.search-scope-button')).toHaveCSS('flex-direction','row');
   await page.getByLabel('搜索项目内容').fill('attention');
   await expect(
     page.locator('.project-search>button').filter({ hasText: 'references.bib' }),
