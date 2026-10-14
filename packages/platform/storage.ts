@@ -16,6 +16,46 @@ import {
 } from '../core/model';
 
 let connection: ReturnType<typeof openDB> | undefined;
+export type ProjectBackup = {
+  id: string;
+  projectId: string;
+  time: number;
+  note: string;
+  project: Project;
+};
+export async function readProjectBackups(id: string): Promise<ProjectBackup[]> {
+  const prefix = 'backup:' + id + ':';
+  return (
+    await (await database()).getAll('settings', IDBKeyRange.bound(prefix, prefix + '\uffff'))
+  ).sort((a, b) => b.time - a.time);
+}
+export async function createProjectBackup(project: Project, note: string) {
+  const backup: ProjectBackup = {
+    id: crypto.randomUUID(),
+    projectId: project.id,
+    time: Date.now(),
+    note: note.trim().slice(0, 200),
+    project: structuredClone(validateProject(project)),
+  };
+  await (await database()).put('settings', backup, 'backup:' + project.id + ':' + backup.id);
+  return backup;
+}
+export async function deleteProjectBackup(projectId: string, id: string) {
+  await (await database()).delete('settings', 'backup:' + projectId + ':' + id);
+}
+export async function clearProjectHistory(
+  projectId: string,
+  records: EditRecord[],
+  from: number,
+  to: number,
+) {
+  const db = await database(),
+    tx = db.transaction(['settings', 'recoveries'], 'readwrite');
+  await tx.objectStore('settings').put(records, 'history:' + projectId);
+  for (const point of await tx.objectStore('recoveries').index('projectId').getAll(projectId))
+    if (point.time >= from && point.time <= to) await tx.objectStore('recoveries').delete(point.id);
+  await tx.done;
+}
 export async function loadAITasks(projectId: string): Promise<import('../core/ai').AITask[]> {
   const value = await (await database()).get('settings', 'ai:' + projectId);
   return Array.isArray(value)
@@ -363,7 +403,10 @@ export async function reopenBrowserProject(project: Project) {
     throw new Error('需要文件夹读写权限。');
   return scanDirectory(binding.handle, project.id);
 }
-export async function saveBrowserDirectory(project: Project) {
+export async function saveBrowserDirectory(
+  project: Project,
+  removals: { path: string; expected: string; binary?: boolean }[] = [],
+) {
   const db = await database();
   const binding: Binding | undefined = await db.get('settings', 'folder:' + project.id);
   if (!binding) return;
@@ -374,6 +417,25 @@ export async function saveBrowserDirectory(project: Project) {
     for (const name of path.split('/').filter(Boolean))
       handle = (await handle.getDirectoryHandle(name, { create: true })) as Directory;
     return handle;
+  }
+  const deletes = [];
+  for (const item of removals) {
+    const parts = safePath(item.path).split('/'),
+      name = parts.pop()!;
+    let parent = binding.handle;
+    try {
+      for (const part of parts) parent = (await parent.getDirectoryHandle(part)) as Directory;
+      const bytes = await (await (await parent.getFileHandle(name)).getFile()).arrayBuffer();
+      const expected = item.binary
+        ? Uint8Array.from(atob(item.expected), (c) => c.charCodeAt(0))
+        : new TextEncoder().encode(item.expected);
+      const digest = await hashBytes(bytes);
+      if (digest !== (await hashBytes(expected.buffer)) || digest !== binding.hashes[item.path])
+        throw new Error(item.path + ' 已被外部修改，无法还原。');
+      deletes.push({ parent, name, path: item.path, digest });
+    } catch (e) {
+      if ((e as DOMException).name !== 'NotFoundError') throw e;
+    }
   }
   const pending = [];
   for (const file of project.files) {
@@ -403,6 +465,15 @@ export async function saveBrowserDirectory(project: Project) {
     await stream.write(item.content);
     await stream.close();
     binding.hashes[item.file.path] = item.digest;
+  }
+  for (const item of deletes) {
+    const current = await (
+      await (await item.parent.getFileHandle(item.name)).getFile()
+    ).arrayBuffer();
+    if ((await hashBytes(current)) !== item.digest)
+      throw new Error(item.path + ' 在还原过程中被外部修改。');
+    await item.parent.removeEntry(item.name);
+    delete binding.hashes[item.path];
   }
   const metadata = await (
     await binding.handle.getFileHandle('.texite.json', { create: true })

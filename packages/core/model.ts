@@ -20,6 +20,7 @@ export type Diagnostic = {
   line?: number;
 };
 export type CompileResult = {
+  syncMap?: SyncNode[];
   success: boolean;
   engine?: Engine;
   compilerLabel?: string;
@@ -27,6 +28,15 @@ export type CompileResult = {
   log: string;
   revision: number;
   cancelled?: boolean;
+};
+export type SyncNode = {
+  file: string;
+  line: number;
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 export type DesktopAPI = {
   platform?: string;
@@ -65,6 +75,10 @@ export type DesktopAPI = {
   saveAIProject?(
     project: Project,
     removals: { path: string; expected: string }[],
+  ): Promise<unknown>;
+  restoreProject?(
+    project: Project,
+    removals: { path: string; expected: string; binary?: boolean }[],
   ): Promise<unknown>;
   listRuntime(): Promise<RuntimeModule[]>;
   chooseRuntimePack(): Promise<{

@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { RuntimeManager } = require('./runtime-manager.cjs');
 const { compileManaged } = require('./managed-compiler.cjs');
+const { readSyncTeX } = require('./synctex.cjs');
 
 const textPattern = /\.(tex|bib|sty|cls|txt|md|csv|json|bst|tikz)$/i;
 const engines = ['tectonic', 'xelatex', 'pdflatex', 'lualatex'];
@@ -439,6 +440,7 @@ class Compiler {
         revision: project.revision,
         log,
         pdf: [...(await fs.readFile(pdfPath))],
+        syncMap: await readSyncTeX(pdfPath, root, project.files),
       };
     } catch (error) {
       return {

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type EditRecord, type RecoveryPoint, limitHistory } from '../core/history';
-import { readHistory, readRecoveries, writeHistory } from '../platform/storage';
+import {
+  readHistory,
+  readRecoveries,
+  writeHistory,
+  clearProjectHistory,
+} from '../platform/storage';
 
 export function useEditHistory(projectId: string | undefined) {
   const [records, setRecords] = useState<EditRecord[]>([]);
@@ -10,6 +15,7 @@ export function useEditHistory(projectId: string | undefined) {
   const cache = useRef(new Map<string, EditRecord[]>());
   const pending = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const writes = useRef(new Map<string, Promise<void>>());
+  const reads = useRef(new Map<string, Promise<unknown>>());
   const current = useRef(projectId);
   current.current = projectId;
   const flush = useCallback((id: string) => {
@@ -47,7 +53,7 @@ export function useEditHistory(projectId: string | undefined) {
     setError('');
     if (!projectId) return;
     let active = true;
-    void readRecoveries(projectId)
+    const recoveryRead = readRecoveries(projectId)
       .then((saved) => {
         const local = recoveryCache.current.get(projectId) || [];
         const merged = [...local, ...saved.filter((r) => !local.some((l) => l.id === r.id))].sort(
@@ -57,7 +63,7 @@ export function useEditHistory(projectId: string | undefined) {
         if (active) setRecoveries(merged);
       })
       .catch(() => active && setError('无法读取恢复备份。'));
-    void readHistory(projectId)
+    const historyRead = readHistory(projectId)
       .then((saved) => {
         const local = cache.current.get(projectId) || [];
         const merged = limitHistory(
@@ -69,6 +75,7 @@ export function useEditHistory(projectId: string | undefined) {
         if (active) setRecords(merged);
       })
       .catch(() => active && setError('无法读取此项目的历史记录。'));
+    reads.current.set(projectId, Promise.all([recoveryRead, historyRead]));
     return () => {
       active = false;
       if (pending.current.has(projectId)) flush(projectId);
@@ -100,5 +107,22 @@ export function useEditHistory(projectId: string | undefined) {
     recoveryCache.current.set(point.projectId, next);
     if (current.current === point.projectId) setRecoveries(next);
   }
-  return { records, recoveries, rememberRecovery, record, error, flush };
+  async function clear(from: number, to: number) {
+    const id = current.current;
+    if (!id) return;
+    await reads.current.get(id);
+    await flush(id);
+    const next = (cache.current.get(id) || []).filter((r) => r.time < from || r.time > to);
+    await clearProjectHistory(id, next, from, to);
+    cache.current.set(id, next);
+    const retained = (recoveryCache.current.get(id) || []).filter(
+      (r) => r.time < from || r.time > to,
+    );
+    recoveryCache.current.set(id, retained);
+    if (current.current === id) {
+      setRecords(next);
+      setRecoveries(retained);
+    }
+  }
+  return { records, recoveries, rememberRecovery, record, error, flush, clear };
 }

@@ -7,7 +7,7 @@ import {
   Sigma,
   Table2,
   X,
-  Sparkles,
+  LocateFixed,
   Link,
   Quote,
   Hash,
@@ -34,6 +34,7 @@ export function EditorTools({
   references,
   labels,
   onImportImage,
+  onLocate,
 }: {
   anchor: EditorAnchor;
   onClose(): void;
@@ -44,6 +45,7 @@ export function EditorTools({
   references: string[];
   labels: string[];
   onImportImage?(file: File): Promise<string>;
+  onLocate?(scope: InlineScope): void;
 }) {
   const [prompt, setPrompt] = useState(''),
     [tool, setTool] = useState('');
@@ -180,15 +182,6 @@ export function EditorTools({
       aria-label={anchor.menu ? '插入工具' : '行内 AI 指令'}
       onKeyDown={(e) => e.stopPropagation()}
     >
-      <div className="editor-tools-heading">
-        <span>
-          <Sparkles size={13} />
-          {anchor.scope.from === anchor.scope.to ? '在光标处编辑' : '编辑选中文字'}
-        </span>
-        <button className="icon-button" aria-label="关闭编辑工具" onClick={onClose}>
-          <X size={14} />
-        </button>
-      </div>
       <form
         className="inline-ai-form"
         onSubmit={(e) => {
@@ -199,6 +192,18 @@ export function EditorTools({
           }
         }}
       >
+        <button
+          type="button"
+          className="inline-locate"
+          aria-label="定位到 PDF"
+          title="定位到 PDF"
+          onClick={() => {
+            onLocate?.(anchor.scope);
+            onClose();
+          }}
+        >
+          <LocateFixed size={16} />
+        </button>
         <input
           aria-label="行内 AI 指令"
           placeholder="让 Agent 修改这里…"
@@ -211,6 +216,9 @@ export function EditorTools({
         />
         <button aria-label="执行行内 AI 指令" disabled={busy || !prompt.trim()}>
           <ArrowUp size={16} />
+        </button>
+        <button type="button" className="inline-close" aria-label="关闭编辑工具" onClick={onClose}>
+          <X size={14} />
         </button>
       </form>
       {anchor.menu && (

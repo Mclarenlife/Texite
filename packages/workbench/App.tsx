@@ -1,3 +1,10 @@
+import { SidebarSplit } from '../ui/SidebarSplit';
+import { ProjectBackups } from './ProjectBackups';
+import { createProjectBackup, type ProjectBackup } from '../platform/storage';
+import { forwardNode, findSourceSelection, sourceText, type PdfLocate } from '../preview/sync';
+import type { SyncNode } from '../core/model';
+import type { InlineScope } from '../core/ai';
+import { Filter, Trash2 } from 'lucide-react';
 import { SyncSettings } from '../ui/SyncSettings';
 import type { WebDAVConfig } from '../core/model';
 import { ProjectSpace } from './ProjectSpace';
@@ -176,6 +183,20 @@ export function App() {
   const [modal, setModal] = useState<Modal>(null);
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
+  const [fileScope, setFileScope] = useState<string[] | null>(null),
+    [scopeOpen, setScopeOpen] = useState(false),
+    [scopeDraft, setScopeDraft] = useState<string[]>([]);
+  const [referenceQuery, setReferenceQuery] = useState('');
+  const [clearOpen, setClearOpen] = useState(false),
+    [clearFrom, setClearFrom] = useState(''),
+    [clearTo, setClearTo] = useState(''),
+    [clearError, setClearError] = useState('');
+  useEffect(() => {
+    setFileScope(null);
+    setReferenceQuery('');
+    setScopeOpen(false);
+    setClearOpen(false);
+  }, [project?.id]);
   const [modalError, setModalError] = useState('');
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -186,6 +207,8 @@ export function App() {
     reference: undefined as string | undefined,
   });
   const [pdf, setPdf] = useState<Uint8Array | null>(null);
+  const [syncMap, setSyncMap] = useState<SyncNode[]>([]);
+  const [pdfLocate, setPdfLocate] = useState<PdfLocate>();
   const [pdfLabel, setPdfLabel] = useState('');
   const [pdfRevision, setPdfRevision] = useState(-1);
   const [compiling, setCompiling] = useState(false);
@@ -373,6 +396,8 @@ export function App() {
     if (!project) return;
     const id = project.id;
     setPdf(null);
+    setSyncMap([]);
+    setPdfLocate(undefined);
     setPdfLabel('');
     setPdfRevision(-1);
     setLog('');
@@ -629,6 +654,105 @@ export function App() {
     await saveQueue.current;
     if (projectRef.current) await persist(projectRef.current);
   }
+  async function prepareBackup() {
+    await prepareSpaceMutation();
+    if (!projectRef.current) throw new Error('请先打开项目。');
+    return structuredClone(projectRef.current);
+  }
+  async function restoreBackup(backup: ProjectBackup) {
+    const current = await prepareBackup();
+    if (current.id !== backup.projectId) throw new Error('项目已切换，请重新选择备份。');
+    restoreLock.current = true;
+    setRestoreBusy(true);
+    try {
+      await createProjectBackup(current, '还原前自动备份 · ' + (backup.note || '项目备份'));
+      const next = validateProject({
+        ...backup.project,
+        id: current.id,
+        name: current.name,
+        location: current.location,
+        revision: current.revision + 1,
+        updatedAt: Date.now(),
+      });
+      const removals = current.files
+        .filter((f) => !next.files.some((n) => n.path === f.path))
+        .map((f) => ({ path: f.path, expected: f.content, binary: f.binary }));
+      if (window.texite) {
+        if (!window.texite.restoreProject) throw new Error('请更新桌面程序以还原项目。');
+        await window.texite.restoreProject(next, removals);
+      } else await saveBrowserDirectory(next, removals);
+      await saveProject(next);
+      projectRef.current = next;
+      drafts.current.set(next.id, next);
+      setProject(next);
+      setProjects((ps) => ps.map((p) => (p.id === next.id ? next : p)));
+      setReview(null);
+      setSaved('saved');
+      notify('项目已还原，原来的当前版本已自动备份。');
+    } finally {
+      restoreLock.current = false;
+      setRestoreBusy(false);
+    }
+  }
+  async function clearHistory(all: boolean) {
+    setClearError('');
+    const from = all ? 0 : clearFrom ? new Date(clearFrom).getTime() : 0,
+      to = all ? Date.now() : clearTo ? new Date(clearTo).getTime() + 59999 : Date.now();
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
+      setClearError('请选择有效的时间范围。');
+      return;
+    }
+    try {
+      await prepareSpaceMutation();
+      restoreLock.current = true;
+      setRestoreBusy(true);
+      await editHistory.clear(from, to);
+      setReview(null);
+      setClearOpen(false);
+      notify('修改历史已清空，项目备份仍保留。');
+    } catch (e) {
+      setClearError(friendlyError(e));
+    } finally {
+      restoreLock.current = false;
+      setRestoreBusy(false);
+    }
+  }
+  function locatePdf(scope: InlineScope) {
+    if (!pdf || pdfRevision !== projectRef.current?.revision) {
+      notify('请先编译当前文稿，再进行定位。');
+      return;
+    }
+    const line = scope.before.slice(0, scope.from).split('\n').length;
+    const node = forwardNode(syncMap, scope.path, line);
+    if (!node) {
+      notify('当前 PDF 没有源码定位信息，请重新编译。');
+      return;
+    }
+    const text = sourceText(
+      scope.to > scope.from
+        ? scope.before.slice(scope.from, scope.to)
+        : scope.before.split('\n')[line - 1],
+    );
+    setMode('split');
+    setDiagnosticsOpen(false);
+    setPdfLocate({ id: Date.now(), node, text });
+  }
+  function locateSource(point: { page: number; x: number; y: number; text: string }) {
+    if (pdfRevision !== projectRef.current?.revision) {
+      notify('源码已更新，请重新编译后再定位。');
+      return;
+    }
+    const target = findSourceSelection(syncMap, projectRef.current?.files || [], point);
+    if (!target) {
+      notify('当前位置没有源码定位信息，请重新编译。');
+      return;
+    }
+    const { file, range } = target;
+    selectFile(file.path);
+    setEditMode('code');
+    setMode('split');
+    setTimeout(() => editor.current?.jump(range.from, range.to), 50);
+  }
   async function renameSpaceProject(target: Project, name: string) {
     await prepareSpaceMutation();
     if (window.texite?.renameProject) await window.texite.renameProject(target.id, name);
@@ -727,6 +851,8 @@ export function App() {
       if (result.success && result.pdf) {
         setDiagnosticsOpen(false);
         setPdf(new Uint8Array(result.pdf));
+        setSyncMap(result.syncMap || []);
+        setPdfLocate(undefined);
         setPdfRevision(result.revision);
         setPdfLabel(result.compilerLabel || engineNames[result.engine ?? snapshot.engine]);
         notify('编译完成，PDF 已更新。');
@@ -851,13 +977,29 @@ export function App() {
     [active],
   );
   const references = useMemo(() => getReferences(project?.files ?? []), [project?.files]);
+  const visibleReferences = references.filter((r) => {
+    const hay = Object.values(r).join(' ').normalize('NFKC').toLowerCase();
+    return referenceQuery
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .every((term) => {
+        let at = 0;
+        for (const c of term) {
+          at = hay.indexOf(c, at);
+          if (at < 0) return false;
+          at++;
+        }
+        return true;
+      });
+  });
   const selectedReference = references.find((r) => r.key === cursor.reference);
   const diagnostics = useMemo(() => parseDiagnostics(log), [log]);
   const matches = useMemo(
     () =>
       query && section === 'search'
         ? (project?.files
-            .filter((f) => !f.binary)
+            .filter((f) => !f.binary && (!fileScope || fileScope.includes(f.path)))
             .flatMap((f) =>
               f.content
                 .split('\n')
@@ -869,7 +1011,7 @@ export function App() {
             )
             .slice(0, 80) ?? [])
         : [],
-    [query, section, project?.files],
+    [query, section, project?.files, fileScope],
   );
   const selectFile = (path: string) => {
     setReview(null);
@@ -1259,7 +1401,7 @@ export function App() {
                     : section === 'search'
                       ? '项目搜索'
                       : section === 'history'
-                        ? '修改历史'
+                        ? '历史与备份'
                         : '参考文献'}
                 </span>
                 <div>
@@ -1305,93 +1447,156 @@ export function App() {
                 </div>
               </div>
               {section === 'files' ? (
+                <SidebarSplit
+                  id="files-outline-ratio"
+                  top={
+                    <FileTree
+                      project={project}
+                      selectedFolder={selectedFolder}
+                      onFolder={setSelectedFolder}
+                      onFile={selectFile}
+                    />
+                  }
+                  bottom={
+                    <>
+                      <div className="outline-heading">
+                        <span>文档脉络</span>
+                        <span>{outline.length.toString().padStart(2, '0')}</span>
+                      </div>
+                      <div className="outline-list">
+                        {outline.length ? (
+                          outline.map((item, index) => (
+                            <button
+                              key={item.position}
+                              className={item.level === 2 ? 'subsection' : ''}
+                              onClick={() => editor.current?.jump(item.position)}
+                            >
+                              <span>
+                                {item.level === 1 ? String(index + 1).padStart(2, '0') : '·'}
+                              </span>
+                              {item.title}
+                            </button>
+                          ))
+                        ) : (
+                          <p className="sidebar-empty">章节标题会出现在这里。</p>
+                        )}
+                      </div>
+                    </>
+                  }
+                />
+              ) : section === 'references' ? (
                 <>
-                  <FileTree
-                    project={project}
-                    selectedFolder={selectedFolder}
-                    onFolder={setSelectedFolder}
-                    onFile={selectFile}
-                  />
-                  <div className="outline-heading">
-                    <span>文档脉络</span>
-                    <span>{outline.length.toString().padStart(2, '0')}</span>
-                  </div>
-                  <div className="outline-list">
-                    {outline.length ? (
-                      outline.map((item, index) => (
+                  <label className="sidebar-search-field">
+                    <Search size={14} />
+                    <input
+                      aria-label="搜索参考文献"
+                      placeholder="标题、作者或引用键…"
+                      value={referenceQuery}
+                      onChange={(e) => setReferenceQuery(e.target.value)}
+                    />
+                  </label>
+                  <div className="reference-list">
+                    {visibleReferences.length ? (
+                      visibleReferences.map((r) => (
                         <button
-                          key={item.position}
-                          className={item.level === 2 ? 'subsection' : ''}
-                          onClick={() => editor.current?.jump(item.position)}
+                          key={r.key}
+                          onClick={() => {
+                            editor.current?.insert(`\\cite{${r.key}}`);
+                            notify('引用已插入光标位置。');
+                          }}
                         >
-                          <span>{item.level === 1 ? String(index + 1).padStart(2, '0') : '·'}</span>
-                          {item.title}
+                          <span className="reference-year">{r.year || '文献'}</span>
+                          <strong>{r.title}</strong>
+                          <small>{r.key}</small>
+                          <span className="reference-insert">
+                            插入引用 <ArrowUpRight size={12} />
+                          </span>
                         </button>
                       ))
                     ) : (
-                      <p className="sidebar-empty">章节标题会出现在这里。</p>
+                      <p className="sidebar-empty">添加 .bib 文件，管理和插入引用。</p>
                     )}
                   </div>
                 </>
-              ) : section === 'references' ? (
-                <div className="reference-list">
-                  {references.length ? (
-                    references.map((r) => (
-                      <button
-                        key={r.key}
-                        onClick={() => {
-                          editor.current?.insert(`\\cite{${r.key}}`);
-                          notify('引用已插入光标位置。');
-                        }}
-                      >
-                        <span className="reference-year">{r.year || '文献'}</span>
-                        <strong>{r.title}</strong>
-                        <small>{r.key}</small>
-                        <span className="reference-insert">
-                          插入引用 <ArrowUpRight size={12} />
-                        </span>
-                      </button>
-                    ))
-                  ) : (
-                    <p className="sidebar-empty">添加 .bib 文件，管理和插入引用。</p>
-                  )}
-                </div>
               ) : section === 'history' ? (
-                <div className="history-list">
-                  <p className="history-note">普通历史：150 次 / 4 MB · 恢复备份单独保留</p>
-                  {editHistory.error && <p role="alert">{editHistory.error}</p>}
-                  {!historyRows.length && (
-                    <p className="sidebar-empty">开始编辑后，这里会记录修改时间、文件和行号。</p>
-                  )}
-                  {historyRows.map(({ record, summary }) => {
-                    return (
-                      <button
-                        key={record.id}
-                        className={review?.id === record.id ? 'selected' : ''}
-                        onClick={() => {
-                          setReview(record);
-                          setMode((m) => (m === 'pdf' ? 'split' : m));
-                          setEditMode('code');
-                        }}
-                      >
-                        <time dateTime={new Date(record.time).toISOString()}>
-                          {new Date(record.time).toLocaleString('zh-CN', { hour12: false })}
-                        </time>
-                        <strong>{record.path}</strong>
-                        {record.kind === 'recovery' && (
-                          <span className="recovery-badge">恢复前备份</span>
+                <SidebarSplit
+                  id="backup-history-ratio"
+                  top={
+                    <ProjectBackups
+                      project={project}
+                      onPrepare={prepareBackup}
+                      onRestore={restoreBackup}
+                    />
+                  }
+                  bottom={
+                    <>
+                      <div className="sidebar-section-title">
+                        <strong>修改历史</strong>
+                        <button
+                          className="icon-button"
+                          aria-label="清空修改历史"
+                          title="清空修改历史"
+                          onClick={() => {
+                            setClearError('');
+                            setClearOpen(true);
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      <div className="history-list">
+                        <p className="history-note">普通历史：150 次 / 4 MB · 恢复备份单独保留</p>
+                        {editHistory.error && <p role="alert">{editHistory.error}</p>}
+                        {!historyRows.length && (
+                          <p className="sidebar-empty">
+                            开始编辑后，这里会记录修改时间、文件和行号。
+                          </p>
                         )}
-                        <span>
-                          第 {summary.from}
-                          {summary.to !== summary.from ? '–' + summary.to : ''} 行{' '}
-                          <ins>+{summary.added}</ins> <del>−{summary.removed}</del>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
+                        {historyRows.map(({ record, summary }) => {
+                          return (
+                            <button
+                              key={record.id}
+                              className={review?.id === record.id ? 'selected' : ''}
+                              onClick={() => {
+                                setReview(record);
+                                setMode((m) => (m === 'pdf' ? 'split' : m));
+                                setEditMode('code');
+                              }}
+                            >
+                              <time dateTime={new Date(record.time).toISOString()}>
+                                {new Date(record.time).toLocaleString('zh-CN', { hour12: false })}
+                              </time>
+                              <strong>{record.path}</strong>
+                              {record.kind === 'recovery' && (
+                                <span className="recovery-badge">恢复前备份</span>
+                              )}
+                              <span>
+                                第 {summary.from}
+                                {summary.to !== summary.from ? '–' + summary.to : ''} 行{' '}
+                                <ins>+{summary.added}</ins> <del>−{summary.removed}</del>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </>
+                  }
+                />
               ) : (
                 <div className="project-search">
+                  <button
+                    className="search-scope-button"
+                    onClick={() => {
+                      setScopeDraft(
+                        fileScope || project.files.filter((f) => !f.binary).map((f) => f.path),
+                      );
+                      setScopeOpen(true);
+                    }}
+                  >
+                    <Filter size={14} />
+                    {fileScope ? `已限定 ${fileScope.length} 个文件` : '全部文件'}
+                    <ChevronDown size={13} />
+                  </button>
                   <label>
                     <Search size={15} />
                     <input
@@ -1557,6 +1762,7 @@ export function App() {
                         )}
                       aiBusy={ai.busy}
                       onImportImage={importEditorImage}
+                      onLocate={locatePdf}
                       onAI={(prompt, scope) => {
                         setInlineRun((n) => n + 1);
                         setAiOpen(true);
@@ -1655,6 +1861,8 @@ export function App() {
               <div className="preview-container">
                 <PdfViewer
                   bytes={pdf}
+                  locate={pdfLocate}
+                  onLocateSource={locateSource}
                   diagnosticsOpen={diagnosticsOpen}
                   onDiagnosticsChange={setDiagnosticsOpen}
                   diagnosticCount={diagnostics.length}
@@ -1758,6 +1966,96 @@ export function App() {
             onArchive={archiveSpaceProjects}
           />
         </section>
+        <Dialog open={scopeOpen} onClose={() => setScopeOpen(false)} title="限定搜索文件">
+          <div className="scope-actions">
+            <button
+              onClick={() =>
+                setScopeDraft(project?.files.filter((f) => !f.binary).map((f) => f.path) || [])
+              }
+            >
+              全选
+            </button>
+            <button onClick={() => setScopeDraft([])}>清除选择</button>
+          </div>
+          <div className="scope-file-list">
+            {project?.files
+              .filter((f) => !f.binary)
+              .map((f) => (
+                <label key={f.path}>
+                  <input
+                    type="checkbox"
+                    checked={scopeDraft.includes(f.path)}
+                    onChange={(e) =>
+                      setScopeDraft((v) =>
+                        e.target.checked ? [...v, f.path] : v.filter((p) => p !== f.path),
+                      )
+                    }
+                  />
+                  <FileText size={15} />
+                  <span>{f.path}</span>
+                </label>
+              ))}
+          </div>
+          <div className="dialog-actions">
+            <button
+              className="primary-button"
+              onClick={() => {
+                setFileScope(
+                  scopeDraft.length === project?.files.filter((f) => !f.binary).length
+                    ? null
+                    : scopeDraft,
+                );
+                setScopeOpen(false);
+              }}
+            >
+              应用范围
+            </button>
+          </div>
+        </Dialog>
+        <Dialog
+          open={clearOpen}
+          onClose={() => !restoreBusy && setClearOpen(false)}
+          title="清空修改历史"
+          description="仅删除修改记录，项目文件和完整项目备份不受影响。"
+        >
+          <div className="history-range">
+            <label>
+              开始时间
+              <input
+                type="datetime-local"
+                aria-label="历史开始时间"
+                value={clearFrom}
+                onChange={(e) => setClearFrom(e.target.value)}
+              />
+            </label>
+            <label>
+              结束时间
+              <input
+                type="datetime-local"
+                aria-label="历史结束时间"
+                value={clearTo}
+                onChange={(e) => setClearTo(e.target.value)}
+              />
+            </label>
+          </div>
+          {clearError && (
+            <p role="alert" className="form-error">
+              {clearError}
+            </p>
+          )}
+          <div className="dialog-actions">
+            <button disabled={restoreBusy} onClick={() => void clearHistory(true)}>
+              清空全部历史
+            </button>
+            <button
+              className="primary-button"
+              disabled={restoreBusy || (!clearFrom && !clearTo)}
+              onClick={() => void clearHistory(false)}
+            >
+              清空所选时间范围
+            </button>
+          </div>
+        </Dialog>
         <Dialog
           open={modal === 'new' || modal === 'rename'}
           onClose={() => setModal(null)}

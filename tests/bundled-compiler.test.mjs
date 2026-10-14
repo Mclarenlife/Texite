@@ -45,6 +45,18 @@ test(
     // The bundled pdfTeX runs against local, independently managed TeX modules.
     const result = await compiler.compile(project);
     assert.equal(result.success, true, result.log);
+    assert(
+      result.syncMap?.some((n) => n.file === 'main.tex' && n.line >= 4 && n.x > 0 && n.y > 0),
+      'main-file SyncTeX coordinates',
+    );
+    assert(
+      result.syncMap?.some((n) => n.file === 'chapters/body.tex' && n.line === 1),
+      'included-file SyncTeX coordinates',
+    );
+    assert(
+      result.syncMap.every((n) => n.page > 0 && n.x < 1000 && n.y < 1500 && n.width < 1000),
+      'coordinates in PDF points',
+    );
     assert.equal(result.engine, 'pdflatex');
     assert.match(result.log, /This is pdfTeX/);
     assert.match(result.compilerLabel, /pdfLaTeX.*2025/);

@@ -145,6 +145,7 @@ app.whenReady().then(async () => {
   });
   handleFiles('project:save', (project) => library.save(project));
   handleFiles('project:save-ai', (project, removals) => library.save(project, removals));
+  handleFiles('project:restore', (project, removals) => library.save(project, removals, true));
   handleFiles('project:import', (project) => library.import(project));
   handleFiles('project:list', () => library.list());
   handleFiles('project:reopen', (id) => library.reopen(id));

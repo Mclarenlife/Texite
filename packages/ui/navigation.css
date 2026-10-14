@@ -1,0 +1,281 @@
+/* Shared sidebar sections retain independent scroll areas while resizing. */
+.sidebar-split {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar-split-region {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.sidebar-split .file-tree {
+  max-height: none;
+  flex: 1;
+  overflow: auto;
+}
+.sidebar-horizontal-resizer {
+  position: relative;
+  cursor: row-resize;
+  touch-action: none;
+  outline: none;
+}
+.sidebar-horizontal-resizer::before {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  top: 3px;
+  height: 1px;
+  background: var(--line);
+}
+.sidebar-horizontal-resizer:is(:hover, :focus-visible)::before {
+  height: 2px;
+  background: var(--secondary);
+}
+.sidebar-horizontal-resizer:focus-visible {
+  outline: none;
+}
+.sidebar-split .outline-heading {
+  margin-top: 0;
+  border-top: 0;
+  padding-top: 14px;
+}
+.sidebar-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding: 9px 14px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.project-backups {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 9px 12px;
+}
+.backup-row {
+  display: flex;
+  gap: 8px;
+  padding: 10px 7px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.backup-row > div {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+.backup-row strong {
+  font-size: 12px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.backup-row time,
+.backup-row small {
+  font-size: 10px;
+  color: var(--secondary);
+}
+.backup-row:hover {
+  background: var(--tint);
+  border-radius: 8px;
+}
+.backup-context-menu {
+  position: fixed;
+  z-index: 80;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: 0 8px 28px #0002;
+}
+.backup-context-menu button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 13px;
+  border-radius: 6px;
+}
+.backup-context-menu button:hover {
+  background: var(--tint);
+}
+.sidebar-search-field {
+  margin: 4px 12px 12px;
+  padding: 8px 9px;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.sidebar-search-field input {
+  width: 100%;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 12px;
+}
+.project-search .search-scope-button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 2px 12px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.search-scope-button svg:last-child {
+  margin-left: auto;
+}
+.scope-actions {
+  display: flex;
+  gap: 18px;
+  padding: 4px 0 12px;
+  font-size: 12px;
+}
+.scope-file-list {
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.scope-file-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.scope-file-list label:hover {
+  background: var(--tint);
+}
+.scope-file-list input {
+  accent-color: var(--accent);
+}
+.history-range {
+  display: grid;
+  gap: 16px;
+  margin-top: 20px;
+}
+.history-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.history-range input {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 9px;
+}
+.project-properties [aria-label='WebDAV 项目'] {
+  color: #3b94c8;
+  fill: #c7e9ff;
+}
+.pdf-header {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.pdf-header .preview-tabs {
+  min-height: 46px;
+  align-items: stretch;
+}
+.pdf-header .pdf-controls {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+.pdf-header .preview-tab {
+  align-self: stretch;
+}
+.source-editor .cm-selectionBackground,
+.source-editor .cm-focused .cm-selectionBackground {
+  background: rgba(74, 139, 234, 0.32) !important;
+}
+::selection {
+  background: rgba(74, 139, 234, 0.32);
+}
+.editor-context-popover:not(.editor-insert-popover) {
+  padding: 5px;
+  border-radius: 12px;
+}
+.inline-ai-form .inline-locate,
+.inline-ai-form .inline-close {
+  background: transparent;
+  color: var(--secondary);
+  flex-shrink: 0;
+}
+.inline-ai-form .inline-locate:hover,
+.inline-ai-form .inline-close:hover {
+  background: var(--tint);
+  color: var(--text);
+}
+.texite-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  transform-origin: 0 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+.texite-text-layer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+.texite-text-layer > span {
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+.texite-text-layer ::selection {
+  background: rgba(60, 132, 244, 0.38);
+  color: transparent;
+}
+.texite-text-layer {
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+.pdf-locate-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.pdf-locate-highlight {
+  position: absolute;
+  background: rgba(65, 145, 255, 0.3);
+  border-radius: 2px;
+}
+.pdf-selection-locate {
+  position: fixed;
+  z-index: 48;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 32px;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  box-shadow: 0 4px 18px #0002;
+}

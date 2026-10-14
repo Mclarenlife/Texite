@@ -16,7 +16,7 @@ import './editor-tools.css';
 import { localizedSearch } from './searchPanel';
 
 export type EditorHandle = {
-  jump: (position: number) => void;
+  jump: (position: number, end?: number) => void;
   search: () => void;
   insert: (text: string) => void;
   focus: () => void;
@@ -32,6 +32,7 @@ type Props = {
   labels?: string[];
   aiBusy?: boolean;
   onAI?(prompt: string, scope: InlineScope): void;
+  onLocate?(scope: InlineScope): void;
   onImportImage?(file: File): Promise<string>;
   onChange: (content: string, path: string) => void;
   onCursor: (line: number, column: number, reference?: string) => void;
@@ -66,12 +67,15 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
   useImperativeHandle(
     ref,
     () => ({
-      jump(position) {
+      jump(position, end) {
         const v = view.current;
         if (!v) return;
         const pos = Math.max(0, Math.min(position, v.state.doc.length));
         v.dispatch({
-          selection: { anchor: pos },
+          selection: {
+            anchor: pos,
+            head: end === undefined ? pos : Math.max(pos, Math.min(end, v.state.doc.length)),
+          },
           effects: EditorView.scrollIntoView(pos, { y: 'center' }),
         });
         v.focus();
@@ -289,6 +293,7 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
             anchor.scope.path + ':' + anchor.scope.from + ':' + anchor.scope.to + ':' + anchor.menu
           }
           anchor={anchor}
+          onLocate={props.onLocate}
           onClose={() => setAnchor(null)}
           onInsert={insert}
           onAI={(prompt, scope) => current.current.onAI?.(prompt, scope)}
