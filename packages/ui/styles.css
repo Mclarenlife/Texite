@@ -1,3 +1,24 @@
+@font-face {
+  font-family: 'Texite JetBrains Mono';
+  src: url('/fonts/jetbrains-mono/JetBrainsMono-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Texite JetBrains Mono';
+  src: url('/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Texite JetBrains Mono';
+  src: url('/fonts/jetbrains-mono/JetBrainsMono-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
 :root {
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', 'PingFang SC',
@@ -333,6 +354,7 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 10px;
   gap: 2px;
+  background: var(--bg);
 }
 .mode-switch button {
   position: relative;
@@ -349,14 +371,22 @@ h1 {
   z-index: 1;
 }
 .mode-switch .selected {
-  color: var(--accent);
+  color: var(--surface);
+}
+.mode-switch button:not(.selected):hover {
+  background: var(--line);
+  color: var(--text);
+}
+.mode-switch button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 .mode-highlight {
   position: absolute;
   inset: 0;
   border-radius: 7px;
-  background: var(--surface);
-  box-shadow: 0 1px 5px #283b2110;
+  background: var(--accent-strong);
+  box-shadow: 0 1px 3px #0002;
 }
 .compile-button {
   background: var(--accent-strong);
@@ -3305,28 +3335,105 @@ h1 {
 .sync-settings {
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 18px;
+  max-width: 760px;
+  margin: 0 auto;
 }
-.sync-settings section + section {
-  border-top: 1px solid var(--line);
-  padding-top: 22px;
+.sync-settings > section {
+  border: 1px solid var(--line);
+  background: var(--raised);
+  border-radius: 14px;
+  padding: 22px;
+  min-width: 0;
+}
+.sync-settings .settings-section-heading {
+  margin: 0 0 22px;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 7px;
+}
+.sync-settings .settings-section-heading h3 {
+  font-size: calc(14px * var(--ui-font-scale, 1));
+}
+.sync-settings .settings-section-heading > span {
+  display: block;
+  font-size: calc(11px * var(--ui-font-scale, 1));
+}
+.sync-settings .settings-note {
+  margin: 12px 0 0;
+  color: var(--secondary);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+  line-height: 1.8;
+  overflow-wrap: anywhere;
 }
 .sync-settings fieldset {
+  display: grid;
+  gap: 20px;
   border: 0;
   padding: 0;
   margin: 0;
   min-width: 0;
 }
+.sync-settings .form-field {
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  font-weight: 500;
+  color: var(--text);
+}
+.sync-settings .form-field input {
+  min-height: 42px;
+  padding: 11px 12px;
+  background: var(--surface);
+  font-weight: 400;
+}
+.sync-settings .form-field input:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  outline-offset: 2px;
+}
+.sync-details {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.sync-details summary {
+  cursor: pointer;
+  color: var(--secondary);
+  font-size: calc(11px * var(--ui-font-scale, 1));
+}
+.sync-migration {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  margin-top: 20px;
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+.sync-migration .settings-note {
+  margin: 0;
+  flex: 1;
+}
+.sync-migration > button {
+  flex-shrink: 0;
+}
 .sync-credentials {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
 }
 .sync-actions,
 .storage-path {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+.sync-actions {
+  padding-top: 2px;
+  flex-wrap: wrap;
+}
+.sync-actions > button {
+  min-height: 38px;
+  padding: 0 16px;
 }
 .storage-path > span {
   flex: 1;
@@ -3401,5 +3508,15 @@ h1 {
   }
   .sync-credentials {
     grid-template-columns: 1fr;
+  }
+  .sync-settings > section {
+    padding: 18px;
+  }
+  .sync-migration,
+  .storage-path {
+    flex-wrap: wrap;
+  }
+  .sync-migration .settings-note {
+    flex-basis: 100%;
   }
 }

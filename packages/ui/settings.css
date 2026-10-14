@@ -726,7 +726,7 @@
   height: 3px;
   accent-color: var(--accent);
 }
-.compiler-layout {
+.settings-layout.compiler-layout {
   grid-template-columns: 1fr;
 }
 .compiler-settings {

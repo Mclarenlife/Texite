@@ -1,0 +1,4 @@
+JetBrains Mono v2.304
+Source: https://github.com/JetBrains/JetBrainsMono/tree/v2.304/fonts/webfonts
+License: SIL Open Font License 1.1, included in OFL.txt
+Unmodified Regular, Bold and Italic WOFF2 files.

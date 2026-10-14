@@ -21,6 +21,8 @@ export function usePreference<T extends string | number | boolean>(key: string, 
   return [value, setValue] as const;
 }
 export const editorFonts: Record<string, string> = {
+  jetbrains:
+    '"Texite JetBrains Mono", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", monospace',
   mono: 'ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", monospace',
   consolas:
     'Consolas, "SFMono-Regular", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", monospace',

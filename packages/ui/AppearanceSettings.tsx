@@ -143,6 +143,7 @@ export function AppearanceSettings(props: Props) {
   const currentPalette = palettes.find((p) => p.id === props.palette) || palettes[0];
   const fontOptions = [
     { id: 'mono', name: '系统等宽', note: '跟随设备' },
+    { id: 'jetbrains', name: 'JetBrains Mono', note: '内置 · 离线可用' },
     { id: 'consolas', name: 'Consolas', note: '清晰工整' },
     { id: 'cascadia', name: 'Cascadia Code', note: '圆润等宽' },
     { id: 'sans', name: '无衬线', note: '轻盈易读' },
@@ -418,7 +419,7 @@ export function AppearanceSettings(props: Props) {
               />
               <div className="settings-section-heading">
                 <h3>编辑字体</h3>
-                <span>未安装的字体会自动回退</span>
+                <span>内置字体直接可用，其他字体未安装时自动回退</span>
               </div>
               <Choices
                 label="编辑字体"
