@@ -44,12 +44,40 @@ class ProjectLibrary {
     this.projectsRoot = root;
     return root;
   }
+  async createProjectDirectory(name) {
+    // Keep project IDs separate from paths; use portable, collision-safe display names.
+    let base =
+      String(name || '未命名项目')
+        .normalize('NFC')
+        .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+        .replace(/^[. ]+|[. ]+$/g, '')
+        .slice(0, 80)
+        .replace(/[. ]+$/g, '') || '未命名项目';
+    if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(base)) base = '_' + base;
+    await fs.mkdir(this.projectsRoot, { recursive: true });
+    for (let n = 1; n <= 10000; n++) {
+      const candidate = n === 1 ? base : `${base} (${n})`;
+      // Avoid case-only collisions even when created on a case-sensitive platform.
+      const existing = await fs.readdir(this.projectsRoot);
+      if (
+        existing.some((entry) => entry.normalize('NFC').toLowerCase() === candidate.toLowerCase())
+      )
+        continue;
+      const root = path.join(this.projectsRoot, candidate);
+      try {
+        await fs.mkdir(root);
+        return root;
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+      }
+    }
+    throw new Error('同名项目过多，请更改项目名称。');
+  }
   async relocate(project) {
     validateSnapshot(project);
     const original = this.entries.get(project.id);
     if (!original) throw new Error('请先保存项目。');
-    const root = path.join(this.projectsRoot, randomUUID());
-    await fs.mkdir(root, { recursive: true });
+    const root = await this.createProjectDirectory(project.name);
     const hashes = await saveDirectory(root, project);
     const entry = { ...original, root, kind: 'managed', hashes: [...hashes] };
     this.entries.set(project.id, entry);
@@ -134,8 +162,7 @@ class ProjectLibrary {
   async import(project) {
     validateSnapshot(project);
     const id = randomUUID();
-    const root = path.join(this.projectsRoot, id);
-    await fs.mkdir(root, { recursive: true });
+    const root = await this.createProjectDirectory(project.name);
     const hashes = await saveDirectory(root, project);
     const entry = { id, root, kind: 'managed', hashes: [...hashes] };
     this.entries.set(id, entry);
@@ -147,8 +174,7 @@ class ProjectLibrary {
     let entry = this.entries.get(project.id);
     if (!entry) {
       // IDs are renderer data; never use them as a filesystem path.
-      const root = path.join(this.projectsRoot, randomUUID());
-      await fs.mkdir(root, { recursive: true });
+      const root = await this.createProjectDirectory(project.name);
       entry = { id: project.id, root, kind: 'managed', hashes: [] };
     }
     const hashes = await saveDirectory(entry.root, project, new Map(entry.hashes), removals, sync);

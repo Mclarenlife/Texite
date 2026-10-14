@@ -44,6 +44,20 @@ export type DesktopAPI = {
       project: Project,
     ): Promise<{ status: 'uploaded' | 'downloaded' | 'conflict' | 'unchanged'; project?: Project }>;
     download(key: string): Promise<Project>;
+    batch(options: {
+      mode: 'pull' | 'upload' | 'sync';
+      ids?: string[];
+      excludedIds?: string[];
+    }): Promise<{
+      projects: Project[];
+      config: WebDAVConfig;
+      results: {
+        id?: string;
+        name: string;
+        status: 'uploaded' | 'downloaded' | 'conflict' | 'unchanged' | 'local-only' | 'failed';
+        error?: string;
+      }[];
+    }>;
     detach(id: string): Promise<WebDAVConfig>;
   };
   ai?: import('./ai').AIAPI;
@@ -74,7 +88,9 @@ export type DesktopAPI = {
     mainFile?: string;
     engine?: Engine;
   } | null>;
-  saveProject(project: Project): Promise<{ cancelled?: boolean; directory?: string }>;
+  saveProject(
+    project: Project,
+  ): Promise<{ cancelled?: boolean; directory?: string; kind?: 'linked' | 'managed' }>;
   detectEngines(): Promise<{
     bundled: boolean;
     latexmk: boolean;

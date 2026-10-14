@@ -1,17 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Cloud, Download, FolderOpen, RefreshCw } from 'lucide-react';
+import { Cloud, FolderOpen, RefreshCw } from 'lucide-react';
 import type { Project, WebDAVConfig } from '../core/model';
 
 export function SyncSettings({
   project,
-  onSync,
-  onImport,
   onChange,
   onRelocate,
 }: {
   project: Project;
-  onSync(): Promise<string>;
-  onImport(key: string): Promise<void>;
   onChange(config: WebDAVConfig): void;
   onRelocate(): Promise<void>;
 }) {
@@ -24,7 +20,6 @@ export function SyncSettings({
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
     [error, setError] = useState('');
-  const [remote, setRemote] = useState<{ key: string; name: string; files: number }[]>([]);
   const update = (next: WebDAVConfig) => {
     setConfig(next);
     onChange(next);
@@ -75,7 +70,6 @@ export function SyncSettings({
               update(next);
               setUrl(next.url);
               setPassword('');
-              setRemote([]);
               setMessage('设置已保存。');
             });
           }}
@@ -121,8 +115,10 @@ export function SyncSettings({
                 disabled={dirty || !config?.url}
                 onClick={() =>
                   void action(async () => {
-                    setRemote(await api.list());
-                    setMessage('连接成功，已读取云端项目。');
+                    const remote = await api.list();
+                    setMessage(
+                      `连接成功，云端有 ${remote.length} 个项目。可在项目空间点击同步拉取。`,
+                    );
                   })
                 }
               >
@@ -139,7 +135,7 @@ export function SyncSettings({
           <summary>同步方式与存储说明</summary>
           <p className="settings-note">
             项目存入服务地址下的 Texite 目录，使用 .texite.json
-            快照（含源码和图片）。修改仅在点击同步时上传；双方修改冲突时保留独立副本。更换账号或服务地址会清除本机同步关联。
+            快照（含源码和图片）。项目空间顶部可拉取云端项目，选中项目可上传；侧栏同步按钮执行双向同步。双方修改冲突时保留独立副本。更换账号或服务地址会清除本机同步关联。
           </p>
         </details>
       </section>
@@ -148,21 +144,11 @@ export function SyncSettings({
         <div>
           <strong>{project.name}</strong>
           <small>
-            {binding ? '上次同步：' + new Date(binding.time).toLocaleString() : '尚未关联 WebDAV'}
+            {binding
+              ? '上次同步：' + new Date(binding.time).toLocaleString()
+              : '尚未关联 WebDAV · 在项目空间选择项目后上传'}
           </small>
         </div>
-        <button
-          className="primary-button"
-          disabled={busy || dirty || !config?.url}
-          onClick={() =>
-            void action(async () => {
-              setMessage(await onSync());
-              update(await api.get());
-            })
-          }
-        >
-          {binding ? '同步当前项目' : '启用并同步'}
-        </button>
         {binding && (
           <button
             className="secondary-button"
@@ -178,40 +164,6 @@ export function SyncSettings({
           </button>
         )}
       </section>
-      {remote.length > 0 && (
-        <section>
-          <div className="settings-section-heading">
-            <h3>云端项目</h3>
-            <span>{remote.length} 个</span>
-          </div>
-          <div className="sync-projects">
-            {remote.map((item) => (
-              <div key={item.key}>
-                <Cloud size={16} />
-                <span>
-                  {item.name}
-                  <small>{item.files} 个文件</small>
-                </span>
-                <button
-                  className="icon-button"
-                  aria-label={'下载 ' + item.name}
-                  title="下载为本地项目"
-                  disabled={busy}
-                  onClick={() =>
-                    void action(async () => {
-                      await onImport(item.key);
-                      update(await api.get());
-                      setMessage('项目已下载到项目空间。');
-                    })
-                  }
-                >
-                  <Download size={16} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
       <section className="sync-storage-card">
         <div className="settings-section-heading">
           <h3>项目保存位置</h3>

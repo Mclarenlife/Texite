@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('texite', {
     configure: (input) => ipcRenderer.invoke('webdav:configure', input),
     list: () => ipcRenderer.invoke('webdav:list'),
     sync: (project) => ipcRenderer.invoke('webdav:sync', project),
+    batch: (options) => ipcRenderer.invoke('webdav:batch', options),
     download: (key) => ipcRenderer.invoke('webdav:download', key),
     detach: (id) => ipcRenderer.invoke('webdav:detach', id),
   },

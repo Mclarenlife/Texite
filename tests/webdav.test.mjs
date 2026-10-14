@@ -216,3 +216,57 @@ test('changing save directory and relocating preserves IDs and original files ac
   assert.equal(restart.projectsRoot, destination);
   assert.equal((await restart.reopen(project.id)).location.directory, moved.location.directory);
 });
+
+test('batch pull discovers cloud projects once, never uploads local edits, and preserves conflicts', async (t) => {
+  const env = await setup(t),
+    a = await env.device('batch-a'),
+    b = await env.device('batch-b');
+  const original = await a.library.import(sample);
+  await a.dav.batch({ mode: 'upload', ids: [original.id] });
+  const first = await b.dav.batch({ mode: 'pull' });
+  assert.equal(first.results[0].status, 'downloaded');
+  const local = first.projects[0];
+  assert.equal((await b.dav.batch({ mode: 'pull' })).results[0].status, 'unchanged');
+  assert.equal((await b.library.list()).length, 1);
+  await b.library.save({ ...local, files: [{ path: 'main.tex', content: 'local edit' }] });
+  assert.equal((await b.dav.batch({ mode: 'pull' })).results[0].status, 'local-only');
+  assert.equal(
+    JSON.parse([...env.files.values()][0]).project.files.find((f) => f.path === 'main.tex').content,
+    'original',
+  );
+  await a.library.save({ ...original, files: [{ path: 'main.tex', content: 'remote edit' }] });
+  await a.dav.batch({ mode: 'sync' });
+  assert.equal((await b.dav.batch({ mode: 'pull' })).results[0].status, 'conflict');
+  assert.equal((await b.library.list()).length, 2);
+  await b.dav.batch({ mode: 'sync' });
+  assert.equal((await b.library.list()).length, 2, 'unchanged conflict is not imported again');
+  assert.equal(
+    await fs.readFile(path.join(local.location.directory, 'main.tex'), 'utf8'),
+    'local edit',
+  );
+});
+
+test('batch sync updates linked projects, imports new cloud projects and reports partial failures', async (t) => {
+  const env = await setup(t),
+    a = await env.device('all-a'),
+    b = await env.device('all-b');
+  const p1 = await a.library.import(sample),
+    p2 = await a.library.import({ ...sample, name: '第二份' });
+  const uploaded = await a.dav.batch({ mode: 'upload', ids: [p1.id, p2.id, 'missing'] });
+  assert.deepEqual(
+    uploaded.results.map((r) => r.status),
+    ['uploaded', 'uploaded', 'failed'],
+  );
+  const imported = await b.dav.batch({ mode: 'sync' });
+  assert.equal(imported.projects.length, 2);
+  await a.library.save({ ...p1, files: [{ path: 'main.tex', content: 'changed remotely' }] });
+  await a.dav.batch({ mode: 'sync' });
+  const synced = await b.dav.batch({ mode: 'sync' });
+  assert.equal(synced.results.filter((r) => r.status === 'downloaded').length, 1);
+  assert.equal((await b.library.list()).length, 2);
+  const excluded = await b.dav.batch({
+    mode: 'sync',
+    excludedIds: imported.projects.map((p) => p.id),
+  });
+  assert.equal(excluded.results.length, 0, 'archived bindings are neither synced nor duplicated');
+});

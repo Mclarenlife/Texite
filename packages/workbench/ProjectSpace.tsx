@@ -2,6 +2,8 @@ import { useState } from 'react';
 import {
   FileText,
   Cloud,
+  CloudUpload,
+  RefreshCw,
   FolderOpen,
   Info,
   Pencil,
@@ -25,6 +27,9 @@ export function ProjectSpace({
   onRename,
   onArchive,
   syncedIds = [],
+  syncBusy = false,
+  onSync,
+  onUpload,
 }: {
   projects: Project[];
   archived: string[];
@@ -35,6 +40,9 @@ export function ProjectSpace({
   onRename(project: Project, name: string): Promise<void>;
   onArchive(ids: string[], remove: boolean): Promise<void>;
   syncedIds?: string[];
+  syncBusy?: boolean;
+  onSync(): Promise<void>;
+  onUpload(ids: string[]): Promise<void>;
 }) {
   const [query, setQuery] = useState(''),
     [trash, setTrash] = useState(false),
@@ -71,6 +79,15 @@ export function ProjectSpace({
           <h1>项目空间</h1>
         </div>
         <div className="space-actions">
+          <button
+            className="secondary-button"
+            disabled={syncBusy || busy}
+            title="拉取云端项目到本地"
+            onClick={() => void onSync()}
+          >
+            <RefreshCw size={16} className={syncBusy ? 'spin' : undefined} />
+            {syncBusy ? '同步中…' : '同步'}
+          </button>
           <button className="secondary-button" onClick={onFolder}>
             <FolderOpen size={16} />
             打开文件夹
@@ -152,6 +169,14 @@ export function ProjectSpace({
               </button>
             ) : (
               <>
+                <button
+                  className="secondary-button"
+                  disabled={busy || syncBusy}
+                  onClick={() => void onUpload(selected)}
+                >
+                  <CloudUpload size={14} />
+                  上传项目
+                </button>
                 <button
                   className="secondary-button"
                   disabled={busy || chosen.length !== 1}

@@ -4,6 +4,38 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { ProjectLibrary } from '../apps/desktop/projects.cjs';
 
+test('managed directories use safe project names, preserve collisions and survive restart', async () => {
+  await fs.mkdir('.qa', { recursive: true });
+  const base = await fs.mkdtemp(path.resolve('.qa/named-projects-'));
+  const library = new ProjectLibrary(base);
+  await library.init();
+  const sample = {
+    id: 'local',
+    name: '我的论文',
+    revision: 0,
+    engine: 'pdflatex',
+    mainFile: 'main.tex',
+    files: [{ path: 'main.tex', content: 'original' }],
+  };
+  const first = await library.save(sample);
+  assert.equal(path.basename(first.directory), '我的论文');
+  const second = await library.import(sample);
+  assert.equal(path.basename(second.location.directory), '我的论文 (2)');
+  await library.rename(sample.id, '显示名称');
+  assert.equal((await library.reopen(sample.id)).location.directory, first.directory);
+  for (const name of ['../unsafe/name', 'CON', '.', 'bad:name?']) {
+    const imported = await library.import({ ...sample, name });
+    assert.equal(path.dirname(imported.location.directory), library.projectsRoot);
+    assert(!/[<>:"/\\|?*]/.test(path.basename(imported.location.directory)));
+  }
+  const moved = await library.relocate({ ...sample, name: '迁移后的论文' });
+  assert.equal(path.basename(moved.location.directory), '迁移后的论文');
+  assert.equal(await fs.readFile(path.join(first.directory, 'main.tex'), 'utf8'), 'original');
+  const restart = new ProjectLibrary(base);
+  await restart.init();
+  assert.equal((await restart.reopen(sample.id)).location.directory, moved.location.directory);
+});
+
 test('renaming a linked project persists its display name without changing the directory or sources', async () => {
   await fs.mkdir('.qa', { recursive: true });
   const base = await fs.mkdtemp(path.resolve('.qa/project-rename-'));

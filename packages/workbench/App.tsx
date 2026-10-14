@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   Cloud,
+  RefreshCw,
   Minus,
   Copy,
   ArrowDownToLine,
@@ -116,6 +117,8 @@ export function App() {
   const drafts = useRef(new Map<string, Project>());
   if (project) drafts.current.set(project.id, project);
   const [davConfig, setDavConfig] = useState<WebDAVConfig | null>(null);
+  const [syncBusy, setSyncBusy] = useState(false);
+  const syncRunning = useRef(false);
   const [settingsTab, setSettingsTab] = useState('appearance');
   useEffect(() => {
     void window.texite?.webdav
@@ -223,8 +226,20 @@ export function App() {
         .catch(() => {})
         .then(async () => {
           await saveProject(snapshot);
-          if (window.texite) await window.texite.saveProject(snapshot);
-          else await saveBrowserDirectory(snapshot);
+          if (window.texite) {
+            const location = await window.texite.saveProject(snapshot);
+            if (location.directory && location.directory !== snapshot.location?.directory) {
+              snapshot = {
+                ...snapshot,
+                location: { kind: location.kind || 'managed', directory: location.directory },
+              };
+              await saveProject(snapshot);
+              drafts.current.set(snapshot.id, snapshot);
+              setProject((current) =>
+                current?.id === snapshot.id ? { ...current, location: snapshot.location } : current,
+              );
+            }
+          } else await saveBrowserDirectory(snapshot);
           await editHistory.flush(snapshot.id);
         });
       saveQueue.current = task;
@@ -514,32 +529,82 @@ export function App() {
     }
     setOpenedIds((ids) => ids.filter((item) => item !== id));
   }
-  async function syncProject() {
-    await prepareSpaceMutation();
-    restoreLock.current = true;
-    setRestoreBusy(true);
+  async function syncWorkspace(mode: 'pull' | 'upload' | 'sync', ids: string[] = []) {
+    if (syncRunning.current) return;
+    syncRunning.current = true;
+    setSyncBusy(true);
+    let locked = false;
     try {
-      const result = await window.texite!.webdav!.sync(projectRef.current!);
-      if (result.project) {
-        const next = validateProject(result.project);
-        if (result.status === 'downloaded') {
+      const api = window.texite?.webdav;
+      const config = await api?.get();
+      if (!api || !config?.url) {
+        openModal('settings');
+        setSettingsTab('sync');
+        return;
+      }
+      if (ai.busy || compileRunning.current || restoreLock.current)
+        throw new Error('请先结束 AI、编译或恢复任务。');
+      restoreLock.current = true;
+      locked = true;
+      setRestoreBusy(true);
+      clearTimeout(autosaveTimer.current);
+      await saveQueue.current;
+      const current = projectRef.current;
+      if (current) {
+        await saveProject(current);
+        await window.texite!.saveProject(current);
+        await editHistory.flush(current.id);
+      }
+      const result = await api.batch({ mode, ids, excludedIds: archivedProjects });
+      setDavConfig(result.config);
+      const incoming = result.projects.map(validateProject).map((next) => ({
+        ...next,
+        revision: Math.max(next.revision, (drafts.current.get(next.id)?.revision ?? 0) + 1),
+        activeFile: next.files.some((f) => f.path === drafts.current.get(next.id)?.activeFile)
+          ? drafts.current.get(next.id)!.activeFile
+          : next.activeFile,
+      }));
+      // Update open tabs as well as the project list; stale drafts must not overwrite a pull.
+      for (const next of incoming) {
+        drafts.current.set(next.id, next);
+        if (projectRef.current?.id === next.id) {
           projectRef.current = next;
           setProject(next);
+          setPdfRevision(-1);
+          setReview(null);
         }
-        setProjects((items) => [next, ...items.filter((p) => p.id !== next.id)]);
-        await saveProject(next);
       }
-      setDavConfig(await window.texite!.webdav!.get());
-      return result.status === 'conflict'
-        ? '两端都有修改。已在项目空间保留云端冲突副本，当前项目和云端原文件未覆盖。'
-        : result.status === 'downloaded'
-          ? '已下载云端更改，覆盖前的本地版本已保存到 sync-backups。'
-          : result.status === 'unchanged'
-            ? '两端内容一致。'
-            : '项目已同步到云端。';
+      setProjects((items) => [
+        ...incoming,
+        ...items.filter((p) => !incoming.some((n) => n.id === p.id)),
+      ]);
+      for (const next of incoming) await saveProject(next);
+      if (projectRef.current) await saveProject(projectRef.current);
+      setSaved('saved');
+      const count = (status: string) => result.results.filter((r) => r.status === status).length;
+      const failures = result.results.filter((r) => r.status === 'failed');
+      const detail = [
+        count('uploaded') ? `上传 ${count('uploaded')} 个` : '',
+        count('downloaded') ? `拉取 ${count('downloaded')} 个` : '',
+        count('conflict') ? `保留 ${count('conflict')} 个云端冲突副本` : '',
+        count('local-only') ? `${count('local-only')} 个项目有本地更改待上传` : '',
+      ]
+        .filter(Boolean)
+        .join('，');
+      notify(
+        failures.length
+          ? `同步部分失败：${failures.map((r) => r.name + '：' + r.error).join('；')}${detail ? '。' + detail : ''}`
+          : `同步完成${detail ? '：' + detail : '，云端与本地已检查。'}`,
+      );
+    } catch (error) {
+      notify('同步失败：' + friendlyError(error));
     } finally {
-      restoreLock.current = false;
-      setRestoreBusy(false);
+      if (locked) {
+        restoreLock.current = false;
+        setRestoreBusy(false);
+      }
+      syncRunning.current = false;
+      setSyncBusy(false);
     }
   }
   async function relocateProject() {
@@ -556,13 +621,6 @@ export function App() {
       restoreLock.current = false;
       setRestoreBusy(false);
     }
-  }
-  async function downloadCloudProject(key: string) {
-    await prepareSpaceMutation();
-    const next = validateProject(await window.texite!.webdav!.download(key));
-    await saveProject(next);
-    setProjects((items) => [next, ...items.filter((p) => p.id !== next.id)]);
-    setDavConfig(await window.texite!.webdav!.get());
   }
   async function prepareSpaceMutation() {
     if (ai.busy || compileRunning.current || restoreLock.current)
@@ -1028,13 +1086,11 @@ export function App() {
             </button>
             <button
               aria-label="WebDAV 同步"
-              title="WebDAV 同步"
-              onClick={() => {
-                openModal('settings');
-                setSettingsTab('sync');
-              }}
+              title={syncBusy ? '正在同步…' : '同步本地云项目并拉取云端项目'}
+              disabled={syncBusy}
+              onClick={() => void syncWorkspace('sync')}
             >
-              <Cloud size={20} />
+              <RefreshCw size={20} className={syncBusy ? 'spin' : undefined} />
             </button>
           </div>
         </nav>
@@ -1691,6 +1747,9 @@ export function App() {
             projects={[project, ...projects.filter((p) => p.id !== project.id)]}
             syncedIds={davConfig?.projects.map((p) => p.id) ?? []}
             archived={archivedProjects}
+            syncBusy={syncBusy}
+            onSync={() => syncWorkspace('pull')}
+            onUpload={(ids) => syncWorkspace('upload', ids)}
             onOpen={(p) => void chooseProject(p, true).catch((e) => notify(friendlyError(e)))}
             onFolder={() => void openDirectory()}
             onImport={() => zipInput.current?.click()}
@@ -1920,8 +1979,6 @@ export function App() {
             sync={
               <SyncSettings
                 project={project}
-                onSync={syncProject}
-                onImport={downloadCloudProject}
                 onChange={setDavConfig}
                 onRelocate={relocateProject}
               />

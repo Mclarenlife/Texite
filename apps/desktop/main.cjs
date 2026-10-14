@@ -70,6 +70,7 @@ app.whenReady().then(async () => {
   handleFiles('webdav:configure', (input) => dav.configure(input));
   handleFiles('webdav:list', () => dav.list());
   handleFiles('webdav:sync', (project) => dav.sync(project));
+  handleFiles('webdav:batch', (options) => dav.batch(options));
   handleFiles('webdav:download', (key) => dav.download(key));
   handleFiles('webdav:detach', (id) => dav.detach(id));
   handleFiles('storage:get', () => library.projectsRoot);

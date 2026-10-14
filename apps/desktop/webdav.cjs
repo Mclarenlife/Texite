@@ -191,7 +191,57 @@ class WebDAV {
     await this.persist();
     return this.get();
   }
-  async sync(project) {
+  async batch({ mode, ids = [], excludedIds = [] } = {}) {
+    if (
+      !['pull', 'upload', 'sync'].includes(mode) ||
+      !Array.isArray(ids) ||
+      !Array.isArray(excludedIds) ||
+      ids.length > 500 ||
+      excludedIds.length > 10000 ||
+      [...ids, ...excludedIds].some((id) => typeof id !== 'string')
+    )
+      throw new Error('同步请求无效。');
+    await this.init();
+    const results = [],
+      projects = [];
+    const excluded = new Set(excludedIds);
+    const selected =
+      mode === 'upload'
+        ? [...new Set(ids)]
+        : Object.keys(this.bindings).filter((id) => !excluded.has(id));
+    // List before writes: a connection/listing failure must not look like success.
+    const remote = mode === 'upload' ? [] : await this.list();
+    for (const id of selected) {
+      try {
+        const local = await this.library.reopen(id);
+        if (!local) throw new Error('本地项目不存在。');
+        const result = await this.sync(local, mode !== 'pull');
+        results.push({ id, name: local.name, status: result.status });
+        projects.push(result.project || local);
+      } catch (error) {
+        results.push({
+          id,
+          name: this.library.entries.get(id)?.name || '本地项目',
+          status: 'failed',
+          error: error.message,
+        });
+      }
+    }
+    const linked = new Set(Object.values(this.bindings).map((b) => b.key));
+    for (const item of remote) {
+      if (linked.has(item.key)) continue;
+      try {
+        const project = await this.download(item.key);
+        projects.push(project);
+        results.push({ id: project.id, name: project.name, status: 'downloaded' });
+        linked.add(item.key);
+      } catch (error) {
+        results.push({ name: item.name, status: 'failed', error: error.message });
+      }
+    }
+    return { results, projects, config: await this.get() };
+  }
+  async sync(project, upload = true) {
     await this.collection();
     const local = payload(project),
       localHash = hash(local);
@@ -202,12 +252,23 @@ class WebDAV {
     if (remote && remoteHash !== localHash && remoteHash !== binding?.hash) {
       // Both sides changed: import a separate local copy, leaving both originals intact.
       if (localHash !== binding?.hash) {
+        if (binding?.conflictHash === remoteHash && binding.conflictId) {
+          const existing = await this.library.reopen(binding.conflictId);
+          if (existing) return { status: 'conflict', project: existing };
+        }
         const copy = await this.library.import({
           ...remote.project,
           name: remote.project.name.slice(0, 75) + ' · 云端冲突副本',
           updatedAt: Date.now(),
           activeFile: remote.project.mainFile,
         });
+        this.bindings[project.id] = {
+          ...binding,
+          key,
+          conflictHash: remoteHash,
+          conflictId: copy.id,
+        };
+        await this.persist();
         return { status: 'conflict', project: copy };
       }
       // Keep a durable snapshot before replacing local files, including deletions.
@@ -232,6 +293,7 @@ class WebDAV {
       return { status: 'downloaded', project: next };
     }
     if (!remote || localHash !== remoteHash) {
+      if (!upload) return { status: 'local-only' };
       if (remote && (!remote.etag || remote.etag.startsWith('W/')))
         throw new Error(
           '服务未提供强 ETag，无法安全覆盖云端项目。请更换支持条件写入的 WebDAV 服务。',

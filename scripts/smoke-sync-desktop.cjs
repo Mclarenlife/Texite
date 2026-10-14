@@ -81,7 +81,7 @@ const crypto = require('node:crypto');
     await page.getByLabel('账号', { exact: true }).fill('test');
     await page.getByLabel('密码 / 应用密码').fill('secret');
     await page.getByRole('button', { name: '保存设置', exact: true }).click();
-    await expect(page.getByRole('button', { name: '启用并同步' })).toBeEnabled();
+    await expect(page.locator('.sync-settings [role="status"]')).toHaveText('设置已保存。');
     await page.getByRole('button', { name: '更改目录' }).click();
     await expect(page.locator('.storage-path')).toContainText(destination);
     await page.getByRole('button', { name: '迁移当前项目到此目录' }).click();
@@ -93,16 +93,43 @@ const crypto = require('node:crypto');
     expect(await fs.readFile(path.join(destination, children[0], 'main.tex'), 'utf8')).toContain(
       'documentclass',
     );
-    await page.getByRole('button', { name: '启用并同步' }).click();
-    await expect(page.locator('.sync-settings')).toContainText('项目已同步到云端');
-    expect(cloud.size).toBe(1);
-    await page.getByRole('button', { name: '连接并刷新' }).click();
-    await expect(page.getByRole('button', { name: '下载 示例项目' })).toBeVisible();
-    await page.getByRole('button', { name: '下载 示例项目' }).click();
-    await expect(page.locator('.sync-settings')).toContainText('项目已下载到项目空间');
+    expect(children[0]).toBe('示例项目');
     await page.getByRole('button', { name: '关闭弹窗' }).click();
     await page.getByRole('button', { name: '项目首页', exact: true }).click();
+    await page.getByLabel('选择项目 示例项目', { exact: true }).check();
+    await page.getByRole('button', { name: '上传项目', exact: true }).click();
+    await expect(page.locator('.toast')).toContainText('同步完成：上传 1 个');
+    expect(cloud.size).toBe(1);
+    const originalKey = [...cloud.keys()][0];
+    const remote = JSON.parse(cloud.get(originalKey));
+    remote.project.name = '云端新增项目';
+    remote.project.files = [{ path: 'main.tex', content: 'remote-only-project' }];
+    cloud.set('/dav/Texite/' + crypto.randomUUID() + '.texite.json', JSON.stringify(remote));
+    await page.getByRole('button', { name: '取消项目选择' }).click();
+    await page.getByRole('button', { name: '同步', exact: true }).click();
+    await expect(page.locator('.toast')).toContainText('拉取 1 个');
+    await expect(page.getByRole('button', { name: '打开项目 云端新增项目' })).toBeVisible();
+    await page.getByRole('button', { name: '同步', exact: true }).click();
+    await expect(page.locator('.toast')).toContainText('云端与本地已检查');
+    await expect(page.locator('.project-card')).toHaveCount(2);
+    await page.getByLabel('全选项目').check();
+    await page.getByRole('button', { name: '上传项目', exact: true }).click();
+    await expect(page.locator('.toast')).toContainText('云端与本地已检查');
+    await page.getByRole('button', { name: '取消项目选择' }).click();
+    await page.getByRole('button', { name: '打开项目 示例项目', exact: true }).click();
+    const edited = JSON.parse(cloud.get(originalKey));
+    edited.project.files = [{ path: 'main.tex', content: 'remote-change-visible-in-editor' }];
+    cloud.set(originalKey, JSON.stringify(edited));
+    await page.getByRole('button', { name: 'WebDAV 同步', exact: true }).click();
+    await expect(page.locator('.toast')).toContainText('拉取 1 个');
+    await expect(page.getByRole('textbox', { name: 'LaTeX 源码编辑器' })).toContainText(
+      'remote-change-visible-in-editor',
+    );
+    await expect(page.getByRole('dialog', { name: '设置', exact: true })).not.toBeVisible();
+    await page.getByRole('button', { name: '项目首页', exact: true }).click();
     await expect(page.locator('.project-properties [aria-label="WebDAV 项目"]')).toHaveCount(2);
+    if (process.env.TEXITE_TEST_SCREENSHOTS)
+      await page.screenshot({ path: '.qa/webdav-project-space.png', animations: 'disabled' });
     expect(
       await page.evaluate(async () => Object.hasOwn(await window.texite.webdav.get(), 'password')),
     ).toBe(false);
@@ -127,7 +154,7 @@ const crypto = require('node:crypto');
     }
     expect(errors).toEqual([]);
     console.log(
-      'PASS: native WebDAV settings, upload/download, encrypted secret bridge, project cloud icons, storage relocation and window controls',
+      'PASS: native WebDAV batch upload, cloud pull, deduplication, sidebar sync, editor refresh, named folders and window controls',
     );
   } finally {
     if (desktop) await desktop.close();
