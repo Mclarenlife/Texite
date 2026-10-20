@@ -57,8 +57,7 @@ database = CACHE / 'texlive-2022.tlpdb.xz'
 fetch(DATABASE_URL, database, DATABASE_SHA)
 policy, selected, packages, policy_sha = select_resources(ROOT / 'scripts/runtime-profile.json', database)
 output = OUT / 'texlive.zip'
-# Always rebuild from the pinned source. An old/full bundle must never survive
-# a policy change just because texlive.zip happens to exist on the build machine.
+# Rebuild from the pinned source so cached bundles cannot bypass profile changes.
 partial = OUT / 'texlive.zip.partial'
 inventory, fingerprint = {}, hashlib.sha256()
 with tarfile.open(bundle) as t, zipfile.ZipFile(partial, 'w', zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
@@ -93,8 +92,7 @@ with tarfile.open(bundle) as t, zipfile.ZipFile(partial, 'w', zipfile.ZIP_DEFLAT
     missing = set(policy['requiredFiles']) - inventory.keys()
     if missing:
         raise RuntimeError(f'Required resources missing: {sorted(missing)}')
-    # A trimmed bundle needs a NEW format-cache identity. Reusing the full
-    # distribution's digest could mask missing dependencies with old caches.
+    # Give the trimmed bundle its own cache identity to avoid reusing incompatible formats.
     bundle_identity = fingerprint.hexdigest()
     write('SHA256SUM', bundle_identity.encode())
 if partial.stat().st_size > policy['resourceBudgetBytes']:

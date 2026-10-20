@@ -7,6 +7,7 @@ runtime/
 .qa/
 test-results/
 playwright-report/
+output/
 *.log
 .env*
 !.env.example

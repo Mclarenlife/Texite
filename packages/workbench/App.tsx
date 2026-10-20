@@ -25,7 +25,6 @@ import {
   Minus,
   Copy,
   ArrowDownToLine,
-  ArrowLeft,
   ArrowUpRight,
   BookOpen,
   Check,
@@ -39,13 +38,10 @@ import {
   FileText,
   FolderPlus,
   Columns2,
-  PanelTop,
   History,
-  Image as ImageIcon,
   LayoutPanelLeft,
   Library,
   LoaderCircle,
-  Maximize2,
   Moon,
   MoreHorizontal,
   PanelLeftClose,
@@ -63,7 +59,6 @@ import {
 } from 'lucide-react';
 import { createProject, sampleSource } from '../core/sample';
 import {
-  getOutline,
   getReferences,
   isTextFile,
   parseDiagnostics,

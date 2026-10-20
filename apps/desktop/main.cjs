@@ -32,8 +32,7 @@ let library;
 let ai;
 let chat;
 let fileQueue = Promise.resolve();
-// End-to-end tests also launch the packaged executable. Keep their projects and
-// first-run caches separate from the user's real profile in both launch modes.
+// Isolate test projects and compiler caches from the user's profile, including packaged tests.
 if (process.env.TEXITE_TEST_USER_DATA)
   app.setPath('userData', path.resolve(process.env.TEXITE_TEST_USER_DATA));
 const devUrl = !app.isPackaged ? process.env.TEXITE_DEV_URL : undefined;
