@@ -19,6 +19,7 @@ on:
       - 'tests/chat-client.test.mjs'
       - 'tests/fixtures/acp-agent.cjs'
       - 'scripts/smoke-agent-workspace.cjs'
+      - 'scripts/smoke-sync-desktop.cjs'
       - 'tests/offline-compatibility.test.mjs'
       - 'tests/fixtures/offline/**'
       - '.github/workflows/desktop.yml'
