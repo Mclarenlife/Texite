@@ -7,6 +7,7 @@ const require = createRequire(import.meta.url);
 const { ACPClient } = require('../apps/desktop/acp-client.cjs');
 const { AgentClient } = require('../apps/desktop/agent-client.cjs');
 test('ACP edits editor buffers, isolates conversations, refuses read-only/outside writes and cancels', async () => {
+  await fs.mkdir(path.resolve('.qa'), { recursive: true });
   const dir = await fs.mkdtemp(path.resolve('.qa/acp-test-'));
   const events = [];
   let source = '这是苹果。',
@@ -74,6 +75,7 @@ test('ACP edits editor buffers, isolates conversations, refuses read-only/outsid
   }
 });
 test('Agent CLI profiles persist independently and reject invalid launch arguments', async () => {
+  await fs.mkdir(path.resolve('.qa'), { recursive: true });
   const dir = await fs.mkdtemp(path.resolve('.qa/agent-settings-')),
     client = new AgentClient(dir, () => {});
   await client.configure({ preset: 'qwen', protocol: 'acp', command: 'qwen', args: ['--acp'] });
