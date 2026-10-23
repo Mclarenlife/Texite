@@ -29,7 +29,7 @@ export function readGroup(text: string, start: number, open = '{', close = '}') 
   return null;
 }
 export function stripComments(text: string) {
-  return text.replace(/(\\[\s\S])|%[^\n]*(?:\n|$)/g, (all, escaped) => escaped || '');
+  return text.replace(/(\\[\s\S])|%[^\n]*(?:\n|$)/g, (_all, escaped) => escaped || '');
 }
 function maskComments(text: string) {
   return text.replace(/(\\[\s\S])|%[^\n]*/g, (all, escaped) => escaped || ' '.repeat(all.length));

@@ -20,6 +20,25 @@ const sample = {
   ],
   folders: ['empty'],
 };
+test('detached projects retain both copies, stay skipped after restart, and upload relinks without duplication', async (t) => {
+  const env = await setup(t),
+    a = await env.device('detached');
+  const project = await a.library.import(sample);
+  await a.dav.sync(project);
+  const before = [...env.files.entries()];
+  await a.dav.detach(project.id);
+  assert.equal((await a.dav.get()).projects.length, 0);
+  assert.deepEqual([...env.files.entries()], before);
+  assert(await a.library.reopen(project.id));
+  const restarted = new WebDAV(a.directory, secure, a.library);
+  const pulled = await restarted.batch({ mode: 'sync' });
+  assert.equal(pulled.projects.length, 0);
+  assert.equal(pulled.config.projects.length, 0);
+  assert.equal((await a.library.list()).length, 1);
+  const relinked = await restarted.batch({ mode: 'upload', ids: [project.id] });
+  assert.equal(relinked.config.projects.length, 1);
+  assert.equal(env.files.size, 1);
+});
 const secure = {
   isEncryptionAvailable: () => true,
   encryptString: (s) => Buffer.from('encrypted:' + s),

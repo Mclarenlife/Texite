@@ -25,7 +25,6 @@ import {
   Minus,
   Copy,
   ArrowDownToLine,
-  ArrowLeft,
   ArrowUpRight,
   BookOpen,
   Check,
@@ -39,13 +38,10 @@ import {
   FileText,
   FolderPlus,
   Columns2,
-  PanelTop,
   History,
-  Image as ImageIcon,
   LayoutPanelLeft,
   Library,
   LoaderCircle,
-  Maximize2,
   Moon,
   MoreHorizontal,
   PanelLeftClose,
@@ -63,7 +59,6 @@ import {
 } from 'lucide-react';
 import { createProject, sampleSource } from '../core/sample';
 import {
-  getOutline,
   getReferences,
   isTextFile,
   parseDiagnostics,
@@ -375,13 +370,36 @@ export function App() {
   }, [project, persist]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (saved !== 'saved' || restoreBusy) {
+      if (saved !== 'saved' || restoreBusy || (!window.texite && (syncDirty || syncBusy))) {
         event.preventDefault();
       }
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [saved, restoreBusy]);
+  }, [saved, restoreBusy, syncDirty, syncBusy]);
+  const closeState = useRef<
+    () => Promise<{ unsaved: boolean; unsynced: number; syncing: boolean }>
+  >(async () => ({ unsaved: true, unsynced: 0, syncing: false }));
+  closeState.current = async () => {
+    const config = await window.texite?.webdav?.get();
+    const stored = (await loadProjects()).projects;
+    const locals = new Map(
+      [...stored, ...projects, ...drafts.current.values()].map((p) => [p.id, p]),
+    );
+    if (projectRef.current) locals.set(projectRef.current.id, projectRef.current);
+    const changed = await Promise.all(
+      (config?.projects || []).map(async (binding) => {
+        const local = locals.get(binding.id);
+        return !!local && (!binding.hash || (await syncFingerprint(local)) !== binding.hash);
+      }),
+    );
+    return {
+      unsaved: saved !== 'saved' || restoreLock.current,
+      unsynced: changed.filter(Boolean).length,
+      syncing: syncRunning.current,
+    };
+  };
+  useEffect(() => window.texite?.onCloseRequest?.(() => closeState.current()), []);
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
@@ -693,6 +711,21 @@ export function App() {
     } finally {
       restoreLock.current = false;
       setRestoreBusy(false);
+    }
+  }
+  async function detachProjects(ids: string[]) {
+    if (syncRunning.current) throw new Error('请等待同步完成。');
+    const api = window.texite?.webdav;
+    if (!api) throw new Error('停止关联需要桌面版。');
+    await prepareSpaceMutation();
+    syncRunning.current = true;
+    setSyncBusy(true);
+    try {
+      for (const id of ids) setDavConfig(await api.detach(id));
+      notify(`已停止 ${ids.length} 个项目的云端关联，本地和云端文件均保留。`);
+    } finally {
+      syncRunning.current = false;
+      setSyncBusy(false);
     }
   }
   async function prepareSpaceMutation() {
@@ -1090,6 +1123,7 @@ export function App() {
   }
   const ai = useAI({
     projectId: project?.id,
+    getSelection: () => editor.current?.scope(),
     getProject: () => projectRef.current,
     getContext: () =>
       JSON.stringify({
@@ -2144,6 +2178,7 @@ export function App() {
                 focusAgent={inlineRun}
                 projectName={project.name}
                 activeFile={project.activeFile}
+                selection={editor.current?.scope()}
                 onClose={() => setAiOpen(false)}
               />
             )}
@@ -2231,6 +2266,7 @@ export function App() {
             syncBusy={syncBusy}
             onSync={() => syncWorkspace('pull')}
             onUpload={(ids) => syncWorkspace('upload', ids)}
+            onDetach={detachProjects}
             onOpen={(p) => void chooseProject(p, true).catch((e) => notify(friendlyError(e)))}
             onFolder={() => void openDirectory()}
             onImport={() => zipInput.current?.click()}

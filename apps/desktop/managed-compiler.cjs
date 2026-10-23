@@ -8,8 +8,7 @@ async function compileManaged(owner, project, root, job, append) {
   const selected = await owner.manager.environment(project.engine, root);
   const label = `${selected.module.label} · ${selected.module.version} · 离线`;
   append(`实际编译器：${label}\n`);
-  // Use a private search configuration; inherited TeX variables must not make
-  // a clean installation depend on an unrelated system distribution.
+  // Ignore inherited TeX search paths so compilation uses the selected local runtime.
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
       ([key]) =>

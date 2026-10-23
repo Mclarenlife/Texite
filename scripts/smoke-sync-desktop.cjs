@@ -115,14 +115,36 @@ const crypto = require('node:crypto');
     await expect(page.locator('.toast')).toContainText('云端与本地已检查');
     await expect(page.locator('.project-card')).toHaveCount(2);
     await page.getByLabel('全选项目').check();
-    await page.getByRole('button', { name: '上传项目', exact: true }).click();
-    await expect(page.locator('.toast')).toContainText('云端与本地已检查');
+    await expect(page.getByRole('button', { name: '上传项目', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: '停止关联', exact: true }).click();
+    await expect(page.getByRole('dialog')).toContainText('本地项目和云端文件都会保留');
+    await page.getByRole('dialog').getByRole('button', { name: '取消', exact: true }).click();
+    expect(cloud.size).toBe(2);
     await page.getByRole('button', { name: '取消项目选择' }).click();
     await page.getByRole('button', { name: '打开项目 示例项目', exact: true }).click();
     const sourceEditor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
     await expect(page.locator('.sync-pending-badge')).toHaveCount(0);
     await sourceEditor.fill('Local unsynchronized changes');
     await expect(page.locator('.sync-pending-badge')).toBeVisible();
+    await desktop.evaluate(({ dialog }) => {
+      global.texiteClosePrompts = [];
+      global.texiteOriginalDialog = dialog.showMessageBox;
+      dialog.showMessageBox = async (_window, options) => {
+        global.texiteClosePrompts.push(options);
+        return { response: 0 };
+      };
+    });
+    await page.evaluate(() => window.texite.windowControl('close'));
+    await expect.poll(() => desktop.evaluate(() => global.texiteClosePrompts.length)).toBe(1);
+    expect(await desktop.evaluate(() => global.texiteClosePrompts[0].message)).toContain(
+      '1 个云端关联项目',
+    );
+    await desktop.evaluate(({ app }) => app.quit());
+    await expect.poll(() => desktop.evaluate(() => global.texiteClosePrompts.length)).toBe(2);
+    expect(page.isClosed()).toBe(false);
+    await desktop.evaluate(({ dialog }) => {
+      dialog.showMessageBox = global.texiteOriginalDialog;
+    });
     await page.getByRole('button', { name: '撤销', exact: true }).click();
     await expect(page.locator('.sync-pending-badge')).toHaveCount(0);
     await sourceEditor.fill('Local changes to upload');

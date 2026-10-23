@@ -2,7 +2,9 @@
 
 本地 LaTeX 编辑器，使用 React、TypeScript、CodeMirror 6、Motion、KaTeX、PDF.js 与 Electron，提供网页版和 Windows / macOS 桌面版。
 
-当前版本：**0.9.0**，支持按项目名保存的本地目录与 WebDAV 快照、多项目选项卡、双向 PDF 定位、项目备份和记录清理。浮动 AI 助手包含 Agent／对话模式、行内编辑、可调整大小的差异窗口及自定义对话 API。支持桌面 WebDAV 手动同步，不包含云端编译；可选 AI 推理需要联网。
+当前版本：**0.9.1**，支持按项目名保存的本地目录与 WebDAV 快照、多项目选项卡、双向 PDF 定位、项目备份和记录清理。浮动 AI 助手包含 Agent／对话模式、行内编辑、可调整大小的差异窗口及自定义对话 API。支持桌面 WebDAV 手动同步，不包含云端编译；可选 AI 推理需要联网。
+
+0.9.1 清理未使用的代码引用，将未使用变量检查纳入构建，并更新架构与功能范围文档。功能与数据格式延续 0.9.0。
 
 ## 使用与开发
 
@@ -97,4 +99,12 @@ pnpm dist:mac
 
 默认不包含代码签名或 macOS 公证。Windows/macOS 打包工作流可在 GitHub Actions 手动触发。
 
-架构见 [docs/architecture.md](docs/architecture.md)，后续范围见 [docs/roadmap.md](docs/roadmap.md)，编译资源来源与许可见 [docs/runtime-notices.txt](docs/runtime-notices.txt)。应用源码尚未选择开源许可证；第三方组件仍遵循其各自许可证。
+架构见 [docs/architecture.md](docs/architecture.md)，后续范围见 [docs/roadmap.md](docs/roadmap.md)，编译资源来源与许可见 [docs/runtime-notices.txt](docs/runtime-notices.txt)。
+
+桌面版关闭窗口或退出时，会检查本地保存状态以及所有云端关联项目的待上传更改，并在必要时二次确认。项目空间选中云端项目后可停止关联；本地文件和云端文件均保留，自动同步跳过已停止关联的云端项目，重新上传可恢复关联。
+
+## 许可证
+
+Copyright (C) 2026 Mclarenlife and contributors. Texite 原创应用代码采用 **GNU GPL v3.0 only（GPL-3.0-only）**，完整条款见 [LICENSE](LICENSE)，版权及第三方说明见 [NOTICE](NOTICE)。你可以按该许可证复制、修改和再分发；本软件不提供任何担保。第三方组件、字体和独立 TeX 编译环境保留各自许可证。使用 Texite 创作的文稿与 PDF 不会因此自动适用 GPL。
+
+源码和构建脚本位于本仓库。测试安装包附带对应的应用源码 ZIP 与记录提交版本的 `build-info.json`；发布安装包时应同时提供对应源码。独立许可证参考仓库：[Mclarenlife/GPL-3.0](https://github.com/Mclarenlife/GPL-3.0)。

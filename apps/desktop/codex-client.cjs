@@ -1,4 +1,5 @@
 const { spawn, execFile } = require('node:child_process');
+const { terminateCLI } = require('./cli-process.cjs');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
@@ -259,6 +260,7 @@ class CodexClient {
       cwd: path.join(this.directory, 'workspace'),
       windowsHide: true,
       shell: false,
+      detached: process.platform !== 'win32',
       env: binaryEnvironment(binary),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
@@ -270,7 +272,7 @@ class CodexClient {
       buffer += chunk;
       if (buffer.length > 8_000_000) {
         this.fail(new Error('Codex 消息超过大小限制。'));
-        child.kill();
+        void this.disconnect().catch(() => {});
         return;
       }
       let index;
@@ -282,12 +284,15 @@ class CodexClient {
           this.message(JSON.parse(line));
         } catch (e) {
           this.fail(new Error('Codex 协议数据无效：' + e.message));
-          child.kill();
+          void this.disconnect().catch(() => {});
         }
       }
     });
     // Consume stderr without exposing credentials or arbitrary subprocess diagnostics in the UI.
     child.stderr.on('data', () => {});
+    child.stdin.on?.('error', () => {
+      if (this.child === child) this.fail(new Error('Codex 输入连接已关闭。'));
+    });
     child.on('error', (e) => this.fail(new Error('无法启动 Codex：' + e.message)));
     child.on('exit', () => {
       if (this.child === child) {
@@ -461,7 +466,10 @@ class CodexClient {
       input.prompt.length > 20000 ||
       typeof input.model !== 'string' ||
       typeof input.context !== 'string' ||
-      input.context.length > 100000
+      input.context.length > 100000 ||
+      (input.conversationId !== undefined &&
+        (typeof input.conversationId !== 'string' ||
+          !/^[a-zA-Z0-9-]{1,100}$/.test(input.conversationId)))
     )
       throw new Error('AI 请求无效或内容过长。');
     if (!this.connection?.authenticated || !this.child)
@@ -471,7 +479,13 @@ class CodexClient {
     const run = { ...input, readOnly: !!input.readOnly, calls: 0, cancelled: false };
     this.active = run;
     try {
-      const key = input.projectId + ':' + input.model + ':' + run.readOnly;
+      const key =
+        input.projectId +
+        ':' +
+        (input.conversationId ? input.conversationId + ':' : '') +
+        input.model +
+        ':' +
+        run.readOnly;
       run.key = key;
       let threadId = this.threads[key];
       if (!threadId) {
@@ -569,16 +583,19 @@ class CodexClient {
         delete this.threads[key];
   }
   async disconnect() {
-    const child = this.child;
+    const child = this.child || this.stoppingChild;
     this.child = null;
     this.connection = null;
     this.threads = {};
     this.finish('interrupted');
     this.fail(new Error('Codex 已断开连接。'));
     if (child) {
-      child.stdin.end();
-      child.kill();
+      this.stoppingChild = child;
+      this.stopping = terminateCLI(child).then(() => {
+        if (this.stoppingChild === child) this.stoppingChild = null;
+      });
     }
+    await this.stopping;
   }
 }
 module.exports = { CodexClient, findBinary, resolveBinary, binaryEnvironment, tools };

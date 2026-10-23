@@ -1,4 +1,4 @@
-name: Package desktop preview
+name: Package desktop
 on:
   workflow_dispatch:
   push:
@@ -12,6 +12,14 @@ on:
       - 'tests/*compiler*'
       - 'tests/optional-engines.test.mjs'
       - 'tests/runtime-manager.test.mjs'
+      - 'tests/acp-client.test.mjs'
+      - 'tests/cli-lifecycle.test.mjs'
+      - 'LICENSE'
+      - 'NOTICE'
+      - 'tests/chat-client.test.mjs'
+      - 'tests/fixtures/acp-agent.cjs'
+      - 'scripts/smoke-agent-workspace.cjs'
+      - 'scripts/smoke-sync-desktop.cjs'
       - 'tests/offline-compatibility.test.mjs'
       - 'tests/fixtures/offline/**'
       - '.github/workflows/desktop.yml'
@@ -53,13 +61,12 @@ jobs:
         if: runner.os == 'Windows'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      # Test builds use an ad-hoc signature. Developer ID signing and notarization
-      # still need Apple credentials before public distribution.
+      # macOS packages use an ad-hoc signature until Developer ID credentials are configured.
       - run: pnpm runtime:verify && pnpm build && pnpm exec install-electron && pnpm exec electron-builder --mac dmg --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false
         if: runner.os == 'macOS'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      - name: Verify and launch macOS test package
+      - name: Verify and launch macOS package
         if: runner.os == 'macOS'
         run: |
           APP="$(find release -maxdepth 2 -type d -name 'Texite.app' -print -quit)"
@@ -70,9 +77,10 @@ jobs:
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-navigation-desktop.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-project-actions-desktop.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-cleanup-desktop.cjs
+          TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-agent-workspace.cjs
       - uses: actions/upload-artifact@v4
         with:
-          name: Texite-${{ runner.os }}-preview
+          name: Texite-${{ runner.os }}-desktop
           path: |
             release/*.exe
             release/*.dmg

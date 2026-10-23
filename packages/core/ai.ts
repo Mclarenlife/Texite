@@ -31,6 +31,9 @@ export function validateInlineChanges(scope: InlineScope, project: Project, chan
 }
 export type AITask = {
   id: string;
+  conversationId?: string;
+  cliName?: string;
+  profileId?: string;
   prompt: string;
   reply: string;
   time: number;
@@ -51,6 +54,12 @@ export type AIConnection = {
   models: { id: string; label: string; isDefault: boolean }[];
 };
 export type AIEvent =
+  | {
+      type: 'connection';
+      reason: 'manual' | 'idle' | 'error' | 'connected';
+      connection?: AIConnection;
+      error?: string;
+    }
   | { type: 'text'; runId: string; projectId: string; delta: string }
   | { type: 'activity'; runId: string; projectId: string; text: string }
   | {
@@ -69,6 +78,11 @@ export type AIEvent =
       arguments: unknown;
     };
 export type AIAPI = {
+  getIdleSettings?(): Promise<{ idleMinutes: number }>;
+  setIdleSettings?(settings: { idleMinutes: number }): Promise<{ idleMinutes: number }>;
+  getConfig?(): Promise<AgentConfig>;
+  getProfiles?(): Promise<AgentConfig[]>;
+  configure?(config: AgentConfig): Promise<AgentConfig>;
   clearHistory?(projectId: string | null, mode?: 'agent' | 'chat'): Promise<void>;
   connect(): Promise<AIConnection>;
   chooseBinary(): Promise<string | null>;
@@ -80,12 +94,15 @@ export type AIAPI = {
     model: string;
     readOnly: boolean;
     context: string;
+    conversationId?: string;
   }): Promise<void>;
   cancel(): Promise<void>;
   reply(requestId: string, result: { success: boolean; value: unknown }): Promise<void>;
   onEvent(callback: (event: AIEvent) => void): () => void;
 };
 export type ChatConfig = {
+  id?: string;
+  name?: string;
   baseURL: string;
   model: string;
   apiKey?: string;
@@ -94,11 +111,38 @@ export type ChatConfig = {
 };
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
 export type ChatAPI = {
+  list?(): Promise<ChatConfig[]>;
+  select?(id: string): Promise<ChatConfig>;
   get(): Promise<ChatConfig>;
   save(config: ChatConfig & { clearKey?: boolean }): Promise<ChatConfig>;
   start(input: { runId: string; projectId: string; messages: ChatMessage[] }): Promise<void>;
   cancel(): Promise<void>;
 };
+export type AgentConfig = {
+  preset: 'codex' | 'claude' | 'qwen' | 'minimax' | 'deepseek' | 'custom';
+  protocol: 'codex' | 'acp';
+  command: string;
+  args: string[];
+  model?: string;
+};
+export type AIConversation = { id: string; mode: 'agent' | 'chat'; title: string; time: number };
+export type AIConversations = {
+  items: AIConversation[];
+  selected: Partial<Record<'agent' | 'chat', string>>;
+};
+export function selectionLabel(scope?: InlineScope | null) {
+  if (!scope || scope.from === scope.to) return '';
+  const position = (offset: number) => {
+    const prefix = scope.before.slice(0, offset),
+      parts = prefix.split('\n');
+    return { line: parts.length, column: Array.from(parts.at(-1) || '').length + 1 };
+  };
+  const start = position(scope.from),
+    end = position(scope.to - (scope.before.codePointAt(scope.to - 2)! > 0xffff ? 2 : 1));
+  return start.line === end.line
+    ? `第 ${start.line} 行，第 ${start.column}–${end.column} 字`
+    : `第 ${start.line} 行第 ${start.column} 字 → 第 ${end.line} 行第 ${end.column} 字`;
+}
 
 export function parseAIChanges(value: unknown): AIChange[] {
   if (!Array.isArray(value) || !value.length || value.length > 30)

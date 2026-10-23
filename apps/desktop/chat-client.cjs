@@ -7,33 +7,87 @@ class ChatClient {
     this.emit = emit;
     this.active = null;
     this.settings = null;
+    this.settingsQueue = Promise.resolve();
   }
-  async load() {
+  async loadAll() {
     if (this.settings) return this.settings;
-    let saved = { baseURL: 'https://api.openai.com/v1', model: '' };
+    let saved;
     try {
       saved = JSON.parse(await fs.readFile(path.join(this.directory, 'chat.json'), 'utf8'));
     } catch (e) {
       if (e.code !== 'ENOENT') throw new Error('无法读取 API 设置，请重新保存。');
     }
-    let apiKey = '';
-    if (saved.secret && this.storage.isEncryptionAvailable())
-      try {
-        apiKey = this.storage.decryptString(Buffer.from(saved.secret, 'base64'));
-      } catch {}
-    this.settings = { baseURL: saved.baseURL, model: saved.model, apiKey };
+    const profiles =
+      saved?.profiles ||
+      (saved ? [{ ...saved, id: 'legacy', name: saved.model || '默认 API' }] : []);
+    this.settings = {
+      selected: saved?.selected || profiles[0]?.id,
+      profiles: profiles.map((p) => {
+        let apiKey = '';
+        if (p.secret && this.storage.isEncryptionAvailable())
+          try {
+            apiKey = this.storage.decryptString(Buffer.from(p.secret, 'base64'));
+          } catch {}
+        return { id: p.id, name: p.name, baseURL: p.baseURL, model: p.model, apiKey };
+      }),
+    };
     return this.settings;
   }
-  async get() {
-    const s = await this.load();
-    return {
-      baseURL: s.baseURL,
-      model: s.model,
-      hasKey: !!s.apiKey,
-      persistent: this.storage.isEncryptionAvailable(),
-    };
+  async load() {
+    const all = await this.loadAll();
+    return (
+      all.profiles.find((p) => p.id === all.selected) || {
+        baseURL: 'https://api.openai.com/v1',
+        model: '',
+        apiKey: '',
+      }
+    );
   }
-  async save(input) {
+  publicConfig(p) {
+    const { apiKey, ...safe } = p;
+    return { ...safe, hasKey: !!apiKey, persistent: this.storage.isEncryptionAvailable() };
+  }
+  async get() {
+    return this.publicConfig(await this.load());
+  }
+  async list() {
+    return (await this.loadAll()).profiles.map((p) => this.publicConfig(p));
+  }
+  async store(value) {
+    const saved = {
+      selected: value.selected,
+      profiles: value.profiles.map(({ apiKey, ...p }) => ({
+        ...p,
+        ...(apiKey && this.storage.isEncryptionAvailable()
+          ? { secret: this.storage.encryptString(apiKey).toString('base64') }
+          : {}),
+      })),
+    };
+    await fs.mkdir(this.directory, { recursive: true });
+    const tmp = path.join(this.directory, 'chat.json.tmp');
+    await fs.writeFile(tmp, JSON.stringify(saved), { mode: 0o600 });
+    await fs.rename(tmp, path.join(this.directory, 'chat.json'));
+    this.settings = value;
+  }
+  enqueueSettings(action) {
+    const result = this.settingsQueue.catch(() => {}).then(action);
+    this.settingsQueue = result;
+    return result;
+  }
+  select(id) {
+    return this.enqueueSettings(() => this.selectProfile(id));
+  }
+  save(input) {
+    return this.enqueueSettings(() => this.saveProfile(input));
+  }
+  async selectProfile(id) {
+    if (this.active) throw new Error('请先停止当前对话。');
+    const all = await this.loadAll();
+    if (!all.profiles.some((p) => p.id === id)) throw new Error('API 配置不存在。');
+    await this.store({ ...all, selected: id });
+    return this.get();
+  }
+  async saveProfile(input) {
     if (this.active) throw new Error('请先停止当前对话。');
     const { chatEndpoint } = await import('./chat-transport.mjs');
     if (
@@ -42,27 +96,34 @@ class ChatClient {
       typeof input.model !== 'string' ||
       input.model.length > 200 ||
       typeof input.apiKey !== 'string' ||
-      input.apiKey.length > 10000
+      input.apiKey.length > 10000 ||
+      (input.name !== undefined && (typeof input.name !== 'string' || input.name.length > 100)) ||
+      (input.id !== undefined && (typeof input.id !== 'string' || input.id.length > 100))
     )
       throw new Error('API 设置无效。');
     chatEndpoint(input.baseURL);
-    const previous = await this.load();
+    const all = await this.loadAll();
+    // Older clients omit id and continue editing the active configuration. Empty id explicitly creates one.
+    const id =
+      input.id === ''
+        ? require('node:crypto').randomUUID()
+        : input.id || all.selected || require('node:crypto').randomUUID();
+    const previous = all.profiles.find((p) => p.id === id);
+    if (!previous && all.profiles.length >= 30) throw new Error('最多保存 30 个 API 配置。');
     const next = {
+      id,
+      name: input.name?.trim() || input.model.trim(),
       baseURL: input.baseURL.trim(),
       model: input.model.trim(),
       apiKey:
         input.apiKey ||
-        (previous.baseURL === input.baseURL.trim() && !input.clearKey ? previous.apiKey : ''),
+        (previous?.baseURL === input.baseURL.trim() && !input.clearKey ? previous.apiKey : ''),
     };
     if (!next.model) throw new Error('请填写模型名称。');
-    const saved = { baseURL: next.baseURL, model: next.model };
-    if (next.apiKey && this.storage.isEncryptionAvailable())
-      saved.secret = this.storage.encryptString(next.apiKey).toString('base64');
-    await fs.mkdir(this.directory, { recursive: true });
-    await fs.writeFile(path.join(this.directory, 'chat.json'), JSON.stringify(saved), {
-      mode: 0o600,
+    await this.store({
+      selected: id,
+      profiles: [...all.profiles.filter((p) => p.id !== id), next],
     });
-    this.settings = next;
     return this.get();
   }
   async start(input) {

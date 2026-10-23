@@ -104,12 +104,14 @@ test('AI help and resize, and custom select placement and keyboard inside a moda
   await panel.getByRole('button', { name: 'AI 使用说明' }).hover();
   await expect(panel.getByRole('tooltip')).toContainText('修改自动保留恢复记录');
   await expect(panel.locator('.ai-composer')).not.toContainText('AI 需要联网');
-  const heading = await page.getByLabel('移动 AI 浮动窗口').boundingBox();
-  await page.mouse.move(heading!.x + 230, heading!.y + 20);
+  const heading = await panel.locator('.ai-heading strong').boundingBox();
+  const beforeDrag = await panel.boundingBox();
+  await page.mouse.move(heading!.x + 10, heading!.y + 5);
   await page.mouse.down();
-  await page.mouse.move(heading!.x + 80, heading!.y + 20);
+  await page.mouse.move(heading!.x - 140, heading!.y + 5, { steps: 5 });
   await page.mouse.up();
   const original = await panel.boundingBox();
+  expect(original!.x).toBeLessThan(beforeDrag!.x - 100);
   const handle = await page.getByRole('separator', { name: '调整 AI 窗口大小' }).boundingBox();
   await page.mouse.move(handle!.x + 10, handle!.y + 10);
   await page.mouse.down();

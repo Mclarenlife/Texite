@@ -1,0 +1,19 @@
+Texite — local-first LaTeX editor
+Copyright (C) 2026 Mclarenlife and contributors.
+
+Texite's original application code is free software: you can redistribute it
+and/or modify it under the GNU General Public License, version 3 only,
+as published by the Free Software Foundation. SPDX: GPL-3.0-only.
+
+Texite is distributed WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See LICENSE for details.
+
+Source and build instructions: https://github.com/Mclarenlife/Texite
+The source revision for a test installer is recorded in the accompanying
+build-info.json. Matching application source archives accompany test packages.
+
+Third-party components, fonts, Electron/Chromium, and separate TeX runtimes retain
+their own licenses and copyright notices. This notice does not relicense them.
+See bundled Electron LICENSE/third-party notices, public/fonts license files,
+and docs/runtime-notices.txt plus runtime/licenses in the distributed resources.
+Your documents and generated PDFs are not automatically licensed under the GPL.

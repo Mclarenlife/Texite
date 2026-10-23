@@ -14,6 +14,19 @@ contextBridge.exposeInMainWorld('texite', {
     },
   },
   windowControl: (action) => ipcRenderer.invoke('window:control', action),
+  onCloseRequest: (callback) => {
+    const handler = async (_event, id) => {
+      let state;
+      try {
+        state = await callback();
+      } catch {
+        state = { unsaved: true, unsynced: 0, syncing: false, error: true };
+      }
+      await ipcRenderer.invoke('window:close-state', id, state);
+    };
+    ipcRenderer.on('window:request-close', handler);
+    return () => ipcRenderer.removeListener('window:request-close', handler);
+  },
   storage: {
     clearSyncBackups: () => ipcRenderer.invoke('storage:clear-sync-backups'),
     get: () => ipcRenderer.invoke('storage:get'),
@@ -30,6 +43,8 @@ contextBridge.exposeInMainWorld('texite', {
     detach: (id) => ipcRenderer.invoke('webdav:detach', id),
   },
   chat: {
+    list: () => ipcRenderer.invoke('chat:list'),
+    select: (id) => ipcRenderer.invoke('chat:select', id),
     get: () => ipcRenderer.invoke('chat:get'),
     save: (config) => ipcRenderer.invoke('chat:save', config),
     start: (input) => ipcRenderer.invoke('chat:start', input),
@@ -37,6 +52,11 @@ contextBridge.exposeInMainWorld('texite', {
   },
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   ai: {
+    getIdleSettings: () => ipcRenderer.invoke('ai:idle-get'),
+    setIdleSettings: (settings) => ipcRenderer.invoke('ai:idle-set', settings),
+    getConfig: () => ipcRenderer.invoke('ai:config'),
+    getProfiles: () => ipcRenderer.invoke('ai:profiles'),
+    configure: (config) => ipcRenderer.invoke('ai:configure', config),
     clearHistory: (projectId, mode) => ipcRenderer.invoke('ai:clear-history', projectId, mode),
     connect: () => ipcRenderer.invoke('ai:connect'),
     disconnect: () => ipcRenderer.invoke('ai:disconnect'),

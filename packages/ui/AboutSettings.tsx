@@ -1,8 +1,12 @@
 import { ArrowUpRight, Code2 } from 'lucide-react';
 import packageInfo from '../../package.json';
 import { UpdateSettings } from './UpdateSettings';
+import { useState } from 'react';
+import { Dialog } from './Dialog';
+import licenseText from '../../LICENSE?raw';
 
 export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<void> }) {
+  const [licenseOpen, setLicenseOpen] = useState(false);
   return (
     <div className="about-settings">
       <div className="about-brand">
@@ -31,11 +35,49 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         </a>
       </div>
       <UpdateSettings onPrepare={onPrepareUpdate} />
+      <section className="about-license">
+        <strong>GPL-3.0-only</strong>
+        <p>
+          © 2026 Mclarenlife 和贡献者。可按 GNU GPL 第 3
+          版复制、修改和再分发，本软件不提供任何担保。第三方组件保留各自许可证。
+        </p>
+        <button className="secondary-button" onClick={() => setLicenseOpen(true)}>
+          查看许可证
+        </button>
+      </section>
+      <Dialog
+        open={licenseOpen}
+        onClose={() => setLicenseOpen(false)}
+        title="GNU General Public License v3.0"
+      >
+        <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, lineHeight: 1.7 }}>{licenseText}</pre>
+      </Dialog>
       <div className="about-changelog">
         <h3>更新日志</h3>
         <section>
           <h4>
             {packageInfo.version}
+            <time>2026.10.23</time>
+          </h4>
+          <ul>
+            <li>Agent CLI 可彻底断开进程、空闲自动断开，并在发送指令时自动重连。</li>
+            <li>退出前检查未上传的项目，项目空间可停止云端关联且保留文件。</li>
+            <li>应用 GPL-3.0-only 开源许可证，随包提供许可与源码版本信息。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.10.0-preview.1<time>2026.10.23</time>
+          </h4>
+          <ul>
+            <li>AI 助手显示选区行与字位置，Agent 指令限定选中文字编辑。</li>
+            <li>独立对话记录、新建与切换对话，模式切换移至浮窗顶栏中央。</li>
+            <li>Agent CLI 支持现有原生连接及 ACP CLI 配置，多套 API 可保存与快速切换。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.9.0
             <time>2026.10.14</time>
           </h4>
           <ul>
