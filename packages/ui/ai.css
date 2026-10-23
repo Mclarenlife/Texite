@@ -668,6 +668,42 @@
   color: var(--muted);
   font-size: 10px;
 }
+.ai-conversation-menu {
+  position: fixed;
+  z-index: 250;
+  width: 180px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: 0 8px 28px #0002;
+}
+.ai-conversation-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  text-align: left;
+}
+.ai-conversation-menu button:hover,
+.ai-conversation-menu button:focus-visible {
+  background: var(--tint);
+}
+.ai-conversation-menu .destructive {
+  color: var(--error, #c44);
+}
+.ai-conversation-form .form-field {
+  display: grid;
+  gap: 8px;
+}
+.ai-conversation-form input {
+  width: 100%;
+}
 .ai-context {
   flex-wrap: wrap;
   gap: 6px;

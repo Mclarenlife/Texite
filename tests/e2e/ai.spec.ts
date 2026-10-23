@@ -129,7 +129,7 @@ async function setup(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
   await page.getByRole('button', { name: '连接 Agent CLI', exact: true }).click();
-  await expect(page.getByText('Agent CLI · 已连接')).toBeVisible();
+  await expect(page.getByText('已连接')).toBeVisible();
 }
 async function send(page: Page, prompt: string) {
   await page.getByLabel('发送给 Agent CLI 的指令').fill(prompt);
@@ -345,7 +345,7 @@ test('Agent CLI chooser configures ACP and empty conversations clear only after 
       return config;
     };
   });
-  await page.getByRole('button', { name: 'Agent CLI · 已连接', exact: true }).click();
+  await page.getByRole('button', { name: '已连接', exact: true }).click();
   await page.getByRole('button', { name: '选择 Agent CLI', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Agent CLI', exact: true });
   await dialog.getByRole('combobox', { name: 'Agent CLI 类型' }).click();
@@ -378,20 +378,74 @@ test('manual and idle disconnect preserve conversations and reconnect on send', 
 }) => {
   await setup(page);
   await page.getByRole('button', { name: '断开 CLI 连接' }).click();
-  await expect(page.getByText('Agent CLI · 已连接')).toHaveCount(0);
+  await expect(page.getByText('已连接')).toHaveCount(0);
   await send(page, 'edit');
   await expect(page.getByText('已完成', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => (window as any).aiTest.connections)).toBe(2);
-  await page.getByRole('button', { name: 'Agent CLI · 已连接' }).click();
+  await page.getByRole('button', { name: '已连接' }).click();
   await page.getByRole('combobox', { name: '空闲自动断开' }).click();
   await page.getByRole('option', { name: '1 分钟', exact: true }).click();
   expect(await page.evaluate(() => (window as any).aiTest.idle)).toBe(1);
   await page.evaluate(() => (window as any).aiTest.idleDisconnect());
-  await expect(page.getByText('Agent CLI · 已连接')).toHaveCount(0);
+  await expect(page.getByText('已连接')).toHaveCount(0);
   await send(page, 'wait');
   await expect(page.getByText('进行中', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => (window as any).aiTest.connections)).toBe(3);
   await page.getByRole('button', { name: '断开 CLI 连接' }).click();
   await expect(page.getByText('已停止', { exact: true })).toBeVisible();
   await expect(page.locator('.ai-task')).toHaveCount(2);
+});
+
+test('conversation context menu renames persistently and deletes only the confirmed conversation', async ({
+  page,
+}) => {
+  await setup(page);
+  const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
+  await editor.fill('Document content to preserve');
+  await send(page, 'edit');
+  await expect(page.getByText('已完成', { exact: true })).toBeVisible();
+  const edited = await editor.textContent();
+  await page.getByRole('button', { name: '新建对话', exact: true }).click();
+  await page.getByRole('button', { name: '对话记录', exact: true }).click();
+  const first = page.getByRole('button', { name: '打开对话 edit', exact: true });
+  await first.click({ button: 'right' });
+  await expect(page.getByRole('menu', { name: '对话操作' })).toBeVisible();
+  await page.screenshot({
+    path: '.qa/release-0.10.0-conversation-menu.png',
+    animations: 'disabled',
+  });
+  await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+  const rename = page.getByRole('dialog', { name: '重命名对话' });
+  await rename.getByLabel('对话名称').fill('论文润色');
+  await rename.getByRole('button', { name: '保存名称' }).click();
+  await expect(rename).toHaveCount(0);
+  await page.reload();
+  await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+  await page.getByRole('button', { name: '对话记录', exact: true }).click();
+  const named = page.getByRole('button', { name: '打开对话 论文润色', exact: true });
+  await named.focus();
+  await named.press('Shift+F10');
+  await page.getByRole('menuitem', { name: '删除对话', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: '删除这条对话？' });
+  await confirm.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(named).toBeVisible();
+  await named.click();
+  await expect(page.locator('.ai-task')).toHaveCount(1);
+  await page.getByRole('button', { name: '对话记录', exact: true }).click();
+  await named.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '删除对话', exact: true }).click();
+  await confirm.getByRole('button', { name: '确认删除' }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(named).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开对话 新对话', exact: true })).toHaveAttribute(
+    'aria-current',
+    'true',
+  );
+  await expect(page.locator('.ai-task')).toHaveCount(0);
+  await expect(editor).toHaveText(edited!);
+  await page.reload();
+  await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+  await page.getByRole('button', { name: '对话记录', exact: true }).click();
+  await expect(named).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开对话 新对话', exact: true })).toBeVisible();
 });

@@ -158,6 +158,12 @@ const path = require('node:path');
       await page.locator('.project-pdf-cover').evaluate((el) => el.naturalWidth),
     ).toBeGreaterThan(400);
     await page.getByRole('button', { name: '打开项目 Navigation test', exact: true }).click();
+    // Project selection awaits disk persistence before closing the space and resetting dialogs.
+    // Wait for that transition before opening Settings, otherwise the reset closes it again.
+    await expect(
+      page.getByRole('button', { name: '打开项目 Navigation test', exact: true }),
+    ).toHaveCount(0);
+    await expect(editor).toBeVisible();
     await desktop.evaluate(({ shell }) => {
       global.texiteExternalLinks = [];
       shell.openExternal = async (url) => {

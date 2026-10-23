@@ -36,9 +36,9 @@ const path = require('node:path');
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
     await expect(page.locator('.ai-selection-range')).toContainText('第 2 行，第 1–2 字');
     await page.getByRole('button', { name: '连接 Agent CLI', exact: true }).click();
-    await expect(page.getByText('Agent CLI · 已连接')).toBeVisible();
+    await expect(page.getByText('已连接')).toBeVisible();
     await page.getByRole('button', { name: '断开 CLI 连接' }).click();
-    await expect(page.getByText('Agent CLI · 已连接')).toHaveCount(0);
+    await expect(page.getByText('已连接')).toHaveCount(0);
     await page.evaluate(async () => {
       await window.texite.ai.setIdleSettings({ idleMinutes: 1 });
       if ((await window.texite.ai.getIdleSettings()).idleMinutes !== 1)
@@ -86,13 +86,42 @@ const path = require('node:path');
     await page.getByRole('button', { name: '1 个文件 · 查看差异' }).click();
     await page.getByRole('button', { name: '撤回整次修改', exact: true }).click();
     await expect(page.locator('.cm-content .cm-line')).toHaveText(['Before', '苹果', 'After']);
+    await page
+      .getByRole('dialog', { name: 'AI 修改差异' })
+      .getByRole('button', { name: '关闭弹窗' })
+      .click();
+    await page.getByRole('button', { name: '对话记录', exact: true }).click();
+    await page
+      .getByRole('button', { name: '打开对话 改写成英文', exact: true })
+      .click({ button: 'right' });
+    await page.getByRole('menuitem', { name: '重命名', exact: true }).click();
+    await page.getByRole('textbox', { name: '对话名称' }).fill('Native renamed conversation');
+    await page.getByRole('button', { name: '保存名称', exact: true }).click();
+    const renamed = page.getByRole('button', {
+      name: '打开对话 Native renamed conversation',
+      exact: true,
+    });
+    await expect(renamed).toBeVisible();
+    await page.reload();
+    await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+    await page.getByRole('button', { name: '对话记录', exact: true }).click();
+    await renamed.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: '删除对话', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: '删除这条对话？' })
+      .getByRole('button', { name: '确认删除' })
+      .click();
+    await expect(renamed).toHaveCount(0);
+    await expect(page.locator('.ai-task')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: '打开对话 新对话', exact: true })).toBeVisible();
+    await expect(page.locator('.cm-content .cm-line')).toHaveText(['Before', '苹果', 'After']);
     await expect(page.locator('.save-indicator')).toContainText('已保存');
     await Promise.all([
       page.waitForEvent('close'),
       page.evaluate(() => window.texite.windowControl('close')).catch(() => {}),
     ]);
     console.log(
-      'PASS: native ACP selection edit/undo, persistent conversations, isolated API profiles and encrypted-key boundary',
+      'PASS: native ACP edit/undo, disconnect/reconnect, conversation rename/delete persistence and isolated API profiles',
     );
   } finally {
     if (desktop) {

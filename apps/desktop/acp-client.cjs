@@ -358,13 +358,14 @@ class ACPClient {
     // Dispose the process so a late write from a cancelled turn cannot affect a new turn.
     await this.disconnect();
   }
-  clearHistory(projectId, mode) {
+  clearHistory(projectId, mode, conversationId) {
     if (this.active) throw new Error('请先停止任务。');
     for (const key of this.sessions.keys()) {
-      const [project, , , readOnly] = JSON.parse(key);
+      const [project, conversation, , readOnly] = JSON.parse(key);
       if (
         (projectId === null || project === projectId) &&
-        (!mode || readOnly === (mode === 'chat'))
+        (!mode || readOnly === (mode === 'chat')) &&
+        (!conversationId || conversation === conversationId)
       )
         this.sessions.delete(key);
     }

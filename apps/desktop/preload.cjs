@@ -57,7 +57,8 @@ contextBridge.exposeInMainWorld('texite', {
     getConfig: () => ipcRenderer.invoke('ai:config'),
     getProfiles: () => ipcRenderer.invoke('ai:profiles'),
     configure: (config) => ipcRenderer.invoke('ai:configure', config),
-    clearHistory: (projectId, mode) => ipcRenderer.invoke('ai:clear-history', projectId, mode),
+    clearHistory: (projectId, mode, conversationId) =>
+      ipcRenderer.invoke('ai:clear-history', projectId, mode, conversationId),
     connect: () => ipcRenderer.invoke('ai:connect'),
     disconnect: () => ipcRenderer.invoke('ai:disconnect'),
     chooseBinary: () => ipcRenderer.invoke('ai:choose-binary'),

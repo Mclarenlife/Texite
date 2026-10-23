@@ -4,6 +4,23 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { CodexClient, resolveBinary, binaryEnvironment } from '../apps/desktop/codex-client.cjs';
 
+test('deleting one conversation forgets only its cached Codex contexts', () => {
+  const client = new CodexClient('.qa/clear-context', () => {});
+  client.threads = {
+    'p:c1:m:false': 'a',
+    'p:c1:m2:false': 'b',
+    'p:c2:m:false': 'c',
+    'p:c1:m:true': 'd',
+    'q:c1:m:false': 'e',
+  };
+  client.clearHistory('p', 'agent', 'c1');
+  assert.deepEqual(client.threads, {
+    'p:c2:m:false': 'c',
+    'p:c1:m:true': 'd',
+    'q:c1:m:false': 'e',
+  });
+});
+
 test('clearing a mode discards only matching Codex contexts; active tasks are protected', () => {
   const client = new CodexClient('.qa/clear-context', () => {});
   client.threads = { 'p:m:false': 'agent', 'p:m:true': 'chat', 'q:m:false': 'other' };

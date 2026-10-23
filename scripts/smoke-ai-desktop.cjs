@@ -20,7 +20,7 @@ const path = require('node:path');
     page.on('pageerror', (e) => errors.push(e.message));
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
     await page.getByRole('button', { name: '连接 Agent CLI', exact: true }).click();
-    await expect(page.getByText('Agent CLI · 已连接')).toBeVisible({ timeout: 60000 });
+    await expect(page.getByText('已连接')).toBeVisible({ timeout: 60000 });
     await page.getByRole('combobox', { name: 'AI 模型' }).click();
     const models = await page.getByRole('option').count();
     await page.keyboard.press('Escape');

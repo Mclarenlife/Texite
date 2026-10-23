@@ -163,7 +163,9 @@ app.whenReady().then(async () => {
   handle('ai:idle-get', () => ai.getIdleSettings());
   handle('ai:idle-set', (settings) => ai.setIdleSettings(settings));
   handle('ai:disconnect', () => ai.disconnect());
-  handle('ai:clear-history', (projectId, mode) => ai.clearHistory(projectId, mode));
+  handle('ai:clear-history', (projectId, mode, conversationId) =>
+    ai.clearHistory(projectId, mode, conversationId),
+  );
   handle('ai:start', (input) => ai.start(input));
   handle('ai:cancel', () => ai.cancel());
   handle('ai:reply', (id, result) => ai.reply(id, result));
