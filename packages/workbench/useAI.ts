@@ -58,6 +58,8 @@ export function useAI(options: Options) {
   const [connection, setConnection] = useState<AIConnection | null>(null);
   const [busy, setBusy] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  const [idleMinutes, setIdleMinutes] = useState(5);
+  const [connectionNote, setConnectionNote] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [chatConfig, setChatConfig] = useState<ChatConfig>({
@@ -68,6 +70,12 @@ export function useAI(options: Options) {
   const chatAbort = useRef<AbortController | null>(null);
   useEffect(() => {
     let disposed = false;
+    void window.texite?.ai
+      ?.getIdleSettings?.()
+      .then((s) => {
+        if (!disposed) setIdleMinutes(s.idleMinutes);
+      })
+      .catch((e) => setError(e.message));
     if (window.texite?.chat)
       void window.texite.chat
         .get()
@@ -431,6 +439,21 @@ export function useAI(options: Options) {
   };
   const events = useRef<(event: AIEvent) => void>(() => {});
   events.current = (event) => {
+    if (event.type === 'connection') {
+      if (event.reason === 'connected' && event.connection) {
+        setConnection(event.connection);
+        setConnectionNote('');
+        return;
+      }
+      setConnection(null);
+      setConnectionNote(
+        event.reason === 'idle'
+          ? '已因空闲自动断开，发送指令时重新连接。'
+          : '已断开连接，发送指令时重新连接。',
+      );
+      if (event.error) setError(event.error);
+      return;
+    }
     if (event.type === 'tool') {
       operationQueue.current = operationQueue.current.catch(() => {}).then(() => handleTool(event));
       return;
@@ -473,6 +496,7 @@ export function useAI(options: Options) {
     setError('');
     try {
       setConnection(await window.texite!.ai!.connect());
+      setConnectionNote('');
       return true;
     } catch (e) {
       setConnection(null);
@@ -480,6 +504,28 @@ export function useAI(options: Options) {
       return false;
     } finally {
       setConnecting(false);
+    }
+  }
+  async function disconnect() {
+    setConnecting(true);
+    setError('');
+    if (active.current?.provider === 'codex') active.current.cancelled = true;
+    try {
+      await window.texite?.ai?.disconnect();
+      setConnection(null);
+      setConnectionNote('已断开连接，发送指令时重新连接。');
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setConnecting(false);
+    }
+  }
+  async function changeIdleMinutes(value: number) {
+    try {
+      if (!window.texite?.ai?.setIdleSettings) throw new Error('请使用新版桌面程序。');
+      setIdleMinutes((await window.texite.ai.setIdleSettings({ idleMinutes: value })).idleMinutes);
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
   async function chooseBinary() {
@@ -536,6 +582,7 @@ export function useAI(options: Options) {
         throw new Error('文稿或选区已变化，请重新选中后执行。');
       const available = connection?.authenticated ? connection : await api.connect();
       setConnection(available);
+      setConnectionNote('');
       if (!available.authenticated)
         throw new Error('请先在终端完成所选 Agent CLI 的登录，再连接。');
       let preferred = '';
@@ -775,6 +822,10 @@ export function useAI(options: Options) {
     }
   }
   return {
+    disconnect,
+    idleMinutes,
+    changeIdleMinutes,
+    connectionNote,
     clearHistory,
     conversations,
     newConversation,

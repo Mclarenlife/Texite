@@ -10,6 +10,7 @@ import {
   FileCode2,
   LoaderCircle,
   Plug,
+  Unplug,
   RotateCcw,
   Sparkles,
   Square,
@@ -134,11 +135,7 @@ export function AIPanel({
     bottom.current?.scrollIntoView({ block: 'nearest' });
   }, [ai.tasks.at(-1)?.reply, ai.tasks.length, ai.conversations.selected[mode]]);
   const send = () => {
-    if (
-      !prompt.trim() ||
-      ai.busy ||
-      (custom ? !ai.chatConfig.model : !ai.connection?.authenticated)
-    )
+    if (!prompt.trim() || ai.busy || ai.connecting || (custom ? !ai.chatConfig.model : !desktop))
       return;
     const message = prompt;
     setPrompt('');
@@ -311,6 +308,17 @@ export function AIPanel({
               <option value="api">自定义 API</option>
             </Select>
           )}
+          {!custom && ai.connection && (
+            <button
+              className="icon-button"
+              aria-label="断开 CLI 连接"
+              title="断开连接并关闭 CLI 进程"
+              disabled={ai.connecting}
+              onClick={() => void ai.disconnect()}
+            >
+              <Unplug size={15} />
+            </button>
+          )}
           {custom ? (
             <button
               className="icon-button"
@@ -363,7 +371,9 @@ export function AIPanel({
       {!custom && !ai.connection?.authenticated && !showConnection && (
         <div className="ai-connect-prompt">
           <span>
-            {desktop ? '连接后即可编辑当前项目' : 'Agent CLI 需要桌面版；网页可使用对话 API。'}
+            {desktop
+              ? ai.connectionNote || '发送指令时自动连接 Agent CLI'
+              : 'Agent CLI 需要桌面版；网页可使用对话 API。'}
           </span>
           {desktop && (
             <button
@@ -407,6 +417,24 @@ export function AIPanel({
                 当前：{ai.agentConfig.preset === 'custom' ? '自定义 ACP' : ai.agentConfig.preset} ·
                 可更换程序与模型服务。
               </small>
+              <label className="ai-idle-setting">
+                <span>
+                  空闲自动断开<small>任务进行时保持连接，发送指令时自动重连。</small>
+                </span>
+                <Select
+                  aria-label="空闲自动断开"
+                  value={String(ai.idleMinutes)}
+                  disabled={ai.connecting}
+                  onValueChange={(v) => void ai.changeIdleMinutes(Number(v))}
+                >
+                  <option value="0">从不</option>
+                  {[1, 5, 10, 30].map((m) => (
+                    <option key={m} value={String(m)}>
+                      {m} 分钟
+                    </option>
+                  ))}
+                </Select>
+              </label>
             </>
           ) : (
             <p>连接 Agent CLI 需要 Texite 桌面版。网页版可在对话模式配置 API。</p>
@@ -557,9 +585,8 @@ export function AIPanel({
                 !ai.busy &&
                 (!prompt.trim() ||
                   ai.loading ||
-                  (custom
-                    ? !ai.chatConfig.model
-                    : !desktop || !ai.connection?.authenticated || !selected))
+                  ai.connecting ||
+                  (custom ? !ai.chatConfig.model : !desktop))
               }
               onClick={() => (ai.busy ? void ai.cancel() : send())}
             >

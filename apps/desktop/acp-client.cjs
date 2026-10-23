@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
+const { terminateCLI } = require('./cli-process.cjs');
 const { binaryEnvironment } = require('./codex-client.cjs');
 
 // Resolve npm shims without shell interpolation. Arguments always remain an argv array.
@@ -83,12 +84,14 @@ class ACPClient {
       env: launch.env,
       windowsHide: true,
       shell: false,
+      detached: process.platform !== 'win32',
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     this.child = child;
     let buffer = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
+      if (this.child !== child) return;
       buffer += chunk;
       if (buffer.length > 3_000_000) {
         this.fail(new Error('Agent CLI 消息过长。'));
@@ -109,7 +112,9 @@ class ACPClient {
       }
     });
     child.stderr.on('data', () => {}); // Never expose provider diagnostics that may include credentials.
-    child.stdin.on('error', () => this.fail(new Error('Agent CLI 输入连接已关闭。')));
+    child.stdin.on('error', () => {
+      if (this.child === child) this.fail(new Error('Agent CLI 输入连接已关闭。'));
+    });
     child.on('error', (e) => this.fail(new Error('无法启动 Agent CLI：' + e.message)));
     child.on('exit', () => {
       if (this.child === child) this.fail(new Error('Agent CLI 已退出。'));
@@ -372,14 +377,21 @@ class ACPClient {
     this.pending.clear();
     this.finish('failed', error.message);
     this.connection = null;
-    const child = this.child;
+    const child = this.child || this.stoppingChild;
     this.child = null;
-    child?.kill();
+    if (child) {
+      this.stoppingChild = child;
+      this.stopping = terminateCLI(child).then(() => {
+        if (this.stoppingChild === child) this.stoppingChild = null;
+      });
+      this.stopping.catch(() => {});
+    }
     this.sessions.clear();
   }
   async disconnect() {
     this.finish('interrupted');
     this.fail(new Error('Agent CLI 已断开。'));
+    await this.stopping;
   }
 }
 module.exports = { ACPClient, commandLine };

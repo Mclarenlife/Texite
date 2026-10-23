@@ -37,6 +37,9 @@ async function setup(page: Page) {
         }),
     };
     const state = (window as any).aiTest;
+    state.connections = 0;
+    state.idle = 5;
+    state.idleDisconnect = () => listener({ type: 'connection', reason: 'idle' });
     window.texite = {
       openProject: async () => null,
       listProjects: async () => [],
@@ -72,14 +75,25 @@ async function setup(page: Page) {
         };
       },
       ai: {
-        connect: async () => ({
-          connected: true,
-          authenticated: true,
-          version: 'codex-cli test',
-          models: [{ id: 'test-model', label: 'Test model', isDefault: true }],
-        }),
+        getIdleSettings: async () => ({ idleMinutes: state.idle }),
+        setIdleSettings: async (s) => {
+          state.idle = s.idleMinutes;
+          return s;
+        },
+        connect: async () => {
+          state.connections++;
+          return {
+            connected: true,
+            authenticated: true,
+            version: 'codex-cli test',
+            models: [{ id: 'test-model', label: 'Test model', isDefault: true }],
+          };
+        },
         chooseBinary: async () => null,
-        disconnect: async () => {},
+        disconnect: async () => {
+          if (run) emit('done', { status: 'interrupted' });
+          listener({ type: 'connection', reason: 'manual' });
+        },
         onEvent: (fn) => {
           listener = fn;
           return () => {
@@ -321,11 +335,15 @@ test('panel selection edits only selected text and conversations persist indepen
   await page.screenshot({ path: '.qa/ai-next-conversations.png', animations: 'disabled' });
 });
 
-
-test('Agent CLI chooser configures ACP and empty conversations clear only after confirmation', async ({ page }) => {
+test('Agent CLI chooser configures ACP and empty conversations clear only after confirmation', async ({
+  page,
+}) => {
   await setup(page);
   await page.evaluate(() => {
-    window.texite!.ai!.configure = async config => { (window as any).configuredCLI = config; return config; };
+    window.texite!.ai!.configure = async (config) => {
+      (window as any).configuredCLI = config;
+      return config;
+    };
   });
   await page.getByRole('button', { name: 'Agent CLI · 已连接', exact: true }).click();
   await page.getByRole('button', { name: '选择 Agent CLI', exact: true }).click();
@@ -337,7 +355,12 @@ test('Agent CLI chooser configures ACP and empty conversations clear only after 
   await page.screenshot({ path: '.qa/ai-next-cli.png', animations: 'disabled' });
   await dialog.getByRole('button', { name: '保存并连接', exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).configuredCLI)).toMatchObject({ preset: 'qwen', protocol: 'acp', command: 'qwen', args: ['--acp'] });
+  expect(await page.evaluate(() => (window as any).configuredCLI)).toMatchObject({
+    preset: 'qwen',
+    protocol: 'acp',
+    command: 'qwen',
+    args: ['--acp'],
+  });
   await page.getByRole('button', { name: '新建对话', exact: true }).click();
   await page.getByRole('button', { name: '清空当前项目 Agent 记录', exact: true }).click();
   const confirm = page.getByRole('dialog', { name: '清空 Agent 记录？' });
@@ -348,4 +371,27 @@ test('Agent CLI chooser configures ACP and empty conversations clear only after 
   await confirm.getByRole('button', { name: '确认清空', exact: true }).click();
   await expect(confirm).toHaveCount(0);
   await expect(page.getByRole('button', { name: '打开对话 新对话' })).toHaveCount(0);
+});
+
+test('manual and idle disconnect preserve conversations and reconnect on send', async ({
+  page,
+}) => {
+  await setup(page);
+  await page.getByRole('button', { name: '断开 CLI 连接' }).click();
+  await expect(page.getByText('Agent CLI · 已连接')).toHaveCount(0);
+  await send(page, 'edit');
+  await expect(page.getByText('已完成', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).aiTest.connections)).toBe(2);
+  await page.getByRole('button', { name: 'Agent CLI · 已连接' }).click();
+  await page.getByRole('combobox', { name: '空闲自动断开' }).click();
+  await page.getByRole('option', { name: '1 分钟', exact: true }).click();
+  expect(await page.evaluate(() => (window as any).aiTest.idle)).toBe(1);
+  await page.evaluate(() => (window as any).aiTest.idleDisconnect());
+  await expect(page.getByText('Agent CLI · 已连接')).toHaveCount(0);
+  await send(page, 'wait');
+  await expect(page.getByText('进行中', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).aiTest.connections)).toBe(3);
+  await page.getByRole('button', { name: '断开 CLI 连接' }).click();
+  await expect(page.getByText('已停止', { exact: true })).toBeVisible();
+  await expect(page.locator('.ai-task')).toHaveCount(2);
 });

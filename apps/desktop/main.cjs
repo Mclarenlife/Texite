@@ -20,6 +20,8 @@ const { AgentClient } = require('./agent-client.cjs');
 const { ChatClient } = require('./chat-client.cjs');
 const { WebDAV } = require('./webdav.cjs');
 const { Updates } = require('./updates.cjs');
+const { installCloseGuard } = require('./close-guard.cjs');
+const { randomUUID } = require('node:crypto');
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'texite',
@@ -31,6 +33,9 @@ let compiler;
 let library;
 let ai;
 let chat;
+let quitRequested = false,
+  allowQuit = false;
+const closeReplies = new Map();
 let fileQueue = Promise.resolve();
 // Isolate test projects and compiler caches from the user's profile, including packaged tests.
 if (process.env.TEXITE_TEST_USER_DATA)
@@ -120,6 +125,21 @@ app.whenReady().then(async () => {
       else window.maximize();
     } else if (action === 'close') window.close();
   });
+  handle('window:close-state', (id, state) => {
+    const resolve = closeReplies.get(id);
+    if (!resolve) return;
+    if (
+      !state ||
+      typeof state.unsaved !== 'boolean' ||
+      typeof state.syncing !== 'boolean' ||
+      !Number.isInteger(state.unsynced) ||
+      state.unsynced < 0 ||
+      state.unsynced > 100000
+    )
+      resolve({ error: true });
+    else resolve(state);
+    closeReplies.delete(id);
+  });
   handleFiles('project:rename', (id, name) => library.rename(id, name));
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
   const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
@@ -140,6 +160,8 @@ app.whenReady().then(async () => {
   handle('chat:start', (input) => chat.start(input));
   handle('chat:cancel', () => chat.cancel());
   handle('ai:connect', () => ai.connect());
+  handle('ai:idle-get', () => ai.getIdleSettings());
+  handle('ai:idle-set', (settings) => ai.setIdleSettings(settings));
   handle('ai:disconnect', () => ai.disconnect());
   handle('ai:clear-history', (projectId, mode) => ai.clearHistory(projectId, mode));
   handle('ai:start', (input) => ai.start(input));
@@ -257,7 +279,58 @@ app.whenReady().then(async () => {
     window.webContents.on('will-navigate', (event, url) => {
       if (url !== (devUrl || 'texite://app/index.html')) event.preventDefault();
     });
+    const guardedWindow = window;
+    const closeGuard = installCloseGuard(window, {
+      getState: () =>
+        new Promise((resolve) => {
+          const id = randomUUID();
+          const timer = setTimeout(() => {
+            closeReplies.delete(id);
+            resolve({ error: true });
+          }, 10000);
+          closeReplies.set(id, (value) => {
+            clearTimeout(timer);
+            resolve(value);
+          });
+          guardedWindow.webContents.send('window:request-close', id);
+        }),
+      confirm: async (prompt) =>
+        (
+          await dialog.showMessageBox(guardedWindow, {
+            type: 'warning',
+            title: '退出 Texite？',
+            ...prompt,
+            buttons: ['返回软件', '仍然退出'],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true,
+          })
+        ).response === 1,
+      cleanup: async () => {
+        chat?.cancel();
+        await Promise.all([compiler.cancel(), ai.disconnect()]);
+      },
+      approved: () => {
+        if (quitRequested) {
+          allowQuit = true;
+          app.quit();
+        } else guardedWindow.close();
+      },
+      cancelled: () => {
+        quitRequested = false;
+      },
+      failed: (error) =>
+        void dialog.showMessageBox(guardedWindow, {
+          type: 'error',
+          message: '暂时无法关闭软件',
+          detail: error.message,
+        }),
+    });
     window.webContents.on('will-prevent-unload', (event) => {
+      if (closeGuard.isAllowed()) {
+        event.preventDefault();
+        return;
+      }
       const choice = dialog.showMessageBoxSync(window, {
         type: 'warning',
         title: '项目尚未完全保存',
@@ -285,8 +358,10 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
-app.on('before-quit', () => {
-  void compiler?.cancel();
-  void ai?.disconnect();
-  chat?.cancel();
+app.on('before-quit', (event) => {
+  if (!allowQuit && window && !window.isDestroyed()) {
+    event.preventDefault();
+    quitRequested = true;
+    window.close();
+  }
 });

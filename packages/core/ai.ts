@@ -54,6 +54,12 @@ export type AIConnection = {
   models: { id: string; label: string; isDefault: boolean }[];
 };
 export type AIEvent =
+  | {
+      type: 'connection';
+      reason: 'manual' | 'idle' | 'error' | 'connected';
+      connection?: AIConnection;
+      error?: string;
+    }
   | { type: 'text'; runId: string; projectId: string; delta: string }
   | { type: 'activity'; runId: string; projectId: string; text: string }
   | {
@@ -72,6 +78,8 @@ export type AIEvent =
       arguments: unknown;
     };
 export type AIAPI = {
+  getIdleSettings?(): Promise<{ idleMinutes: number }>;
+  setIdleSettings?(settings: { idleMinutes: number }): Promise<{ idleMinutes: number }>;
   getConfig?(): Promise<AgentConfig>;
   getProfiles?(): Promise<AgentConfig[]>;
   configure?(config: AgentConfig): Promise<AgentConfig>;

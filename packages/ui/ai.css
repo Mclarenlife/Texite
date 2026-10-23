@@ -691,3 +691,23 @@
     display: none;
   }
 }
+.ai-idle-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  margin-top: 12px;
+}
+.ai-idle-setting > span {
+  display: grid;
+  gap: 4px;
+}
+.ai-idle-setting small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.ai-idle-setting > button {
+  min-width: 100px;
+}

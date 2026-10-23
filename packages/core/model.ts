@@ -55,6 +55,9 @@ export type DesktopAPI = {
   };
   platform?: string;
   windowControl?(action: 'minimize' | 'maximize' | 'close'): Promise<void>;
+  onCloseRequest?(
+    callback: () => Promise<{ unsaved: boolean; unsynced: number; syncing: boolean }>,
+  ): () => void;
   storage?: {
     clearSyncBackups?(): Promise<void>;
     get(): Promise<string>;

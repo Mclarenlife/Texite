@@ -4,6 +4,7 @@ import {
   FileText,
   Cloud,
   CloudUpload,
+  Unlink,
   RefreshCw,
   FolderOpen,
   Info,
@@ -32,6 +33,7 @@ export function ProjectSpace({
   syncBusy = false,
   onSync,
   onUpload,
+  onDetach,
 }: {
   projects: Project[];
   archived: string[];
@@ -46,8 +48,10 @@ export function ProjectSpace({
   syncBusy?: boolean;
   onSync(): Promise<void>;
   onUpload(ids: string[]): Promise<void>;
+  onDetach(ids: string[]): Promise<void>;
 }) {
   const [covers, setCovers] = useState<Record<string, string>>({});
+  const [detaching, setDetaching] = useState<string[]>([]);
   useEffect(() => {
     let live = true;
     const refresh = () => {
@@ -79,6 +83,8 @@ export function ProjectSpace({
     (p) => archived.includes(p.id) === trash && p.name.toLowerCase().includes(query.toLowerCase()),
   );
   const chosen = projects.filter((p) => selected.includes(p.id));
+  const linkedSelection = selected.filter((id) => syncedIds.includes(id));
+  const localSelection = selected.filter((id) => !syncedIds.includes(id));
   const toggle = (id: string) =>
     setSelected((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
   const act = async (action: () => Promise<void>, done: () => void) => {
@@ -205,14 +211,29 @@ export function ProjectSpace({
               </>
             ) : (
               <>
-                <button
-                  className="secondary-button"
-                  disabled={busy || syncBusy}
-                  onClick={() => void onUpload(selected)}
-                >
-                  <CloudUpload size={14} />
-                  上传项目
-                </button>
+                {!!localSelection.length && (
+                  <button
+                    className="secondary-button"
+                    disabled={busy || syncBusy}
+                    onClick={() => void onUpload(localSelection)}
+                  >
+                    <CloudUpload size={14} />
+                    上传项目{linkedSelection.length ? `（${localSelection.length}）` : ''}
+                  </button>
+                )}
+                {!!linkedSelection.length && (
+                  <button
+                    className="secondary-button"
+                    disabled={busy || syncBusy}
+                    onClick={() => {
+                      setDetaching(linkedSelection);
+                      setError('');
+                    }}
+                  >
+                    <Unlink size={14} />
+                    停止关联{localSelection.length ? `（${linkedSelection.length}）` : ''}
+                  </button>
+                )}
                 <button
                   className="secondary-button"
                   disabled={busy || chosen.length !== 1}
@@ -371,6 +392,38 @@ export function ProjectSpace({
             <dd>{new Date(info.updatedAt).toLocaleString()}</dd>
           </dl>
         )}
+      </Dialog>
+      <Dialog
+        open={!!detaching.length}
+        onClose={() => !busy && setDetaching([])}
+        title={`停止关联 ${detaching.length} 个项目？`}
+        description="本地项目和云端文件都会保留。之后一键同步将跳过这些云端项目；可通过上传项目重新建立关联。"
+      >
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="dialog-actions">
+          <button className="secondary-button" disabled={busy} onClick={() => setDetaching([])}>
+            取消
+          </button>
+          <button
+            className="primary-button"
+            disabled={busy}
+            onClick={() =>
+              void act(
+                () => onDetach(detaching),
+                () => {
+                  setDetaching([]);
+                  setSelected([]);
+                },
+              )
+            }
+          >
+            停止关联
+          </button>
+        </div>
       </Dialog>
       <Dialog
         open={!!permanent.length}

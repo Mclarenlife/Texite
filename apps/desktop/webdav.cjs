@@ -51,6 +51,7 @@ class WebDAV {
     this.library = library;
     this.config = null;
     this.bindings = {};
+    this.detached = {};
   }
   async init() {
     if (this.config) return;
@@ -68,6 +69,7 @@ class WebDAV {
     }
     this.config = { url: saved.url || '', username: saved.username || '', password };
     this.bindings = saved.bindings || {};
+    this.detached = saved.detached || {};
   }
   async persist() {
     const { password, ...config } = this.config;
@@ -78,7 +80,14 @@ class WebDAV {
     const target = path.join(this.directory, 'webdav.json');
     await fs.writeFile(
       target + '.tmp',
-      JSON.stringify({ ...config, secret, bindings: this.bindings }),
+      JSON.stringify({
+        ...config,
+        secret,
+        bindings: this.bindings,
+        detached: Object.fromEntries(
+          Object.entries(this.detached).filter(([id]) => !this.bindings[id]),
+        ),
+      }),
       { mode: 0o600 },
     );
     await fs.rename(target + '.tmp', target);
@@ -124,7 +133,10 @@ class WebDAV {
       username: input.username,
       password: input.password || (same ? this.config.password : ''),
     };
-    if (!same) this.bindings = {};
+    if (!same) {
+      this.bindings = {};
+      this.detached = {};
+    }
     await this.persist();
     return this.get();
   }
@@ -230,6 +242,7 @@ class WebDAV {
   }
   async detach(id) {
     await this.init();
+    if (this.bindings[id]) this.detached[id] = this.bindings[id];
     delete this.bindings[id];
     await this.persist();
     return this.get();
@@ -271,8 +284,13 @@ class WebDAV {
       }
     }
     const linked = new Set(Object.values(this.bindings).map((b) => b.id || b.key));
+    const ignored = new Set(
+      Object.entries(this.detached)
+        .filter(([id]) => !this.bindings[id])
+        .map(([, b]) => b.id || b.key),
+    );
     for (const item of remote) {
-      if (linked.has(item.id)) continue;
+      if (linked.has(item.id) || ignored.has(item.id)) continue;
       try {
         const project = await this.download(item.key);
         projects.push(project);
@@ -288,7 +306,7 @@ class WebDAV {
     await this.collection();
     const local = payload(project),
       localHash = hash(local);
-    const binding = this.bindings[project.id];
+    const binding = this.bindings[project.id] || (upload ? this.detached[project.id] : undefined);
     let key = binding?.key;
     let remote = key ? await this.read(key) : null;
     const expectedId = binding?.id || binding?.key;

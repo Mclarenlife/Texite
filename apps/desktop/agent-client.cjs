@@ -18,9 +18,50 @@ class AgentClient {
     this.client = null;
     this.config = null;
     this.transition = false;
+    this.idleMinutes = 5;
+    this.lifecycle = 0;
+    this.idleTimer = null;
   }
   get active() {
-    return this.client?.active || this.transition;
+    return this.client?.active || this.transition || !!this.disconnecting;
+  }
+  async getIdleSettings() {
+    if (!this.idleLoaded) {
+      try {
+        const saved = JSON.parse(
+          await fs.readFile(path.join(this.directory, 'connection.json'), 'utf8'),
+        );
+        if ([0, 1, 5, 10, 30].includes(saved.idleMinutes)) this.idleMinutes = saved.idleMinutes;
+      } catch (e) {
+        if (e.code !== 'ENOENT') throw new Error('无法读取自动断开设置。');
+      }
+      this.idleLoaded = true;
+    }
+    return { idleMinutes: this.idleMinutes };
+  }
+  async setIdleSettings(input) {
+    if (!input || ![0, 1, 5, 10, 30].includes(input.idleMinutes))
+      throw new Error('空闲时间设置无效。');
+    await fs.mkdir(this.directory, { recursive: true });
+    await fs.writeFile(
+      path.join(this.directory, 'connection.json'),
+      JSON.stringify({ idleMinutes: input.idleMinutes }),
+    );
+    this.idleLoaded = true;
+    this.idleMinutes = input.idleMinutes;
+    this.armIdle();
+    return this.getIdleSettings();
+  }
+  armIdle() {
+    clearTimeout(this.idleTimer);
+    if (!this.idleMinutes || this.active || !this.client?.connection) return;
+    this.idleTimer = setTimeout(() => {
+      if (!this.active)
+        void this.disconnect('idle').catch((e) =>
+          this.emit({ type: 'connection', reason: 'error', error: e.message }),
+        );
+    }, this.idleMinutes * 60000);
+    this.idleTimer.unref?.();
   }
   async getProfiles() {
     try {
@@ -59,6 +100,7 @@ class AgentClient {
     if (input.protocol === 'acp' && !input.command.trim())
       throw new Error('请填写 ACP 程序路径或命令名。');
     this.transition = true;
+    clearTimeout(this.idleTimer);
     try {
       const next = {
         preset: input.preset,
@@ -96,19 +138,38 @@ class AgentClient {
   async connect() {
     if (this.active) throw new Error('请先结束当前任务或连接操作。');
     this.transition = true;
+    const lifecycle = this.lifecycle;
+    clearTimeout(this.idleTimer);
     try {
+      await this.getIdleSettings();
       const config = await this.getConfig();
+      if (lifecycle !== this.lifecycle) throw new Error('连接已取消。');
       if (!this.client) {
+        const emit = (event) => {
+          this.emit(event);
+          if (event.type === 'done') this.armIdle();
+        };
         this.client =
           config.protocol === 'codex'
-            ? new CodexClient(this.directory, this.emit)
-            : new ACPClient(this.directory, config, this.emit);
-        if (config.protocol === 'codex' && config.command)
-          await this.client.chooseBinary(config.command);
+            ? new CodexClient(this.directory, emit)
+            : new ACPClient(this.directory, config, emit);
       }
-      return await this.client.connect();
+      const client = this.client;
+      this.connectPending = (async () => {
+        if (config.protocol === 'codex' && config.command)
+          await client.chooseBinary(config.command);
+        if (lifecycle !== this.lifecycle) throw new Error('连接已取消。');
+        return client.connect();
+      })();
+      const connection = await this.connectPending;
+      if (lifecycle !== this.lifecycle) {
+        await client.disconnect();
+        throw new Error('连接已取消。');
+      }
+      return connection;
     } finally {
       this.transition = false;
+      this.armIdle();
     }
   }
   async chooseBinary(file) {
@@ -118,8 +179,19 @@ class AgentClient {
     return file;
   }
   async start(input) {
-    if (this.transition || !this.client) throw new Error('请先连接 Agent CLI。');
-    return this.client.start(input);
+    if (this.disconnecting) await this.disconnecting;
+    if (this.transition) throw new Error('CLI 正在连接，请稍后重试。');
+    if (!this.client?.connection) {
+      const connection = await this.connect();
+      this.emit({ type: 'connection', reason: 'connected', connection });
+      if (!connection.authenticated) throw new Error('请先在终端登录 Agent CLI。');
+    }
+    clearTimeout(this.idleTimer);
+    try {
+      return await this.client.start(input);
+    } finally {
+      this.armIdle();
+    }
   }
   reply(...args) {
     return this.client?.reply(...args);
@@ -130,9 +202,24 @@ class AgentClient {
   clearHistory(...args) {
     return this.client?.clearHistory(...args);
   }
-  async disconnect() {
-    await this.client?.disconnect();
-    this.client = null;
+  async disconnect(reason = 'manual') {
+    if (this.disconnecting) return this.disconnecting;
+    ++this.lifecycle;
+    clearTimeout(this.idleTimer);
+    const client = this.client;
+    this.disconnecting = (async () => {
+      await client?.disconnect();
+      await this.connectPending?.catch(() => {});
+      await client?.disconnect();
+      if (this.client === client) this.client = null;
+      clearTimeout(this.idleTimer);
+      this.emit({ type: 'connection', reason });
+    })();
+    try {
+      await this.disconnecting;
+    } finally {
+      this.disconnecting = null;
+    }
   }
 }
 module.exports = { AgentClient, presets };
