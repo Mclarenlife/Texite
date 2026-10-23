@@ -1,4 +1,5 @@
 import { AgentSettings } from './AgentSettings';
+import { AIConversationList } from './AIConversationList';
 import { selectionLabel, type InlineScope } from '../core/ai';
 import { Plus, History } from 'lucide-react';
 import { Select } from './Select';
@@ -335,38 +336,19 @@ export function AIPanel({
               onClick={() => setShowConnection(!showConnection)}
             >
               <span className={ai.connection?.authenticated ? 'ai-dot connected' : 'ai-dot'} />
-              <span>{ai.connection?.authenticated ? 'Agent CLI · 已连接' : '连接设置'}</span>
+              <span>{ai.connection?.authenticated ? '已连接' : '连接设置'}</span>
               <ChevronDown size={13} />
             </button>
           )}
         </div>
       </div>
       {historyOpen && (
-        <div className="ai-conversation-list" aria-label="对话列表">
-          {!ai.conversations.items.some((c) => c.mode === mode) && <p>还没有对话，点击 + 新建。</p>}
-          {ai.conversations.items
-            .filter((c) => c.mode === mode)
-            .slice()
-            .reverse()
-            .map((c) => (
-              <button
-                key={c.id}
-                aria-label={'打开对话 ' + c.title}
-                aria-current={ai.conversations.selected[mode] === c.id}
-                disabled={ai.busy || ai.loading}
-                onClick={() => {
-                  void ai
-                    .selectConversation(c.id)
-                    .then(() => setHistoryOpen(false))
-                    .catch((e) => setClearError(e.message));
-                }}
-              >
-                <MessageSquare size={14} />
-                <span>{c.title}</span>
-                <time>{new Date(c.time).toLocaleDateString()}</time>
-              </button>
-            ))}
-        </div>
+        <AIConversationList
+          key={mode + projectName}
+          ai={ai}
+          mode={mode}
+          onSelect={() => setHistoryOpen(false)}
+        />
       )}
       {!custom && !ai.connection?.authenticated && !showConnection && (
         <div className="ai-connect-prompt">

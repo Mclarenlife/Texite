@@ -72,6 +72,10 @@ const path = require('node:path');
     if (process.platform === 'win32')
       await expect(page.locator('.project-tabs')).toHaveCSS('-webkit-app-region', 'drag');
     await page.getByRole('tab', { name: '同步与存储', exact: true }).click();
+    const davBox = await page.locator('.sync-connection-card').boundingBox();
+    const cleanupBox = await page.locator('.storage-cleanup').boundingBox();
+    expect(Math.abs(davBox.width - cleanupBox.width)).toBeLessThan(1);
+    expect(Math.abs(davBox.x - cleanupBox.x)).toBeLessThan(1);
     const cleanup = page.locator('.storage-cleanup');
     for (const name of ['清空备份', '清空修改历史', '清空 AI 对话记录']) {
       await cleanup.getByRole('button', { name, exact: true }).click();

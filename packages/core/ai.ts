@@ -83,7 +83,11 @@ export type AIAPI = {
   getConfig?(): Promise<AgentConfig>;
   getProfiles?(): Promise<AgentConfig[]>;
   configure?(config: AgentConfig): Promise<AgentConfig>;
-  clearHistory?(projectId: string | null, mode?: 'agent' | 'chat'): Promise<void>;
+  clearHistory?(
+    projectId: string | null,
+    mode?: 'agent' | 'chat',
+    conversationId?: string,
+  ): Promise<void>;
   connect(): Promise<AIConnection>;
   chooseBinary(): Promise<string | null>;
   disconnect(): Promise<void>;
@@ -125,7 +129,13 @@ export type AgentConfig = {
   args: string[];
   model?: string;
 };
-export type AIConversation = { id: string; mode: 'agent' | 'chat'; title: string; time: number };
+export type AIConversation = {
+  id: string;
+  mode: 'agent' | 'chat';
+  title: string;
+  time: number;
+  customTitle?: boolean;
+};
 export type AIConversations = {
   items: AIConversation[];
   selected: Partial<Record<'agent' | 'chat', string>>;

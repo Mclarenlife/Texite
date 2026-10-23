@@ -21,6 +21,7 @@ import {
   clearStoredRecords,
   loadAIConversations,
   saveAIConversations,
+  saveAIConversationState,
 } from '../platform/storage';
 import { streamChat, chatEndpoint } from '../../apps/desktop/chat-transport.mjs';
 
@@ -299,7 +300,9 @@ export function useAI(options: Options) {
     await changeConversations({
       items: item
         ? value.items.map((c) =>
-            c.id === id && c.title === '新对话' ? { ...c, title: prompt.slice(0, 40) } : c,
+            c.id === id && c.title === '新对话' && !c.customTitle
+              ? { ...c, title: prompt.slice(0, 40) }
+              : c,
           )
         : [...value.items, { id, mode, title: prompt.slice(0, 40), time: Date.now() }],
       selected: { ...value.selected, [mode]: id },
@@ -308,6 +311,46 @@ export function useAI(options: Options) {
   }
   const inConversation = (t: AITask, id: string) =>
     (t.conversationId || 'legacy-' + (t.mode || 'agent')) === id;
+  async function editConversation(id: string, title?: string) {
+    if (busy || loading || active.current || cleaning.current)
+      throw new Error('请先结束 AI 任务或等待记录加载。');
+    const projectId = current.current.projectId;
+    const value = conversationsRef.current;
+    const item = value.items.find((c) => c.id === id);
+    if (!projectId || !item) throw new Error('此对话已不存在。');
+    const name = title?.trim();
+    if (title !== undefined && (!name || name.length > 100))
+      throw new Error('请输入 1–100 个字符的对话名称。');
+    cleaning.current = true;
+    setBusy(true);
+    try {
+      await operationQueue.current;
+      await persist();
+      journalPaused.current = true;
+      const deleting = title === undefined;
+      const items = deleting
+        ? value.items.filter((c) => c.id !== id)
+        : value.items.map((c) => (c.id === id ? { ...c, title: name!, customTitle: true } : c));
+      const selected = { ...value.selected };
+      if (deleting && selected[item.mode] === id)
+        selected[item.mode] = items.filter((c) => c.mode === item.mode).at(-1)?.id;
+      const next = deleting
+        ? tasksRef.current.filter((t) => !inConversation(t, id))
+        : tasksRef.current;
+      if (deleting) await window.texite?.ai?.clearHistory?.(projectId, item.mode, id);
+      const conversations = { items, selected };
+      await saveAIConversationState(projectId, next, conversations);
+      if (current.current.projectId === projectId) {
+        conversationsRef.current = conversations;
+        setConversations(conversations);
+        replace(next);
+      }
+    } finally {
+      journalPaused.current = false;
+      cleaning.current = false;
+      setBusy(false);
+    }
+  }
   const historyContext = (id: string) =>
     tasksRef.current
       .filter((t) => inConversation(t, id) && t.status === 'completed')
@@ -830,6 +873,7 @@ export function useAI(options: Options) {
     conversations,
     newConversation,
     selectConversation,
+    editConversation,
     agentConfig,
     configureAgent,
     chatProfiles,

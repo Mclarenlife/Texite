@@ -6,6 +6,19 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { ACPClient } = require('../apps/desktop/acp-client.cjs');
 const { AgentClient } = require('../apps/desktop/agent-client.cjs');
+
+test('deleting one conversation keeps other ACP sessions and modes', () => {
+  const client = new ACPClient('.qa/clear-context', () => {});
+  const keys = [
+    ['p', 'c1', 'm', false],
+    ['p', 'c2', 'm', false],
+    ['p', 'c1', 'm', true],
+    ['q', 'c1', 'm', false],
+  ].map(JSON.stringify);
+  keys.forEach((key) => client.sessions.set(key, {}));
+  client.clearHistory('p', 'agent', 'c1');
+  assert.deepEqual([...client.sessions.keys()], keys.slice(1));
+});
 test('ACP edits editor buffers, isolates conversations, refuses read-only/outside writes and cancels', async () => {
   await fs.mkdir(path.resolve('.qa'), { recursive: true });
   const dir = await fs.mkdtemp(path.resolve('.qa/acp-test-'));

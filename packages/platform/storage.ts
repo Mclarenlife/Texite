@@ -118,6 +118,16 @@ export async function saveAIConversations(
 ) {
   await (await database()).put('settings', value, 'ai-conversations:' + projectId);
 }
+export async function saveAIConversationState(
+  projectId: string,
+  tasks: import('../core/ai').AITask[],
+  conversations: import('../core/ai').AIConversations,
+) {
+  const tx = (await database()).transaction('settings', 'readwrite');
+  await tx.store.put(tasks, 'ai:' + projectId);
+  await tx.store.put(conversations, 'ai-conversations:' + projectId);
+  await tx.done;
+}
 export async function commitAIProject(
   current: Project,
   next: Project,

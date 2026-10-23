@@ -60,6 +60,8 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
             <time>2026.10.23</time>
           </h4>
           <ul>
+            <li>AI 连接状态精简为「已连接」，对话记录支持右键重命名和单条删除。</li>
+            <li>统一同步与存储页的设置卡片宽度。</li>
             <li>Agent CLI 可彻底断开进程、空闲自动断开，并在发送指令时自动重连。</li>
             <li>退出前检查未上传的项目，项目空间可停止云端关联且保留文件。</li>
             <li>应用 GPL-3.0-only 开源许可证，随包提供许可与源码版本信息。</li>
