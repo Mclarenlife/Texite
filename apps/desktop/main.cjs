@@ -16,7 +16,7 @@ const { pathToFileURL } = require('node:url');
 const { Compiler, detectEngines } = require('./workspace.cjs');
 const { ProjectLibrary } = require('./projects.cjs');
 const { RuntimeManager } = require('./runtime-manager.cjs');
-const { CodexClient } = require('./codex-client.cjs');
+const { AgentClient } = require('./agent-client.cjs');
 const { ChatClient } = require('./chat-client.cjs');
 const { WebDAV } = require('./webdav.cjs');
 const { Updates } = require('./updates.cjs');
@@ -124,12 +124,17 @@ app.whenReady().then(async () => {
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
   const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
   compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime, manager);
-  ai = new CodexClient(path.join(app.getPath('userData'), 'ai'), (event) => {
+  ai = new AgentClient(path.join(app.getPath('userData'), 'ai'), (event) => {
     if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
   });
   chat = new ChatClient(path.join(app.getPath('userData'), 'ai'), safeStorage, (event) => {
     if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
   });
+  handle('chat:list', () => chat.list());
+  handle('chat:select', (id) => chat.select(id));
+  handle('ai:config', () => ai.getConfig());
+  handle('ai:profiles', () => ai.getProfiles());
+  handle('ai:configure', (config) => ai.configure(config));
   handle('chat:get', () => chat.get());
   handle('chat:save', (config) => chat.save(config));
   handle('chat:start', (input) => chat.start(input));
@@ -144,9 +149,8 @@ app.whenReady().then(async () => {
     if (ai.active) throw new Error('请先停止 AI 任务。');
     const selected = await dialog.showOpenDialog(window, {
       properties: ['openFile'],
-      title: '选择 Codex 可执行文件',
-      message:
-        '选择 codex CLI 文件。Mac 可在终端运行 command -v codex 查找路径；不要选择 ChatGPT.app 或 Codex.app。',
+      title: '选择 Agent CLI 程序',
+      message: '选择所配置的 CLI 可执行文件，不要选择 .app 应用包目录。',
     });
     return selected.canceled ? null : ai.chooseBinary(selected.filePaths[0]);
   });

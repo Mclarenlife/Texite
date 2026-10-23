@@ -26,7 +26,7 @@ async function setup(page: Page) {
                   after:
                     (state.outside ? 'UNREQUESTED CHANGE\n' : '') +
                     before.slice(0, JSON.parse(run.context).inlineEdit.from) +
-                    'INLINE EDIT' +
+                    (run.prompt === '改写成英文' ? 'apple' : 'INLINE EDIT') +
                     before.slice(JSON.parse(run.context).inlineEdit.to),
                 },
               ]
@@ -114,11 +114,11 @@ async function setup(page: Page) {
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
-  await page.getByRole('button', { name: '连接本机 Codex', exact: true }).click();
-  await expect(page.getByText('已连接本机 Codex')).toBeVisible();
+  await page.getByRole('button', { name: '连接 Agent CLI', exact: true }).click();
+  await expect(page.getByText('Agent CLI · 已连接')).toBeVisible();
 }
 async function send(page: Page, prompt: string) {
-  await page.getByLabel('发送给 Codex 的指令').fill(prompt);
+  await page.getByLabel('发送给 Agent CLI 的指令').fill(prompt);
   await page.getByRole('button', { name: '发送 AI 指令', exact: true }).click();
 }
 
@@ -282,4 +282,70 @@ test('inline Agent refuses edits outside the captured range and preserves later 
   expect(box!.x + box!.width).toBeLessThanOrEqual(1024);
   expect(box!.y + box!.height).toBeLessThanOrEqual(700);
   await page.screenshot({ path: '.qa/ai-dark-compact.png', animations: 'disabled' });
+});
+
+test('panel selection edits only selected text and conversations persist independently', async ({
+  page,
+}) => {
+  await setup(page);
+  await page.getByRole('button', { name: '最小化 AI 窗口' }).click();
+  const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
+  await editor.fill('Before\n苹果\nAfter');
+  await editor.press('Control+Home');
+  await editor.press('ArrowDown');
+  await editor.press('Home');
+  await editor.press('Shift+End');
+  await page.getByRole('button', { name: '展开 AI 窗口' }).click();
+  await expect(page.locator('.ai-selection-range')).toHaveText('第 2 行，第 1–2 字');
+  await send(page, '改写成英文');
+  await expect(editor.locator('.cm-line')).toHaveText(['Before', 'apple', 'After']);
+  await expect(page.getByText('已完成', { exact: true })).toBeVisible();
+  const first = await page.evaluate(() => (window as any).aiTest.run.conversationId);
+  await page.getByRole('button', { name: '新建对话', exact: true }).click();
+  await expect(page.locator('.ai-task')).toHaveCount(0);
+  await page.getByRole('button', { name: '对话记录', exact: true }).click();
+  await page.getByRole('button', { name: '打开对话 改写成英文', exact: true }).click();
+  await expect(page.locator('.ai-task')).toHaveCount(1);
+  await page.reload();
+  await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+  await expect(page.locator('.ai-user-message')).toHaveText('改写成英文');
+  await page.getByRole('button', { name: '连接 Agent CLI', exact: true }).click();
+  await send(page, 'edit');
+  await expect(page.locator('.ai-task')).toHaveCount(2);
+  await expect
+    .poll(() => page.evaluate(() => (window as any).aiTest.run.conversationId))
+    .toBe(first);
+  const panel = await page.locator('.ai-heading').boundingBox(),
+    tabs = await page.getByRole('tablist', { name: 'AI 模式' }).boundingBox();
+  expect(Math.abs(panel!.x + panel!.width / 2 - (tabs!.x + tabs!.width / 2))).toBeLessThan(2);
+  await page.screenshot({ path: '.qa/ai-next-conversations.png', animations: 'disabled' });
+});
+
+
+test('Agent CLI chooser configures ACP and empty conversations clear only after confirmation', async ({ page }) => {
+  await setup(page);
+  await page.evaluate(() => {
+    window.texite!.ai!.configure = async config => { (window as any).configuredCLI = config; return config; };
+  });
+  await page.getByRole('button', { name: 'Agent CLI · 已连接', exact: true }).click();
+  await page.getByRole('button', { name: '选择 Agent CLI', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Agent CLI', exact: true });
+  await dialog.getByRole('combobox', { name: 'Agent CLI 类型' }).click();
+  await page.getByRole('option', { name: 'Qwen Code', exact: true }).click();
+  await expect(dialog.getByLabel('Agent CLI 程序', { exact: true })).toHaveValue('qwen');
+  await expect(dialog.getByLabel('Agent CLI 参数', { exact: true })).toHaveValue('["--acp"]');
+  await page.screenshot({ path: '.qa/ai-next-cli.png', animations: 'disabled' });
+  await dialog.getByRole('button', { name: '保存并连接', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(await page.evaluate(() => (window as any).configuredCLI)).toMatchObject({ preset: 'qwen', protocol: 'acp', command: 'qwen', args: ['--acp'] });
+  await page.getByRole('button', { name: '新建对话', exact: true }).click();
+  await page.getByRole('button', { name: '清空当前项目 Agent 记录', exact: true }).click();
+  const confirm = page.getByRole('dialog', { name: '清空 Agent 记录？' });
+  await confirm.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '对话记录', exact: true }).click();
+  await expect(page.getByRole('button', { name: '打开对话 新对话' })).toHaveCount(1);
+  await page.getByRole('button', { name: '清空当前项目 Agent 记录', exact: true }).click();
+  await confirm.getByRole('button', { name: '确认清空', exact: true }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '打开对话 新对话' })).toHaveCount(0);
 });

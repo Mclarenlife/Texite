@@ -35,7 +35,17 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         <h3>更新日志</h3>
         <section>
           <h4>
-            {packageInfo.version}
+            0.10.0-preview.1<time>2026.10.23</time>
+          </h4>
+          <ul>
+            <li>AI 助手显示选区行与字位置，Agent 指令限定选中文字编辑。</li>
+            <li>独立对话记录、新建与切换对话，模式切换移至浮窗顶栏中央。</li>
+            <li>Agent CLI 支持现有原生连接及 ACP CLI 配置，多套 API 可保存与快速切换。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.9.0
             <time>2026.10.14</time>
           </h4>
           <ul>

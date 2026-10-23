@@ -85,7 +85,7 @@ test('custom API chat streams without editing documents or storing the API key',
   await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
   await page.getByRole('tab', { name: '对话', exact: true }).click();
   await page.getByRole('combobox', { name: '对话服务' }).click();
-    await page.getByRole('option', { name: '自定义 API', exact: true }).click();
+  await page.getByRole('option', { name: '自定义 API', exact: true }).click();
   await page.getByRole('button', { name: '配置对话 API', exact: false }).click();
   await page.getByLabel('API 地址', { exact: true }).fill('https://chat.example.test/v1');
   await page.getByLabel('API 模型名称').fill('local-test');
@@ -101,4 +101,70 @@ test('custom API chat streams without editing documents or storing the API key',
   expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('test-private-key');
   await page.screenshot({ path: '.qa/ai-api-chat.png', animations: 'disabled' });
   expect(errors).toEqual([]);
+});
+
+test('saved APIs switch in composer and each conversation sends only its own history', async ({
+  page,
+}) => {
+  const requests: any[] = [];
+  await page.route('https://*.profile.test/**', async (route) => {
+    if (route.request().method() === 'OPTIONS')
+      return route.fulfill({
+        status: 204,
+        headers: { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' },
+      });
+    requests.push({
+      url: route.request().url(),
+      auth: route.request().headers().authorization,
+      body: route.request().postDataJSON(),
+    });
+    await route.fulfill({
+      contentType: 'text/event-stream',
+      headers: { 'Access-Control-Allow-Origin': '*' },
+      body: 'data: {"choices":[{"delta":{"content":"Saved API response"}}]}\n\ndata: [DONE]\n\n',
+    });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+  await page.getByRole('tab', { name: '对话', exact: true }).click();
+  await page.getByRole('combobox', { name: '对话服务' }).click();
+  await page.getByRole('option', { name: '自定义 API', exact: true }).click();
+  for (const name of ['A', 'B']) {
+    await page.getByRole('button', { name: '配置对话 API', exact: true }).click();
+    if (name === 'B') await page.getByRole('button', { name: '新增 API', exact: true }).click();
+    await page.getByLabel('API 配置名称', { exact: true }).fill(name);
+    await page
+      .getByLabel('API 地址', { exact: true })
+      .fill('https://' + name.toLowerCase() + '.profile.test/v1');
+    await page.getByLabel('API 模型名称', { exact: true }).fill('model-' + name);
+    await page.getByLabel('API Key', { exact: true }).fill('key-' + name);
+    await page.getByRole('button', { name: '保存配置', exact: true }).click();
+  }
+  const send = async (text: string) => {
+    await page.getByLabel('发送给 API 的消息').fill(text);
+    await page.getByRole('button', { name: '发送 AI 指令', exact: true }).click();
+    await expect(page.getByRole('button', { name: '停止 AI 任务' })).toHaveCount(0);
+    await expect(page.locator('.ai-reply').last()).toHaveText('Saved API response');
+  };
+  await send('first conversation');
+  expect(requests.at(-1).auth).toBe('Bearer key-B');
+  await page.getByRole('button', { name: '新建对话', exact: true }).click();
+  await expect(page.locator('.ai-task')).toHaveCount(0);
+  await page.getByRole('combobox', { name: '已保存的 API' }).click();
+  await page.getByRole('option', { name: 'A', exact: true }).click();
+  await send('second conversation');
+  expect(requests.at(-1).auth).toBe('Bearer key-A');
+  expect(JSON.stringify(requests.at(-1).body)).not.toContain('first conversation');
+  await page.getByRole('button', { name: '对话记录', exact: true }).click();
+  await page.getByRole('button', { name: '打开对话 first conversation', exact: true }).click();
+  await expect(page.locator('.ai-user-message')).toHaveText('first conversation');
+  await send('continue first');
+  expect(JSON.stringify(requests.at(-1).body)).toContain('first conversation');
+  expect(JSON.stringify(requests.at(-1).body)).not.toContain('second conversation');
+  await page.reload();
+  await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: '已保存的 API' })).toContainText('A');
+  await expect(page.locator('.ai-task')).toHaveCount(2);
+  expect(await page.evaluate(() => JSON.stringify(localStorage))).not.toContain('key-A');
+  await page.screenshot({ path: '.qa/ai-next-api.png', animations: 'disabled' });
 });

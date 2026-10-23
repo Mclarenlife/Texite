@@ -1,3 +1,6 @@
+import { AgentSettings } from './AgentSettings';
+import { selectionLabel, type InlineScope } from '../core/ai';
+import { Plus, History } from 'lucide-react';
 import { Select } from './Select';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
@@ -36,14 +39,20 @@ export function AIPanel({
   focusAgent,
   projectName,
   activeFile,
+  selection,
   onClose,
 }: {
   ai: AIController;
   focusAgent?: number;
   projectName: string;
   activeFile: string;
+  selection?: InlineScope;
   onClose(): void;
 }) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [cliSettings, setCliSettings] = useState(false);
+  const [profileId, setProfileId] = useState('');
+  const [profileName, setProfileName] = useState('');
   const [prompt, setPrompt] = useState('');
   const input = useRef<HTMLTextAreaElement>(null);
   const [model, setModel] = usePreference<string>('ai-model', '');
@@ -73,10 +82,12 @@ export function AIPanel({
   const [apiModel, setApiModel] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [configError, setConfigError] = useState('');
+  const [savingConfig, setSavingConfig] = useState(false);
   const custom = mode === 'chat' && provider === 'api';
   const visibleTasks = ai.tasks.filter(
     (t) =>
-      (t.mode || 'agent') === mode && (mode === 'agent' || (t.provider || 'codex') === provider),
+      (t.mode || 'agent') === mode &&
+      (t.conversationId || 'legacy-' + (t.mode || 'agent')) === ai.conversations.selected[mode],
   );
   useEffect(() => {
     const resize = () => setPosition(null);
@@ -98,6 +109,8 @@ export function AIPanel({
     return () => observer.disconnect();
   }, []);
   const configure = () => {
+    setProfileId(ai.chatConfig.id || '');
+    setProfileName(ai.chatConfig.name || '');
     setBaseURL(ai.chatConfig.baseURL);
     setApiModel(ai.chatConfig.model);
     setApiKey('');
@@ -119,7 +132,7 @@ export function AIPanel({
     '';
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'nearest' });
-  }, [ai.tasks.at(-1)?.reply, ai.tasks.length]);
+  }, [ai.tasks.at(-1)?.reply, ai.tasks.length, ai.conversations.selected[mode]]);
   const send = () => {
     if (
       !prompt.trim() ||
@@ -130,7 +143,8 @@ export function AIPanel({
     const message = prompt;
     setPrompt('');
     if (custom) void ai.startChat(message);
-    else void ai.start(message, selected, mode === 'chat');
+    else
+      void ai.start(message, selected, mode === 'chat', mode === 'agent' ? selection : undefined);
   };
   const currentReview = review && ai.tasks.find((t) => t.id === review.id);
   return (
@@ -180,6 +194,7 @@ export function AIPanel({
           drag.current = null;
         }}
         onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
           if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
           e.preventDefault();
           const r = panel.current!.getBoundingClientRect();
@@ -212,20 +227,6 @@ export function AIPanel({
             </span>
           </button>
         </span>
-        <div className="ai-window-actions">
-          <button
-            className="icon-button"
-            aria-label={minimized ? '展开 AI 窗口' : '最小化 AI 窗口'}
-            onClick={() => setMinimized(!minimized)}
-          >
-            <Minus size={15} />
-          </button>
-          <button className="icon-button" aria-label="关闭 AI 面板" onClick={onClose}>
-            <X size={16} />
-          </button>
-        </div>
-      </div>
-      <div className="ai-toolbar">
         <div className="ai-mode-tabs" role="tablist" aria-label="AI 模式">
           <button
             role="tab"
@@ -246,11 +247,51 @@ export function AIPanel({
             对话
           </button>
         </div>
+        <div className="ai-window-actions">
+          <button
+            className="icon-button"
+            aria-label={minimized ? '展开 AI 窗口' : '最小化 AI 窗口'}
+            onClick={() => setMinimized(!minimized)}
+          >
+            <Minus size={15} />
+          </button>
+          <button className="icon-button" aria-label="关闭 AI 面板" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+      </div>
+      <div className="ai-toolbar">
+        <button
+          className="ai-history-toggle"
+          aria-expanded={historyOpen}
+          onClick={() => setHistoryOpen(!historyOpen)}
+        >
+          <History size={15} />
+          对话记录
+          <ChevronDown size={12} />
+        </button>
+        <button
+          className="icon-button"
+          aria-label="新建对话"
+          title="新建对话"
+          disabled={ai.busy || ai.loading}
+          onClick={() => {
+            void ai.newConversation(mode).catch((e) => setClearError(e.message));
+            setHistoryOpen(false);
+          }}
+        >
+          <Plus size={16} />
+        </button>
         <button
           className="icon-button ai-clear-history"
           aria-label={mode === 'agent' ? '清空当前项目 Agent 记录' : '清空当前项目对话记录'}
           title={mode === 'agent' ? '清空 Agent 记录' : '清空对话记录'}
-          disabled={ai.busy || ai.loading || !ai.tasks.some((t) => (t.mode || 'agent') === mode)}
+          disabled={
+            ai.busy ||
+            ai.loading ||
+            (!ai.tasks.some((t) => (t.mode || 'agent') === mode) &&
+              !ai.conversations.items.some((c) => c.mode === mode))
+          }
           onClick={() => {
             setClearMode(mode);
             setClearError('');
@@ -266,7 +307,7 @@ export function AIPanel({
               disabled={ai.busy}
               onValueChange={(value) => setProvider(value as 'codex' | 'api')}
             >
-              <option value="codex">Codex</option>
+              <option value="codex">Agent CLI</option>
               <option value="api">自定义 API</option>
             </Select>
           )}
@@ -286,16 +327,43 @@ export function AIPanel({
               onClick={() => setShowConnection(!showConnection)}
             >
               <span className={ai.connection?.authenticated ? 'ai-dot connected' : 'ai-dot'} />
-              <span>{ai.connection?.authenticated ? '已连接本机 Codex' : '连接设置'}</span>
+              <span>{ai.connection?.authenticated ? 'Agent CLI · 已连接' : '连接设置'}</span>
               <ChevronDown size={13} />
             </button>
           )}
         </div>
       </div>
+      {historyOpen && (
+        <div className="ai-conversation-list" aria-label="对话列表">
+          {!ai.conversations.items.some((c) => c.mode === mode) && <p>还没有对话，点击 + 新建。</p>}
+          {ai.conversations.items
+            .filter((c) => c.mode === mode)
+            .slice()
+            .reverse()
+            .map((c) => (
+              <button
+                key={c.id}
+                aria-label={'打开对话 ' + c.title}
+                aria-current={ai.conversations.selected[mode] === c.id}
+                disabled={ai.busy || ai.loading}
+                onClick={() => {
+                  void ai
+                    .selectConversation(c.id)
+                    .then(() => setHistoryOpen(false))
+                    .catch((e) => setClearError(e.message));
+                }}
+              >
+                <MessageSquare size={14} />
+                <span>{c.title}</span>
+                <time>{new Date(c.time).toLocaleDateString()}</time>
+              </button>
+            ))}
+        </div>
+      )}
       {!custom && !ai.connection?.authenticated && !showConnection && (
         <div className="ai-connect-prompt">
           <span>
-            {desktop ? '连接后即可编辑当前项目' : '本机 Codex 需要桌面版；网页可使用对话 API。'}
+            {desktop ? '连接后即可编辑当前项目' : 'Agent CLI 需要桌面版；网页可使用对话 API。'}
           </span>
           {desktop && (
             <button
@@ -304,7 +372,7 @@ export function AIPanel({
               onClick={() => void ai.connect()}
             >
               {ai.connecting ? <LoaderCircle size={14} className="spin" /> : <Plug size={14} />}
-              连接本机 Codex
+              连接 Agent CLI
             </button>
           )}
         </div>
@@ -315,7 +383,7 @@ export function AIPanel({
             <>
               <p>
                 {ai.connection?.account ||
-                  '使用本机 Codex 登录状态。首次使用请在终端执行 codex login。'}
+                  '使用所选 Agent CLI 的本机登录状态；首次使用请先在终端登录。'}
               </p>
               {ai.connection?.version && <small>{ai.connection.version}</small>}
               <div className="ai-inline-actions">
@@ -325,20 +393,23 @@ export function AIPanel({
                   onClick={() => void ai.connect()}
                 >
                   {ai.connecting ? <LoaderCircle size={14} className="spin" /> : <Plug size={14} />}
-                  {ai.connection ? '刷新连接' : '连接本机 Codex'}
+                  {ai.connection ? '刷新连接' : '连接 Agent CLI'}
                 </button>
                 <button
                   className="text-button"
                   disabled={ai.connecting || ai.busy}
-                  onClick={() => void ai.chooseBinary()}
+                  onClick={() => setCliSettings(true)}
                 >
-                  选择 Codex CLI
+                  选择 Agent CLI
                 </button>
               </div>
-              <small>选择 codex 可执行文件。Mac 可运行 command -v codex 查找路径。</small>
+              <small>
+                当前：{ai.agentConfig.preset === 'custom' ? '自定义 ACP' : ai.agentConfig.preset} ·
+                可更换程序与模型服务。
+              </small>
             </>
           ) : (
-            <p>连接本机 Codex 需要 Texite 桌面版。网页版可在对话模式配置 API。</p>
+            <p>连接 Agent CLI 需要 Texite 桌面版。网页版可在对话模式配置 API。</p>
           )}
         </div>
       )}
@@ -372,7 +443,9 @@ export function AIPanel({
             <div className="ai-user-message">{task.prompt}</div>
             <div className="ai-response-label">
               <Sparkles size={13} />
-              {task.provider === 'api' ? task.model || 'API' : 'Codex'}
+              <span className="ai-provider-name" title={task.cliName}>
+                {task.provider === 'api' ? task.model || 'API' : 'Agent CLI'}
+              </span>
               <span>{statuses[task.status]}</span>
             </div>
             {task.activities.length > 0 && (
@@ -412,15 +485,28 @@ export function AIPanel({
             {ai.error}
           </p>
         )}
+        {clearError && !clearMode && (
+          <p className="form-error" role="alert">
+            {clearError}
+          </p>
+        )}
         <div className="ai-context">
           <FileCode2 size={12} />
           <span title={projectName + '/' + activeFile}>{activeFile}</span>
+          {selectionLabel(selection) && (
+            <span
+              className="ai-selection-range"
+              title="本次指令优先参考此选区；Agent 仅编辑所选范围"
+            >
+              {selectionLabel(selection)}
+            </span>
+          )}
           <span>{mode === 'agent' ? '可编辑项目' : '仅对话'}</span>
         </div>
         <div className="ai-input-box">
           <textarea
             ref={input}
-            aria-label={custom ? '发送给 API 的消息' : '发送给 Codex 的指令'}
+            aria-label={custom ? '发送给 API 的消息' : '发送给 Agent CLI 的指令'}
             placeholder={mode === 'agent' ? '描述你想修改的内容…' : '输入消息，Shift + Enter 换行…'}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -434,7 +520,21 @@ export function AIPanel({
           />
           <div className="ai-composer-controls">
             {custom ? (
-              <span className="ai-api-model">{ai.chatConfig.model}</span>
+              <Select
+                aria-label="已保存的 API"
+                value={ai.chatConfig.id || ''}
+                disabled={ai.busy}
+                onValueChange={(id) =>
+                  void ai.selectChatProfile(id).catch((e) => setClearError(e.message))
+                }
+              >
+                {!ai.chatProfiles.length && <option value="">未配置 API</option>}
+                {ai.chatProfiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name || p.model}
+                  </option>
+                ))}
+              </Select>
             ) : (
               <Select
                 aria-label="AI 模型"
@@ -544,15 +644,70 @@ export function AIPanel({
           className="api-settings"
           onSubmit={async (e) => {
             e.preventDefault();
+            if (savingConfig) return;
+            setSavingConfig(true);
             try {
-              await ai.saveChatConfig({ baseURL, model: apiModel, apiKey });
+              await ai.saveChatConfig({
+                id: profileId,
+                name: profileName,
+                baseURL,
+                model: apiModel,
+                apiKey,
+              });
               setConfigOpen(false);
               setApiKey('');
             } catch (err) {
               setConfigError((err as Error).message);
+            } finally {
+              setSavingConfig(false);
             }
           }}
         >
+          <div className="ai-inline-actions">
+            <Select
+              aria-label="编辑 API 配置"
+              value={profileId}
+              onValueChange={(id) => {
+                const c = ai.chatProfiles.find((p) => p.id === id);
+                if (!c) return;
+                setProfileId(id);
+                setProfileName(c.name || '');
+                setBaseURL(c.baseURL);
+                setApiModel(c.model);
+                setApiKey('');
+              }}
+            >
+              <option value="">新 API 配置</option>
+              {ai.chatProfiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name || p.model}
+                </option>
+              ))}
+            </Select>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setProfileId('');
+                setProfileName('');
+                setBaseURL('');
+                setApiModel('');
+                setApiKey('');
+              }}
+            >
+              新增 API
+            </button>
+          </div>
+          <label>
+            配置名称
+            <input
+              aria-label="API 配置名称"
+              value={profileName}
+              maxLength={100}
+              onChange={(e) => setProfileName(e.target.value)}
+              placeholder="例如：论文助手"
+            />
+          </label>
           <label>
             API 地址
             <input
@@ -581,7 +736,11 @@ export function AIPanel({
               autoComplete="off"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={ai.chatConfig.hasKey ? '已配置，留空保留' : '本机无鉴权服务可留空'}
+              placeholder={
+                ai.chatProfiles.find((p) => p.id === profileId)?.hasKey
+                  ? '已配置，留空保留'
+                  : '本机无鉴权服务可留空'
+              }
             />
           </label>
           <p>
@@ -595,7 +754,7 @@ export function AIPanel({
             </p>
           )}
           <div className="ai-inline-actions">
-            <button className="primary-button" disabled={ai.busy}>
+            <button className="primary-button" disabled={ai.busy || savingConfig}>
               保存配置
             </button>
             <button
@@ -604,7 +763,14 @@ export function AIPanel({
               disabled={ai.busy}
               onClick={async () => {
                 try {
-                  await ai.saveChatConfig({ baseURL, model: apiModel, apiKey: '', clearKey: true });
+                  await ai.saveChatConfig({
+                    id: profileId,
+                    name: profileName,
+                    baseURL,
+                    model: apiModel,
+                    apiKey: '',
+                    clearKey: true,
+                  });
                   setApiKey('');
                 } catch (err) {
                   setConfigError((err as Error).message);
@@ -615,6 +781,14 @@ export function AIPanel({
             </button>
           </div>
         </form>
+      </Dialog>
+      <Dialog
+        open={cliSettings}
+        onClose={() => !ai.connecting && setCliSettings(false)}
+        title="Agent CLI"
+        description="选择本机 Agent 程序与连接方式。"
+      >
+        <AgentSettings ai={ai} onDone={() => setCliSettings(false)} />
       </Dialog>
       <Dialog
         open={!!currentReview}
@@ -670,7 +844,7 @@ export function AIPanel({
           '仅清理当前项目「' +
           projectName +
           '」的' +
-          (clearMode === 'agent' ? 'Agent' : 'Codex 和 API 对话') +
+          (clearMode === 'agent' ? 'Agent' : 'Agent CLI 和 API 对话') +
           '记录，无法撤销。'
         }
       >

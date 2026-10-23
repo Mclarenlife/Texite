@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('texite', {
     detach: (id) => ipcRenderer.invoke('webdav:detach', id),
   },
   chat: {
+    list: () => ipcRenderer.invoke('chat:list'),
+    select: (id) => ipcRenderer.invoke('chat:select', id),
     get: () => ipcRenderer.invoke('chat:get'),
     save: (config) => ipcRenderer.invoke('chat:save', config),
     start: (input) => ipcRenderer.invoke('chat:start', input),
@@ -37,6 +39,9 @@ contextBridge.exposeInMainWorld('texite', {
   },
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   ai: {
+    getConfig: () => ipcRenderer.invoke('ai:config'),
+    getProfiles: () => ipcRenderer.invoke('ai:profiles'),
+    configure: (config) => ipcRenderer.invoke('ai:configure', config),
     clearHistory: (projectId, mode) => ipcRenderer.invoke('ai:clear-history', projectId, mode),
     connect: () => ipcRenderer.invoke('ai:connect'),
     disconnect: () => ipcRenderer.invoke('ai:disconnect'),

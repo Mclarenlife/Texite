@@ -37,6 +37,7 @@ export type EditorHandle = {
   insert: (text: string) => void;
   focus: () => void;
   selection: () => string;
+  scope: () => InlineScope | undefined;
 };
 type Props = {
   readOnly?: boolean;
@@ -125,6 +126,18 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       selection() {
         const v = view.current;
         return v ? v.state.sliceDoc(v.state.selection.main.from, v.state.selection.main.to) : '';
+      },
+      scope() {
+        const v = view.current;
+        if (!v || v.state.selection.main.empty) return;
+        const { from, to } = v.state.selection.main;
+        return {
+          projectId: current.current.projectId,
+          path: current.current.file.path,
+          from,
+          to,
+          before: v.state.doc.toString(),
+        };
       },
     }),
     [],

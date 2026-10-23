@@ -461,7 +461,10 @@ class CodexClient {
       input.prompt.length > 20000 ||
       typeof input.model !== 'string' ||
       typeof input.context !== 'string' ||
-      input.context.length > 100000
+      input.context.length > 100000 ||
+      (input.conversationId !== undefined &&
+        (typeof input.conversationId !== 'string' ||
+          !/^[a-zA-Z0-9-]{1,100}$/.test(input.conversationId)))
     )
       throw new Error('AI 请求无效或内容过长。');
     if (!this.connection?.authenticated || !this.child)
@@ -471,7 +474,13 @@ class CodexClient {
     const run = { ...input, readOnly: !!input.readOnly, calls: 0, cancelled: false };
     this.active = run;
     try {
-      const key = input.projectId + ':' + input.model + ':' + run.readOnly;
+      const key =
+        input.projectId +
+        ':' +
+        (input.conversationId ? input.conversationId + ':' : '') +
+        input.model +
+        ':' +
+        run.readOnly;
       run.key = key;
       let threadId = this.threads[key];
       if (!threadId) {

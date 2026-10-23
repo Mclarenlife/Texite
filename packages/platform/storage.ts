@@ -24,7 +24,11 @@ export async function clearStoredRecords(kind: CleanupKind) {
     const settings = tx.objectStore('settings');
     const prefix = { backups: 'backup:', history: 'history:', ai: 'ai:' }[kind];
     for (const key of await settings.getAllKeys())
-      if (String(key).startsWith(prefix)) await settings.delete(key);
+      if (
+        String(key).startsWith(prefix) ||
+        (kind === 'ai' && String(key).startsWith('ai-conversations:'))
+      )
+        await settings.delete(key);
     if (kind === 'history') await tx.objectStore('recoveries').clear();
     await tx.done;
   } catch (error) {
@@ -102,6 +106,17 @@ export async function saveAITasks(projectId: string, tasks: import('../core/ai')
   if (JSON.stringify(tasks).length > 12_000_000)
     throw new Error('AI 记录超过 12 MB，请导出项目并在新项目中继续。现有恢复记录仍保留。');
   await (await database()).put('settings', tasks, 'ai:' + projectId);
+}
+export async function loadAIConversations(
+  projectId: string,
+): Promise<import('../core/ai').AIConversations | undefined> {
+  return (await database()).get('settings', 'ai-conversations:' + projectId);
+}
+export async function saveAIConversations(
+  projectId: string,
+  value: import('../core/ai').AIConversations,
+) {
+  await (await database()).put('settings', value, 'ai-conversations:' + projectId);
 }
 export async function commitAIProject(
   current: Project,
@@ -244,7 +259,7 @@ export async function permanentlyDeleteStoredProject(id: string) {
   const settings = tx.objectStore('settings');
   for (const key of await settings.getAllKeys()) {
     if (
-      ['history:', 'ai:', 'cover:', 'folder:'].some((p) => key === p + id) ||
+      ['history:', 'ai:', 'ai-conversations:', 'cover:', 'folder:'].some((p) => key === p + id) ||
       String(key).startsWith('backup:' + id + ':')
     )
       await settings.delete(key);

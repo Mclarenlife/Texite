@@ -130,3 +130,41 @@ test('desktop API sends only chat messages, streams results and can be cancelled
     await new Promise((r) => server.close(r));
   }
 });
+
+test('multiple API profiles keep secrets isolated through switching, endpoint changes and reopen', async () => {
+  const directory = await fs.mkdtemp(path.resolve('.qa/chat-profiles-'));
+  const secure = {
+    isEncryptionAvailable: () => true,
+    encryptString: (s) => Buffer.from(s.split('').reverse().join('')),
+    decryptString: (b) => b.toString().split('').reverse().join(''),
+  };
+  const chat = new client.ChatClient(directory, secure, () => {});
+  const a = await chat.save({
+    id: '',
+    name: 'A',
+    baseURL: 'https://a.test/v1',
+    model: 'a',
+    apiKey: 'secret-a',
+  });
+  const b = await chat.save({
+    id: '',
+    name: 'B',
+    baseURL: 'https://b.test/v1',
+    model: 'b',
+    apiKey: 'secret-b',
+  });
+  assert.notEqual(a.id, b.id);
+  assert.equal((await chat.list()).length, 2);
+  await chat.select(a.id);
+  assert.equal((await chat.load()).apiKey, 'secret-a');
+  const reopened = new client.ChatClient(directory, secure, () => {});
+  assert.equal((await reopened.get()).id, a.id);
+  await reopened.select(b.id);
+  assert.equal((await reopened.load()).apiKey, 'secret-b');
+  await reopened.save({ ...b, apiKey: '', baseURL: 'https://changed.test/v1' });
+  assert.equal((await reopened.get()).hasKey, false);
+  await reopened.select(a.id);
+  assert.equal((await reopened.load()).apiKey, 'secret-a');
+  assert(!JSON.stringify(await reopened.list()).includes('secret-a'));
+  assert(!(await fs.readFile(path.join(directory, 'chat.json'), 'utf8')).includes('secret-'));
+});

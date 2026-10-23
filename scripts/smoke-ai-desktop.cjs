@@ -19,15 +19,15 @@ const path = require('node:path');
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
-    await page.getByRole('button', { name: '连接本机 Codex', exact: true }).click();
-    await expect(page.getByText('已连接本机 Codex')).toBeVisible({ timeout: 60000 });
+    await page.getByRole('button', { name: '连接 Agent CLI', exact: true }).click();
+    await expect(page.getByText('Agent CLI · 已连接')).toBeVisible({ timeout: 60000 });
     await page.getByRole('combobox', { name: 'AI 模型' }).click();
     const models = await page.getByRole('option').count();
     await page.keyboard.press('Escape');
     expect(models).toBeGreaterThan(0);
     // Hide account details before saving a screenshot of the actual Electron view.
     await page
-      .getByLabel('发送给 Codex 的指令')
+      .getByLabel('发送给 Agent CLI 的指令')
       .fill('请检查当前文稿的公式与引用，并修复编译错误。');
     await page.screenshot({ path: path.join(directory, 'desktop-ai.png') });
     expect(errors).toEqual([]);

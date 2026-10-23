@@ -582,3 +582,112 @@
 .ai-help [role='tooltip'] {
   font-size: calc(12px * var(--ui-font-scale, 1));
 }
+.ai-panel {
+  container-type: inline-size;
+}
+.ai-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px;
+}
+.ai-response-label .ai-provider-name {
+  margin-left: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+.ai-heading .ai-mode-tabs {
+  justify-self: center;
+  margin: 0;
+}
+.ai-heading .ai-window-actions {
+  justify-self: end;
+}
+.ai-heading > span {
+  gap: 6px;
+}
+.ai-heading .ai-mode-tabs button {
+  padding: 6px 10px;
+}
+.ai-toolbar {
+  gap: 5px;
+}
+.ai-history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  padding: 7px 6px;
+  border-radius: 7px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  white-space: nowrap;
+}
+.ai-history-toggle:hover,
+.ai-history-toggle[aria-expanded='true'] {
+  background: var(--tint);
+}
+.ai-conversation-list {
+  flex: 0 0 auto;
+  max-height: 240px;
+  overflow: auto;
+  margin: 0 14px 10px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+}
+.ai-conversation-list > p {
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ai-conversation-list > button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+  background: transparent;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.ai-conversation-list > button:hover,
+.ai-conversation-list > button[aria-current='true'] {
+  background: var(--tint);
+}
+.ai-conversation-list span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-conversation-list time {
+  color: var(--muted);
+  font-size: 10px;
+}
+.ai-context {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ai-context .ai-selection-range {
+  color: var(--accent);
+  background: var(--tint);
+  border-radius: 4px;
+  padding: 2px 5px;
+  margin-right: auto;
+  font-variant-numeric: tabular-nums;
+}
+.ai-context > span:nth-child(2) {
+  flex: 0 1 auto;
+}
+.api-settings .select-trigger {
+  max-width: 100%;
+}
+@container (max-width: 420px) {
+  .ai-heading strong {
+    display: none;
+  }
+}

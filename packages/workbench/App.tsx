@@ -1085,6 +1085,7 @@ export function App() {
   }
   const ai = useAI({
     projectId: project?.id,
+    getSelection: () => editor.current?.scope(),
     getProject: () => projectRef.current,
     getContext: () =>
       JSON.stringify({
@@ -2139,6 +2140,7 @@ export function App() {
                 focusAgent={inlineRun}
                 projectName={project.name}
                 activeFile={project.activeFile}
+                selection={editor.current?.scope()}
                 onClose={() => setAiOpen(false)}
               />
             )}
