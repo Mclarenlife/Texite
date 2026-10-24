@@ -21,6 +21,7 @@ on:
       - 'scripts/smoke-agent-workspace.cjs'
       - 'scripts/smoke-ai-history-desktop.cjs'
       - 'scripts/smoke-sync-desktop.cjs'
+      - 'scripts/smoke-project-actions-desktop.cjs'
       - 'scripts/smoke-navigation-desktop.cjs'
       - 'tests/offline-compatibility.test.mjs'
       - 'tests/fixtures/offline/**'

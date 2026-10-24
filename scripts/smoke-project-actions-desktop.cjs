@@ -97,6 +97,7 @@ const path = require('node:path');
       ready: false,
       progress: 0,
       error: '',
+      directory: path.join(base, 'profile', 'updates'),
     });
     expect(errors).toEqual([]);
     console.log(
