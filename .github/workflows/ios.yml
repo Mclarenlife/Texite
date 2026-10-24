@@ -17,7 +17,8 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: tex-cache
         with:
           path: |
             .tools/android-busytex
@@ -26,6 +27,14 @@ jobs:
           key: mobile-tex-2023-2025-v1
       - run: pnpm runtime:prepare
       - run: pnpm android:runtime
+      - uses: actions/cache/save@v4
+        if: steps.tex-cache.outputs.cache-hit != 'true'
+        with:
+          path: |
+            .tools/android-busytex
+            .tools/tl2025
+            .tools/texlive-2025.tlpdb.xz
+          key: mobile-tex-2023-2025-v1
       - run: pnpm build:ios
       - run: gem install xcodeproj --user-install --no-document
       - run: ruby scripts/configure-ios-tests.rb
@@ -50,6 +59,12 @@ jobs:
         run: |
           for RESULT in release/ios/*.xcresult; do
             xcrun xcresulttool export attachments --path "$RESULT" --output-path "${RESULT%.xcresult}-screenshots" || true
+          done
+      - name: Show failure diagnostics
+        if: failure()
+        run: |
+          for LOG in ios-build.log ios-test.log ios-ipad-test.log; do
+            if [ -f "$LOG" ]; then tail -n 100 "$LOG"; fi
           done
       - uses: actions/upload-artifact@v4
         if: always()

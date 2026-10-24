@@ -11,12 +11,23 @@ public class TexiteFilesPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDel
         CAPPluginMethod(name: "readProjects", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "saveProject", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "exportFile", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "importZip", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "importZip", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setAppearance", returnType: CAPPluginReturnPromise)
     ]
     private let io = DispatchQueue(label: "com.texite.ios.project-files")
     private var pickerCall: CAPPluginCall?
     private var importing = false
     private var exportDirectory: URL?
+
+    @objc func setAppearance(_ call: CAPPluginCall) {
+        let theme = call.getString("theme") ?? "system"
+        DispatchQueue.main.async {
+            let style: UIUserInterfaceStyle = theme == "dark" ? .dark : theme == "light" ? .light : .unspecified
+            self.bridge?.viewController?.view.window?.overrideUserInterfaceStyle = style
+            self.bridge?.viewController?.setNeedsStatusBarAppearanceUpdate()
+            call.resolve()
+        }
+    }
 
     private func directory() throws -> URL {
         let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)

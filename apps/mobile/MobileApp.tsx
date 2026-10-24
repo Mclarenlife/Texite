@@ -39,6 +39,7 @@ import { usePreference } from '../../packages/ui/preferences';
 import { compileOffline, type MobileCompileResult } from './compiler';
 import { useMobileViewport } from './useMobileViewport';
 import {
+  applyNativeAppearance,
   chooseIOSProject,
   isIOS,
   mobilePlatformName,
@@ -109,6 +110,7 @@ export function MobileApp() {
     return () => window.removeEventListener('mobile-error', report);
   }, []);
   useEffect(() => {
+    void applyNativeAppearance(theme).catch((e) => setNotice(message(e)));
     const media = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       document.documentElement.dataset.theme =

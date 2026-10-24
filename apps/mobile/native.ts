@@ -4,6 +4,7 @@ import { validateProject } from '../../packages/core/model';
 import { saveProject, loadProjects, exportZip, download } from '../../packages/platform/storage';
 
 const native = registerPlugin<{
+  setAppearance(options: { theme: string }): Promise<void>;
   importZip(): Promise<{ cancelled?: boolean; name?: string; base64?: string }>;
   readProjects(): Promise<{ projects: Project[] }>;
   background(): Promise<void>;
@@ -19,6 +20,9 @@ export const isAndroid = Capacitor.getPlatform() === 'android';
 export const isIOS = Capacitor.getPlatform() === 'ios';
 export const isNativeMobile = isAndroid || isIOS;
 export const mobilePlatformName = isIOS ? 'iOS' : isAndroid ? 'Android' : 'Mobile';
+export async function applyNativeAppearance(theme: string) {
+  if (isIOS) await native.setAppearance({ theme });
+}
 export async function chooseIOSProject(): Promise<File | undefined> {
   const selected = await native.importZip();
   if (selected.cancelled) return;
