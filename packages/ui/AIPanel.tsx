@@ -94,7 +94,20 @@ export function AIPanel({
       (t.conversationId || 'legacy-' + (t.mode || 'agent')) === ai.conversations.selected[mode],
   );
   useEffect(() => {
-    const resize = () => setPosition(null);
+    const resize = () => {
+      setPosition(null);
+      setWindowSize((size) =>
+        size
+          ? {
+              width: Math.min(size.width, window.innerWidth - 24),
+              height: Math.min(
+                size.height,
+                window.innerHeight - (window.innerHeight <= 650 ? 32 : 110),
+              ),
+            }
+          : null,
+      );
+    };
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
@@ -153,7 +166,14 @@ export function AIPanel({
       className={'ai-panel' + (minimized ? ' ai-minimized' : '')}
       aria-label="AI 助手"
       style={{
-        ...(position ? { left: position.x, top: position.y, right: 'auto' } : {}),
+        ...(position
+          ? {
+              left: position.x,
+              top: position.y,
+              right: 'auto',
+              ...(windowSize ? { maxHeight: `calc(100vh - ${position.y + 8}px)` } : {}),
+            }
+          : {}),
         ...(windowSize && !minimized ? windowSize : {}),
       }}
     >

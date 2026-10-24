@@ -729,7 +729,6 @@
 }
 
 .ai-panel:has(.ai-resize-edge) {
-  max-height: calc(100vh - 16px);
   max-width: calc(100vw - 16px);
 }
 .ai-resize-edge {
