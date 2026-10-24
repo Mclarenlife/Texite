@@ -104,6 +104,14 @@ async function setup(page: Page) {
         start: async (input) => {
           run = input;
           state.run = input;
+          if (input.prompt === 'markdown') {
+            emit('text', {
+              delta:
+                '# 标题\n\n**强调** 和 `code`\n\n- 列表项\n\n| 列 A | 列 B |\n| --- | --- |\n| 一 | 二 |\n\n```latex\n\\alpha + \\beta\n```\n\n$$x^2$$\n\n<script>window.pwned = true</script>\n[恶意链接](javascript:alert(1))\n![图片](https://invalid.example/pixel.png)',
+            });
+            emit('done', { status: 'completed' });
+            return;
+          }
           if (input.prompt === 'wait') return;
           tool('texite_read_file', { path: 'main.tex' });
         },
@@ -448,4 +456,53 @@ test('conversation context menu renames persistently and deletes only the confir
   await page.getByRole('button', { name: '对话记录', exact: true }).click();
   await expect(named).toHaveCount(0);
   await expect(page.getByRole('button', { name: '打开对话 新对话', exact: true })).toBeVisible();
+});
+
+test('Agent and chat render Markdown safely, with math, tables and copyable code', async ({
+  page,
+}) => {
+  await setup(page);
+  let remoteImages = 0;
+  page.on('request', (r) => {
+    if (r.url().includes('invalid.example')) remoteImages++;
+  });
+  for (const mode of ['Agent', '对话']) {
+    await page.getByRole('tab', { name: mode, exact: true }).click();
+    await send(page, 'markdown');
+    const reply = page.locator('.ai-reply').last();
+    await expect(reply.getByRole('heading', { name: '标题' })).toBeVisible();
+    await expect(reply.locator('strong')).toHaveText('强调');
+    await expect(reply.locator('table td')).toHaveText(['一', '二']);
+    await expect(reply.locator('pre code')).toContainText('alpha');
+    await expect(reply.locator('.katex')).toHaveCount(1);
+    await expect(reply.getByRole('button', { name: '复制代码' })).toBeVisible();
+    await expect(reply.locator('a[href^="javascript:"]')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).pwned)).toBeUndefined();
+  }
+  expect(remoteImages).toBe(0);
+  await page.screenshot({ path: '.qa/ai-markdown.png', animations: 'disabled' });
+});
+
+test('AI floating window responds to every edge and corner', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await setup(page);
+  const panel = page.locator('.ai-panel');
+  for (const edge of ['n', 's', 'w', 'e', 'nw', 'ne', 'sw', 'se']) {
+    const handle = page.locator('.ai-resize-' + edge),
+      box = (await handle.boundingBox())!;
+    const before = (await panel.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      box.x + box.width / 2 + (edge.includes('w') ? -12 : 12),
+      box.y + box.height / 2 + (edge.includes('n') ? -12 : 12),
+    );
+    await page.mouse.up();
+    const after = (await panel.boundingBox())!;
+    expect(
+      Math.abs(after.width - before.width) + Math.abs(after.height - before.height),
+    ).toBeGreaterThan(0);
+    expect(after.x).toBeGreaterThanOrEqual(8);
+    expect(after.y).toBeGreaterThanOrEqual(8);
+  }
 });

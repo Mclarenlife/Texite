@@ -457,27 +457,7 @@
 .ai-help:focus-visible [role='tooltip'] {
   display: block;
 }
-.ai-resize-handle {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 22px;
-  height: 22px;
-  cursor: nwse-resize;
-  touch-action: none;
-}
-.ai-resize-handle::after {
-  content: '';
-  position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 7px;
-  height: 7px;
-  border-right: 2px solid var(--secondary);
-  border-bottom: 2px solid var(--secondary);
-  opacity: 0.5;
-  border-radius: 1px;
-}
+
 .ai-resize-handle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -3px;
@@ -746,4 +726,166 @@
 }
 .ai-idle-setting > button {
   min-width: 100px;
+}
+
+.ai-panel:has(.ai-resize-edge) {
+  max-width: calc(100vw - 16px);
+}
+.ai-resize-edge {
+  position: absolute;
+  z-index: 12;
+  touch-action: none;
+}
+.ai-resize-n,
+.ai-resize-s {
+  left: 12px;
+  right: 12px;
+  height: 7px;
+  cursor: ns-resize;
+}
+.ai-resize-n {
+  top: 0;
+}
+.ai-resize-s {
+  bottom: 0;
+}
+.ai-resize-w,
+.ai-resize-e {
+  top: 12px;
+  bottom: 12px;
+  width: 7px;
+  cursor: ew-resize;
+}
+.ai-resize-w {
+  left: 0;
+}
+.ai-resize-e {
+  right: 0;
+}
+.ai-resize-nw,
+.ai-resize-ne,
+.ai-resize-sw,
+.ai-resize-se {
+  width: 18px;
+  height: 18px;
+}
+.ai-resize-nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.ai-resize-ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.ai-resize-sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.ai-resize-se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+.ai-markdown {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.ai-markdown > :first-child {
+  margin-top: 0;
+}
+.ai-markdown > :last-child {
+  margin-bottom: 0;
+}
+.ai-markdown p,
+.ai-markdown ul,
+.ai-markdown ol {
+  margin: 0.65em 0;
+}
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4 {
+  font-size: 1.08em;
+  line-height: 1.5;
+  margin: 1.1em 0 0.5em;
+}
+.ai-markdown h1 {
+  font-size: 1.3em;
+}
+.ai-markdown h2 {
+  font-size: 1.18em;
+}
+.ai-markdown ul,
+.ai-markdown ol {
+  padding-left: 1.5em;
+}
+.ai-markdown blockquote {
+  margin: 0.8em 0;
+  border-left: 3px solid var(--line);
+  padding: 0.1em 1em;
+  color: var(--secondary);
+}
+.ai-markdown a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.ai-markdown code {
+  font-family: var(--editor-font, monospace);
+  font-size: 0.92em;
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 0.12em 0.3em;
+}
+.ai-code-block {
+  position: relative;
+  margin: 0.8em 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+.ai-code-block > button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: var(--surface);
+}
+.ai-code-block pre {
+  margin: 0;
+  padding: 30px 12px 12px;
+  overflow-x: auto;
+  white-space: pre;
+}
+.ai-code-block pre code {
+  background: none;
+  padding: 0;
+}
+.ai-table-scroll,
+.ai-markdown .katex-display {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.ai-markdown table {
+  border-collapse: collapse;
+  font-size: 0.94em;
+  width: 100%;
+}
+.ai-markdown th,
+.ai-markdown td {
+  border-bottom: 1px solid var(--line);
+  padding: 7px 10px;
+  text-align: left;
+}
+.ai-markdown th {
+  background: var(--bg);
+}
+.ai-markdown hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1em 0;
 }

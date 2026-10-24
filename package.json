@@ -1,6 +1,6 @@
 {
   "name": "texite",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "private": true,
   "description": "A local-first LaTeX writing studio for the web, Windows and macOS.",
   "type": "module",
@@ -47,7 +47,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
     },
     "electronDist": "node_modules/electron/dist",
     "npmRebuild": false,
@@ -90,6 +91,10 @@
     "prettier": "3.9.10",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vite": "8.3.4"

@@ -27,6 +27,13 @@ contextBridge.exposeInMainWorld('texite', {
     ipcRenderer.on('window:request-close', handler);
     return () => ipcRenderer.removeListener('window:request-close', handler);
   },
+  aiHistory: {
+    read: (id) => ipcRenderer.invoke('ai-history:read', id),
+    update: (id, patch) => ipcRenderer.invoke('ai-history:update', id, patch),
+    directory: () => ipcRenderer.invoke('ai-history:get-directory'),
+    choose: () => ipcRenderer.invoke('ai-history:choose'),
+    clear: () => ipcRenderer.invoke('ai-history:clear'),
+  },
   storage: {
     clearSyncBackups: () => ipcRenderer.invoke('storage:clear-sync-backups'),
     get: () => ipcRenderer.invoke('storage:get'),

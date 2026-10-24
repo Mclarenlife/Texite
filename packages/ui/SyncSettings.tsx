@@ -1,3 +1,4 @@
+import { migrateAIHistories } from '../platform/storage';
 import { useEffect, useState } from 'react';
 import { Cloud, FolderOpen, RefreshCw } from 'lucide-react';
 import type { Project, WebDAVConfig } from '../core/model';
@@ -16,6 +17,7 @@ export function SyncSettings({
   const [url, setUrl] = useState(''),
     [username, setUsername] = useState(''),
     [password, setPassword] = useState('');
+  const [aiRoot, setAIRoot] = useState('');
   const [root, setRoot] = useState(''),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(''),
@@ -44,6 +46,7 @@ export function SyncSettings({
       setUrl(next.url);
       setUsername(next.username);
       setRoot(await window.texite!.storage!.get());
+      setAIRoot((await window.texite?.aiHistory?.directory()) || '');
     });
   }, []);
   if (!api)
@@ -134,8 +137,9 @@ export function SyncSettings({
         <details className="sync-details">
           <summary>同步方式与存储说明</summary>
           <p className="settings-note">
-            项目存入服务地址下的 Texite 目录，使用 .texite.json
-            快照（含源码和图片）。项目空间顶部可拉取云端项目，选中项目可上传；侧栏同步按钮执行双向同步。双方修改冲突时保留独立副本。更换账号或服务地址会清除本机同步关联。
+            项目存入服务地址下的 Texite 目录，使用 .texite.json 快照（含源码、图片和 AI
+            对话及修改记录，不包含 API 密钥和 CLI
+            登录信息）。项目空间顶部可拉取云端项目，选中项目可上传；侧栏同步按钮执行双向同步。双方修改冲突时保留独立副本。更换账号或服务地址会清除本机同步关联。
           </p>
         </details>
       </section>
@@ -206,6 +210,41 @@ export function SyncSettings({
           </button>
         </div>
       </section>
+      {window.texite?.aiHistory && (
+        <section className="sync-storage-card">
+          <div className="settings-section-heading">
+            <h3>AI 对话数据位置</h3>
+          </div>
+          <div className="storage-path">
+            <span title={aiRoot}>{aiRoot || '正在读取…'}</span>
+            <button
+              className="secondary-button"
+              disabled={busy}
+              onClick={() =>
+                void action(async () => {
+                  await migrateAIHistories();
+                  const next = await window.texite!.aiHistory!.choose();
+                  if (next) {
+                    setAIRoot(next);
+                    setMessage('AI 记录已复制到新目录，原目录保留为备份。');
+                  }
+                })
+              }
+            >
+              <FolderOpen size={15} />
+              更改数据目录
+            </button>
+          </div>
+          <p className="settings-note">
+            Agent
+            与对话记录独立存储，正常覆盖安装或卸载保留用户数据时不会清除。更换目录会迁移已有记录并保留原副本；请勿选择应用安装目录。
+          </p>
+          <p className="settings-note">
+            云端项目同步时包含 AI 记录。参与同步的设备均需使用 0.11 或更高版本。API
+            密钥和登录状态仅保留在本机。
+          </p>
+        </section>
+      )}
       {message && (
         <p role="status" className="settings-note">
           {message}

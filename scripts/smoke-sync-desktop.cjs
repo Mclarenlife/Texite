@@ -83,7 +83,12 @@ const crypto = require('node:crypto');
     await page.getByRole('button', { name: '保存设置', exact: true }).click();
     await expect(page.locator('.sync-settings [role="status"]')).toHaveText('设置已保存。');
     await page.getByRole('button', { name: '更改目录' }).click();
-    await expect(page.locator('.storage-path')).toContainText(destination);
+    await expect(
+      page
+        .locator('.sync-storage-card')
+        .filter({ has: page.getByRole('heading', { name: '项目保存位置', exact: true }) })
+        .locator('.storage-path'),
+    ).toContainText(destination);
     await page.getByRole('button', { name: '迁移当前项目到此目录' }).click();
     await expect(page.locator('.sync-settings [role="status"]')).toHaveText(
       '当前项目已迁移到所选目录，原目录保留为备份。',

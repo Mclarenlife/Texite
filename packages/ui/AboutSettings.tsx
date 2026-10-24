@@ -57,7 +57,18 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         <section>
           <h4>
             {packageInfo.version}
-            <time>2026.10.23</time>
+            <time>2026.10.24</time>
+          </h4>
+          <ul>
+            <li>Agent 与对话回复支持 Markdown、表格、代码块复制和数学公式。</li>
+            <li>AI 助手可从任意边或角调整窗口大小。</li>
+            <li>AI 对话记录独立保存，可更改数据目录，并随云端项目同步。</li>
+            <li>关于页显示更新安装包下载位置及清理说明。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.10.0<time>2026.10.23</time>
           </h4>
           <ul>
             <li>AI 连接状态精简为「已连接」，对话记录支持右键重命名和单条删除。</li>
