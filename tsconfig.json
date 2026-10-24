@@ -14,5 +14,13 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["packages", "apps/web", "vite.config.ts", "tests/*.ts", "playwright.config.ts"]
+  "include": [
+    "packages",
+    "apps/web",
+    "apps/mobile",
+    "capacitor.config.ts",
+    "vite.config.ts",
+    "tests/*.ts",
+    "playwright.config.ts"
+  ]
 }

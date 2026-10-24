@@ -15,6 +15,10 @@
     "test": "tsx --test tests/*.test.ts && node --test tests/*.test.mjs",
     "test:e2e": "playwright test",
     "check": "tsc --noEmit",
+    "dev:android": "vite --mode android --host 127.0.0.1 --port 5182",
+    "build:android": "tsc --noEmit && vite build --mode android && cap sync android",
+    "android:runtime": "python scripts/prepare-android-runtime.py",
+    "dist:android": "pnpm build:android && node scripts/package-android.mjs",
     "package": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --dir --publish never",
     "dist:win": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --win nsis --publish never",
     "dist:mac": "pnpm runtime:verify && pnpm build && install-electron && electron-builder --mac dmg --publish never",
@@ -65,6 +69,9 @@
     ]
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
     "@codemirror/autocomplete": "6.20.3",
     "@codemirror/commands": "6.11.1",
     "@codemirror/language": "6.13.1",

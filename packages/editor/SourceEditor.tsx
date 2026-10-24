@@ -40,6 +40,7 @@ export type EditorHandle = {
   scope: () => InlineScope | undefined;
 };
 type Props = {
+  nativeSelection?: boolean;
   readOnly?: boolean;
   projectId: string;
   file: ProjectFile;
@@ -174,12 +175,14 @@ export const SourceEditor = forwardRef<EditorHandle, Props>(function SourceEdito
       localizedSearch,
       EditorView.domEventHandlers({
         mouseup(event, v) {
+          if (current.current.nativeSelection) return false;
           if (event.button === 0)
             requestAnimationFrame(() => {
               if (view.current === v && v.hasFocus) openTools(v, false);
             });
         },
         contextmenu(event, v) {
+          if (current.current.nativeSelection) return false;
           event.preventDefault();
           const pos = v.posAtCoords({ x: event.clientX, y: event.clientY });
           const sel = v.state.selection.main;

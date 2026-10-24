@@ -1,0 +1,31 @@
+name: Package Android alpha
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm runtime:prepare
+      - run: pnpm android:runtime
+      - run: pnpm build:android
+      - run: pnpm exec playwright install chromium --with-deps
+      - run: pnpm exec playwright test -c playwright.android.config.ts
+      - run: chmod +x apps/android/gradlew && node scripts/package-android.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Texite-Android-alpha
+          path: release/android/*.apk

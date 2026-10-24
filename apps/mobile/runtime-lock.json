@@ -1,0 +1,15 @@
+{
+  "tag": "build_wasm_4499aa69fd3cf77ad86a47287d9a5193cf5ad993_7936974349_1",
+  "assets": {
+    "busytex.js": "f381d9ba816d9a4389d429f54fe85f13396aa2f822973d9b66e1f527ced3434b",
+    "busytex.wasm": "a7785b59bfddb8667e7738443f111430e3ee2bd3ec0c1c26629267849e091415",
+    "busytex_pipeline.js": "f8741cfd1fb0ac3c11daeee8386bc024f59d8b14c3000ad64b9c00dce7d61265",
+    "texlive-basic.data": "c955651ca293f09b2e57d6360fa2cb61ad710b4ae51e9fbc04b049477a8aeb71",
+    "texlive-basic.js": "23cc4ce427d27d555fe2a050b97ff8c95bb331425018e9159130e74b62373ff1",
+    "ubuntu-texlive-latex-extra.data": "fb4dc0440f4b2bd2d5138dbb5689e6a33cd20c9704934422436cb97af5d623c4",
+    "ubuntu-texlive-latex-extra.js": "a99a68b79e6a93f3ca9d94f46afe8a62e7e06b6d4c5e90a705ec15fc42d8ecda",
+    "ubuntu-texlive-latex-recommended.data": "fa9a03f928a0af0e9c5a24e2ce2956e64db9d580dd2c3a7517176aac16dc9006",
+    "ubuntu-texlive-latex-recommended.js": "bbd975921a74adae9119988ae8a740ca9f4837db772061d313c67729fba1d9ee",
+    "versions.txt": "bb4c0babeb41ae2e5bff11b476fb0dacbadd2a616dbde4de4bf3dd0e6859d299"
+  }
+}

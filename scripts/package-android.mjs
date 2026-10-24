@@ -1,0 +1,15 @@
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+const root = process.cwd();
+const env = { ...process.env };
+if (!env.JAVA_HOME && fs.existsSync('.tools/android-jdk')) env.JAVA_HOME = path.resolve('.tools/android-jdk', fs.readdirSync('.tools/android-jdk').find(name => name.startsWith('jdk-')));
+if (!env.ANDROID_HOME && fs.existsSync('.tools/android-sdk')) env.ANDROID_HOME = path.resolve('.tools/android-sdk');
+env.GRADLE_USER_HOME ||= path.join(root, '.tools/gradle');
+if (!env.JAVA_HOME || !env.ANDROID_HOME) throw new Error('Set JAVA_HOME (JDK 21) and ANDROID_HOME (SDK 36).');
+const result = spawnSync(process.platform === 'win32' ? 'gradlew.bat' : './gradlew', ['assembleDebug', '--no-daemon'], { cwd: 'apps/android', env, shell: process.platform === 'win32', stdio: 'inherit' });
+if (result.status !== 0) process.exit(result.status || 1);
+fs.mkdirSync('release/android', { recursive: true });
+const output = 'release/android/Texite-0.1.0-alpha.1-debug.apk';
+fs.copyFileSync('apps/android/app/build/outputs/apk/debug/app-debug.apk', output);
+console.log(path.resolve(output));

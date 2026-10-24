@@ -13,3 +13,11 @@ output/
 !.env.example
 .DS_Store
 Thumbs.db
+dist-mobile/
+public/android-tex/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/**/build/
+apps/android/app/src/main/assets/public/
+apps/android/app/src/main/assets/capacitor.config.json
+apps/android/app/src/main/assets/capacitor.plugins.json

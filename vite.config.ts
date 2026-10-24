@@ -32,13 +32,63 @@ function pdfResources() {
   };
 }
 
-export default defineConfig({
-  plugins: [react(), pdfResources()],
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    react(),
+    pdfResources(),
+    ...(mode === 'android'
+      ? [
+          {
+            name: 'android-offline-assets',
+            configureServer(server: import('vite').ViteDevServer) {
+              server.middlewares.use((request, response, next) => {
+                const name = (request.url || '').split('?')[0];
+                if (!name.startsWith('/android-tex/')) return next();
+                const root = path.resolve('.tools/android-runtime');
+                const target = path.resolve(root, name.slice('/android-tex/'.length));
+                if (
+                  !target.startsWith(root + path.sep) ||
+                  !fs.existsSync(target) ||
+                  !fs.statSync(target).isFile()
+                ) {
+                  response.statusCode = 404;
+                  response.end();
+                  return;
+                }
+                response.setHeader(
+                  'Content-Type',
+                  target.endsWith('.wasm')
+                    ? 'application/wasm'
+                    : target.endsWith('.js')
+                      ? 'text/javascript'
+                      : target.endsWith('.json')
+                        ? 'application/json'
+                        : 'application/octet-stream',
+                );
+                fs.createReadStream(target).pipe(response);
+              });
+            },
+            closeBundle() {
+              if (!fs.existsSync('.tools/android-runtime/busytex.wasm'))
+                throw new Error('Run android:runtime first.');
+              fs.cpSync('.tools/android-runtime', 'dist-mobile/android-tex', { recursive: true });
+              fs.copyFileSync('dist-mobile/android.html', 'dist-mobile/index.html');
+            },
+          },
+        ]
+      : []),
+  ],
   base: './',
   server: {
     port: 5173,
     strictPort: true,
     watch: { ignored: ['**/.qa/**', '**/.tools/**', '**/runtime/**', '**/release/**'] },
   },
-  build: { target: 'es2022', chunkSizeWarningLimit: 1000 },
-});
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 1000,
+    ...(mode === 'android'
+      ? { outDir: 'dist-mobile', rollupOptions: { input: 'android.html' } }
+      : {}),
+  },
+}));

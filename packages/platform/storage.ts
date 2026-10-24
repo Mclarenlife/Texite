@@ -456,7 +456,12 @@ export async function importZip(file: File): Promise<Project> {
     updatedAt: Date.now(),
   });
 }
+let nativeDownload: ((blob: Blob, name: string) => void) | undefined;
+export function setNativeDownload(handler: (blob: Blob, name: string) => void) {
+  nativeDownload = handler;
+}
 export function download(blob: Blob, name: string) {
+  if (nativeDownload) { nativeDownload(blob, name); return; }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
