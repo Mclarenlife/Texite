@@ -31,7 +31,10 @@ final class TexiteUITests: XCTestCase {
         let project = app.webViews.buttons.matching(NSPredicate(format: "label CONTAINS %@", "iOS Offline")).firstMatch
         XCTAssertTrue(project.waitForExistence(timeout: 30))
         project.tap()
-        app.webViews.buttons["预览"].tap()
+        // WebKit exposes aria-pressed buttons as toggle controls on iOS.
+        let preview = app.webViews.descendants(matching: .any).matching(identifier: "预览").firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 15))
+        preview.tap()
         XCTAssertTrue(app.webViews.descendants(matching: .any).matching(identifier: "PDF 第 1 页").firstMatch.waitForExistence(timeout: 30))
         app.webViews.buttons["导出"].tap()
         // UIDocumentPicker is a system view, separate from the web workspace.
