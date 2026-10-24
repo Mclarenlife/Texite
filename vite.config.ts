@@ -33,6 +33,19 @@ function pdfResources() {
 }
 
 export default defineConfig(({ mode }) => ({
+  resolve: {
+    // Mobile OS WebViews may lack APIs used by the current generic PDF.js build.
+    // Keep its matching worker and main-thread compatibility builds together.
+    alias: ['android', 'ios'].includes(mode)
+      ? [
+          { find: /^pdfjs-dist$/, replacement: path.join(pdfjs, 'legacy/build/pdf.mjs') },
+          {
+            find: /^pdfjs-dist\/build\/pdf\.worker\.min\.mjs(\?url)?$/,
+            replacement: path.join(pdfjs, 'legacy/build/pdf.worker.min.mjs') + '$1',
+          },
+        ]
+      : [],
+  },
   plugins: [
     react(),
     pdfResources(),
@@ -72,7 +85,9 @@ export default defineConfig(({ mode }) => ({
               if (!fs.existsSync('.tools/android-runtime/busytex.wasm'))
                 throw new Error('Run android:runtime first.');
               const destination = mode === 'ios' ? 'dist-ios' : 'dist-mobile';
-              fs.cpSync('.tools/android-runtime', destination + '/android-tex', { recursive: true });
+              fs.cpSync('.tools/android-runtime', destination + '/android-tex', {
+                recursive: true,
+              });
               fs.copyFileSync(destination + '/android.html', destination + '/index.html');
             },
           },
@@ -89,7 +104,10 @@ export default defineConfig(({ mode }) => ({
     target: 'es2022',
     chunkSizeWarningLimit: 1000,
     ...(['android', 'ios'].includes(mode)
-      ? { outDir: mode === 'ios' ? 'dist-ios' : 'dist-mobile', rollupOptions: { input: 'android.html' } }
+      ? {
+          outDir: mode === 'ios' ? 'dist-ios' : 'dist-mobile',
+          rollupOptions: { input: 'android.html' },
+        }
       : {}),
   },
 }));

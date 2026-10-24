@@ -2,6 +2,18 @@ import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+test.beforeEach(async ({ page, browserName }) => {
+  if (browserName === 'webkit') {
+    // Exercise the compatibility bundle even when the local WebKit is newer
+    // than the WKWebView supplied by an iPhone's operating system.
+    await page.addInitScript(() => {
+      for (const proto of [Map.prototype, WeakMap.prototype]) {
+        Reflect.deleteProperty(proto, 'getOrInsertComputed');
+        Reflect.deleteProperty(proto, 'getOrInsert');
+      }
+    });
+  }
+});
 test('Android workspace edits, persists, imports and compiles Chinese fully offline', async ({
   page,
   context,
@@ -26,6 +38,8 @@ test('Android workspace edits, persists, imports and compiles Chinese fully offl
     .getByRole('button', { name: '停止', exact: true })
     .waitFor({ state: 'hidden', timeout: 130_000 });
   await expect(page.locator('.texite-text-layer')).toContainText('离线中文文稿');
+  await expect(page.getByLabel('PDF 第 1 页', { exact: true })).toBeVisible();
+  await expect(page.locator('.page-error')).toHaveCount(0);
   await expect(page.getByRole('tab', { name: /编译诊断/ })).toContainText('0');
   await page.screenshot({ path: '.qa/android-phone.png' });
   await page.getByRole('button', { name: '文件', exact: true }).click();

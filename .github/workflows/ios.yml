@@ -56,10 +56,7 @@ jobs:
           xcodebuild -project apps/ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath .tools/ios-build -resultBundlePath release/ios/iPad-tests.xcresult CODE_SIGNING_ALLOWED=NO test > ios-ipad-test.log 2>&1
       - name: Export simulator screenshots
         if: always()
-        run: |
-          for RESULT in release/ios/*.xcresult; do
-            xcrun xcresulttool export attachments --path "$RESULT" --output-path "${RESULT%.xcresult}-screenshots" || true
-          done
+        run: python3 scripts/export-ios-test-screenshots.py
       - name: Show failure diagnostics
         if: failure()
         run: |
@@ -71,7 +68,10 @@ jobs:
         with:
           name: Texite-iOS-simulator-alpha
           path: |
-            release/ios/
+            release/ios/*.zip
+            release/ios/*.json
+            release/ios/*.txt
+            release/ios/screenshots/
             ios-build.log
             ios-test.log
             ios-ipad-test.log

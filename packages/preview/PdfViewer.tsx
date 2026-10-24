@@ -454,6 +454,7 @@ function PdfPage({
 }) {
   const textHolder = useRef<HTMLDivElement>(null);
   const [textReady, setTextReady] = useState(0);
+  const [rendered, setRendered] = useState(false);
   const [boxes, setBoxes] = useState<
     { left: number; top: number; width: number; height: number }[]
   >([]);
@@ -489,6 +490,7 @@ function PdfPage({
     };
   }, [pdf, number]);
   useEffect(() => {
+    setRendered(false);
     if (!near) {
       if (canvas.current) {
         canvas.current.width = 0;
@@ -532,6 +534,7 @@ function PdfPage({
         target.height = Math.ceil(viewport.height * density);
         task = page.render({ canvas: target, viewport, transform: [density, 0, 0, density, 0, 0] });
         await task.promise;
+        if (!disposed) setRendered(true);
       })
       .catch((e) => {
         if (!disposed && e.name !== 'RenderingCancelledException') setError(e.message);
@@ -590,7 +593,7 @@ function PdfPage({
     >
       <canvas
         ref={canvas}
-        aria-label={`PDF 第 ${number} 页`}
+        aria-label={rendered ? `PDF 第 ${number} 页` : `正在渲染 PDF 第 ${number} 页`}
         style={{ width: '100%', height: '100%' }}
       />
       <div className="texite-text-layer" ref={textHolder} />
