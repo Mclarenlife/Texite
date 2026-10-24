@@ -15,13 +15,11 @@ test('project PDF and SVG preview in the editor, Ctrl-wheel zooms only the asset
     '<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500"><rect width="900" height="500" fill="#888"/><circle cx="450" cy="250" r="100" fill="#eee"/></svg>',
   );
   await page.goto('/');
-  await page
-    .locator('input[accept=".zip"]')
-    .setInputFiles({
-      name: 'Assets.zip',
-      mimeType: 'application/zip',
-      buffer: await zip.generateAsync({ type: 'nodebuffer' }),
-    });
+  await page.locator('input[accept=".zip"]').setInputFiles({
+    name: 'Assets.zip',
+    mimeType: 'application/zip',
+    buffer: await zip.generateAsync({ type: 'nodebuffer' }),
+  });
   await page.getByRole('button', { name: 'paper.pdf', exact: true }).click();
   const assetPdf = page.getByRole('region', { name: '项目 PDF 预览', exact: true });
   await expect(assetPdf.locator('canvas')).toHaveCount(1);
@@ -112,7 +110,9 @@ test('AI help and resize, and custom select placement and keyboard inside a moda
   await page.mouse.up();
   const original = await panel.boundingBox();
   expect(original!.x).toBeLessThan(beforeDrag!.x - 100);
-  const handle = await page.getByRole('separator', { name: '调整 AI 窗口大小 · 右下角', exact: true }).boundingBox();
+  const handle = await page
+    .getByRole('separator', { name: '调整 AI 窗口大小 · 右下角', exact: true })
+    .boundingBox();
   await page.mouse.move(handle!.x + 10, handle!.y + 10);
   await page.mouse.down();
   await page.mouse.move(handle!.x + 80, handle!.y + 55, { steps: 8 });

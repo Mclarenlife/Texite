@@ -645,8 +645,8 @@ export function App() {
         setSettingsTab('sync');
         return;
       }
-      if (ai.busy || compileRunning.current || restoreLock.current)
-        throw new Error('请先结束 AI、编译或恢复任务。');
+      if (ai.busy || ai.loading || compileRunning.current || restoreLock.current)
+        throw new Error('请先等待 AI 记录加载、AI 任务、编译或恢复完成。');
       restoreLock.current = true;
       locked = true;
       setRestoreBusy(true);
@@ -2193,7 +2193,7 @@ export function App() {
             </div>
             {aiOpen && (
               <AIPanel
-                ai={ai}
+                ai={{ ...ai, busy: ai.busy || syncBusy || restoreBusy }}
                 focusAgent={inlineRun}
                 projectName={project.name}
                 activeFile={project.activeFile}

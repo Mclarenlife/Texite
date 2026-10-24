@@ -188,6 +188,7 @@ export function useAI(options: Options) {
   const operationQueue = useRef(Promise.resolve());
   const journalQueue = useRef(Promise.resolve());
   const journalPaused = useRef(false);
+  const loadedProject = useRef<string | undefined>(undefined);
   const cleaning = useRef(false);
   const journalTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const aiCompiling = useRef(false);
@@ -200,7 +201,7 @@ export function useAI(options: Options) {
     if (journalPaused.current) return Promise.resolve();
     const id = current.current.projectId,
       snapshot = tasksRef.current;
-    if (!id) return Promise.resolve();
+    if (!id || loadedProject.current !== id) return Promise.resolve();
     const result = journalQueue.current.catch(() => {}).then(() => saveAITasks(id, snapshot));
     journalQueue.current = result;
     result.catch((e) => setError('AI 记录保存失败：' + e.message));
@@ -216,6 +217,7 @@ export function useAI(options: Options) {
   useEffect(() => {
     let disposed = false;
     setLoading(true);
+    loadedProject.current = undefined;
     replace([]);
     setError('');
     if (!options.projectId) {
@@ -241,6 +243,7 @@ export function useAI(options: Options) {
           conversationsRef.current = value;
           setConversations(value);
           replace(saved);
+          loadedProject.current = options.projectId;
           setLoading(false);
         }
       })
@@ -264,7 +267,8 @@ export function useAI(options: Options) {
     setConversations(value);
   }
   async function newConversation(mode: 'agent' | 'chat') {
-    if (busy || loading || active.current || cleaning.current) return;
+    if (current.current.blocked?.() || busy || loading || active.current || cleaning.current)
+      return;
     cleaning.current = true;
     setBusy(true);
     try {
@@ -281,7 +285,8 @@ export function useAI(options: Options) {
     }
   }
   async function selectConversation(id: string) {
-    if (busy || loading || active.current || cleaning.current) return;
+    if (current.current.blocked?.() || busy || loading || active.current || cleaning.current)
+      return;
     const value = conversationsRef.current,
       item = value.items.find((c) => c.id === id);
     if (!item) return;
@@ -314,7 +319,7 @@ export function useAI(options: Options) {
   const inConversation = (t: AITask, id: string) =>
     (t.conversationId || 'legacy-' + (t.mode || 'agent')) === id;
   async function editConversation(id: string, title?: string) {
-    if (busy || loading || active.current || cleaning.current)
+    if (current.current.blocked?.() || busy || loading || active.current || cleaning.current)
       throw new Error('请先结束 AI 任务或等待记录加载。');
     const projectId = current.current.projectId;
     const value = conversationsRef.current;

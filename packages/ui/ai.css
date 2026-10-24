@@ -767,8 +767,8 @@
 .ai-resize-ne,
 .ai-resize-sw,
 .ai-resize-se {
-  width: 12px;
-  height: 12px;
+  width: 18px;
+  height: 18px;
 }
 .ai-resize-nw {
   top: 0;
