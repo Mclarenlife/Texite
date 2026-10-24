@@ -112,7 +112,7 @@ test('AI help and resize, and custom select placement and keyboard inside a moda
   await page.mouse.up();
   const original = await panel.boundingBox();
   expect(original!.x).toBeLessThan(beforeDrag!.x - 100);
-  const handle = await page.getByRole('separator', { name: '调整 AI 窗口大小' }).boundingBox();
+  const handle = await page.getByRole('separator', { name: '调整 AI 窗口大小 · 右下角', exact: true }).boundingBox();
   await page.mouse.move(handle!.x + 10, handle!.y + 10);
   await page.mouse.down();
   await page.mouse.move(handle!.x + 80, handle!.y + 55, { steps: 8 });

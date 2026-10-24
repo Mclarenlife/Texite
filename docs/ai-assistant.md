@@ -101,3 +101,14 @@ AI 记录按项目保存，重启后可以查看和撤回；不会随普通历�
 `node scripts/smoke-ai.cjs` 是显式运行的真实模型测试，使用当前本机登录和额度，仅发送隔离测试文稿，验证读取 → 修改 → 内置中文 pdfLaTeX 编译。不会在普通测试或 CI 中自动调用模型。
 
 协议参考：[官方 app-server 文档](https://learn.chatgpt.com/docs/app-server)、[Codex 作为集成平台](https://developers.openai.com/blog/codex-as-a-platform)。
+
+
+## 0.11 对话显示、保存与同步
+
+Agent 与对话模式均渲染 Markdown（标题、列表、表格、引用、代码块和 `$...$` / `$$...$$` 数学公式），代码可一键复制；窗口可从任意边或角拖动缩放。
+
+桌面旧记录自动迁移到独立用户文件。默认位置为 Windows `%APPDATA%/texite/ai-history` 或 macOS `~/Library/Application Support/texite/ai-history`。设置 → 同步与存储 → AI 对话数据位置可选择其他文件夹，数据复制进其中的 `Texite-AI-data` 子目录，原目录保留为备份。有冲突的记录不会覆盖。正常重装保留用户数据；手动删除用户目录或深度卸载仍可能丢失数据。
+
+关联 WebDAV 的项目会将对话、对话标题和 AI 修改恢复记录与项目一起同步。仅对话变化也会触发未同步提醒；双端同时修改会保留云端冲突副本。API 密钥、服务配置和 CLI 登录状态不上传。同步设备均需升级至 0.11 或更高版本。对话仍可能含文稿、用户主动输入的敏感信息，请使用自己信任的 WebDAV 服务。
+
+`node scripts/smoke-ai-history-desktop.cjs` 验证旧版迁移、目录切换、浏览器缓存记录移除后重启恢复及代码复制，测试在独立目录中执行，不访问真实用户记录。

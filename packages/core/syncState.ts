@@ -1,5 +1,7 @@
 import type { Project } from './model';
 export async function syncFingerprint(project: Project) {
+  const history =
+    typeof window !== 'undefined' ? await window.texite?.aiHistory?.read(project.id) : null;
   const payload = {
     name: project.name,
     engine: project.engine,
@@ -9,6 +11,7 @@ export async function syncFingerprint(project: Project) {
       .map((f) => ({ path: f.path, content: f.content, binary: !!f.binary })),
     folders: [...(project.folders || [])].sort(),
     revision: 0,
+    ...(history ? { aiHistory: history } : {}),
   };
   return [
     ...new Uint8Array(

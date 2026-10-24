@@ -18,6 +18,7 @@ const { ProjectLibrary } = require('./projects.cjs');
 const { RuntimeManager } = require('./runtime-manager.cjs');
 const { AgentClient } = require('./agent-client.cjs');
 const { ChatClient } = require('./chat-client.cjs');
+const { AIHistoryStore } = require('./ai-history.cjs');
 const { WebDAV } = require('./webdav.cjs');
 const { Updates } = require('./updates.cjs');
 const { installCloseGuard } = require('./close-guard.cjs');
@@ -70,7 +71,21 @@ app.whenReady().then(async () => {
   });
   library = new ProjectLibrary(app.getPath('userData'));
   await library.init();
-  const dav = new WebDAV(app.getPath('userData'), safeStorage, library);
+  const aiHistory = new AIHistoryStore(app.getPath('userData'));
+  await aiHistory.init();
+  const dav = new WebDAV(app.getPath('userData'), safeStorage, library, aiHistory);
+  handleFiles('ai-history:read', (id) => aiHistory.read(id));
+  handleFiles('ai-history:update', (id, patch) => aiHistory.update(id, patch));
+  handleFiles('ai-history:get-directory', () => aiHistory.root);
+  handleFiles('ai-history:clear', () => aiHistory.clear());
+  handleFiles('ai-history:choose', async () => {
+    if (ai.active || chat?.active) throw new Error('请先结束 AI 任务再迁移记录。');
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择 AI 对话数据目录',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled ? null : aiHistory.relocate(result.filePaths[0]);
+  });
   const updates = new Updates(path.join(app.getPath('userData'), 'updates'), {
     version: app.getVersion(),
     platform: process.platform,
@@ -81,7 +96,10 @@ app.whenReady().then(async () => {
     },
   });
   handle('updates:check', () => updates.check());
-  handle('updates:status', () => updates.status());
+  handle('updates:status', () => ({
+    ...updates.status(),
+    directory: path.join(app.getPath('userData'), 'updates'),
+  }));
   handle('updates:download', () => updates.download());
   handleFiles('updates:install', () => {
     if (compiler.active || ai.active) throw new Error('请先结束编译或 AI 任务。');

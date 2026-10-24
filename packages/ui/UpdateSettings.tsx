@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowDownToLine, RefreshCw, ExternalLink } from 'lucide-react';
 import type { UpdateInfo } from '../core/model';
 export function UpdateSettings({ onPrepare }: { onPrepare(): Promise<void> }) {
+  const [directory, setDirectory] = useState('');
   const [info, setInfo] = useState<UpdateInfo | null>(null),
     [state, setState] = useState('idle'),
     [error, setError] = useState(''),
@@ -16,6 +17,7 @@ export function UpdateSettings({ onPrepare }: { onPrepare(): Promise<void> }) {
         .then((s) => {
           if (!active) return;
           setInfo(s.info);
+          setDirectory(s.directory || '');
           setProgress(s.progress);
           setError(s.error);
           setState(s.busy ? 'downloading' : s.ready ? 'ready' : 'idle');
@@ -103,6 +105,11 @@ export function UpdateSettings({ onPrepare }: { onPrepare(): Promise<void> }) {
           {window.texite?.platform === 'darwin'
             ? '打开后将 Texite 拖入应用程序文件夹完成安装。'
             : '打开安装程序后按提示完成更新。'}
+        </p>
+      )}
+      {directory && (
+        <p className="settings-note update-download-path">
+          安装包下载位置：<span>{directory}</span>。安装后不会自动删除，可在完成安装后手动清理。
         </p>
       )}
       {error && (

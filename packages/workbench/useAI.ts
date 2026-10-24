@@ -27,6 +27,7 @@ import { streamChat, chatEndpoint } from '../../apps/desktop/chat-transport.mjs'
 
 type Options = {
   projectId?: string;
+  blocked?(): boolean;
   getProject(): Project | null;
   getContext(): string;
   getSelection?(): InlineScope | undefined;
@@ -69,6 +70,7 @@ export function useAI(options: Options) {
   });
   const chatSecret = useRef('');
   const chatAbort = useRef<AbortController | null>(null);
+  const [historyRevision, setHistoryRevision] = useState(0);
   useEffect(() => {
     let disposed = false;
     void window.texite?.ai
@@ -252,7 +254,7 @@ export function useAI(options: Options) {
       disposed = true;
       clearTimeout(journalTimer.current);
     };
-  }, [options.projectId]);
+  }, [options.projectId, historyRevision]);
 
   async function changeConversations(value: AIConversations) {
     const id = current.current.projectId;
@@ -583,7 +585,16 @@ export function useAI(options: Options) {
   }
   async function start(prompt: string, model: string, readOnly: boolean, scope?: InlineScope) {
     const project = current.current.getProject();
-    if (!project || busy || cleaning.current || active.current || loading || !prompt.trim()) return;
+    if (
+      current.current.blocked?.() ||
+      !project ||
+      busy ||
+      cleaning.current ||
+      active.current ||
+      loading ||
+      !prompt.trim()
+    )
+      return;
     scope ??= readOnly ? undefined : current.current.getSelection?.();
     const api = window.texite?.ai;
     if (!api) {
@@ -678,7 +689,16 @@ export function useAI(options: Options) {
   }
   async function startChat(prompt: string) {
     const project = current.current.getProject();
-    if (!project || busy || cleaning.current || active.current || loading || !prompt.trim()) return;
+    if (
+      current.current.blocked?.() ||
+      !project ||
+      busy ||
+      cleaning.current ||
+      active.current ||
+      loading ||
+      !prompt.trim()
+    )
+      return;
     if (!chatConfig.model) {
       setError('请先配置对话 API。');
       return;
@@ -865,6 +885,8 @@ export function useAI(options: Options) {
     }
   }
   return {
+    flush: persist,
+    reloadHistory: () => setHistoryRevision((n) => n + 1),
     disconnect,
     idleMinutes,
     changeIdleMinutes,

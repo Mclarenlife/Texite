@@ -1,3 +1,4 @@
+import { AIHistoryStore, empty } from '../apps/desktop/ai-history.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -122,9 +123,11 @@ async function setup(t) {
     const directory = path.join(base, name),
       library = new ProjectLibrary(directory);
     await library.init();
-    const dav = new WebDAV(directory, secure, library);
+    const history = new AIHistoryStore(directory);
+    await history.init();
+    const dav = new WebDAV(directory, secure, library, history);
     await dav.configure(config);
-    return { dav, library, directory };
+    return { dav, library, directory, history };
   }
   return { base, files, device, config, setRace: (v) => (race = v), setWeak: (v) => (weak = v) };
 }
@@ -342,4 +345,60 @@ test('batch sync updates linked projects, imports new cloud projects and reports
     excludedIds: imported.projects.map((p) => p.id),
   });
   assert.equal(excluded.results.length, 0, 'archived bindings are neither synced nor duplicated');
+});
+
+test('AI history travels with cloud projects, history-only changes pull, conflicts preserve both conversations, clearing syncs', async (t) => {
+  const env = await setup(t),
+    a = await env.device('ai-a'),
+    b = await env.device('ai-b');
+  const project = await a.library.import(sample);
+  const history = empty();
+  history.tasks.push({
+    id: 'task',
+    conversationId: 'chat',
+    mode: 'chat',
+    prompt: '问题',
+    reply: '**回答**',
+    time: 1,
+    status: 'completed',
+    changes: [],
+    activities: [],
+  });
+  history.conversations.items.push({ id: 'chat', mode: 'chat', title: '讨论', time: 1 });
+  history.conversations.selected.chat = 'chat';
+  await a.history.write(project.id, {
+    ...history,
+    apiKey: 'never-transfer',
+    sessionId: 'secret-session',
+  });
+  await a.dav.sync(project);
+  const raw = [...env.files.values()][0];
+  assert.equal(JSON.parse(raw).format, 'texite-webdav-2');
+  assert(!raw.includes('never-transfer'));
+  assert(!raw.includes('secret-session'));
+  const copy = await b.dav.download((await b.dav.list())[0].key);
+  assert.deepEqual(await b.history.read(copy.id), history);
+  assert.equal((await b.dav.sync(copy)).status, 'unchanged');
+  history.tasks[0].reply = '设备 A 的新回答';
+  await a.history.write(project.id, history);
+  await a.dav.sync(project);
+  assert.equal((await b.dav.sync(copy)).status, 'downloaded');
+  assert.deepEqual(await b.history.read(copy.id), history);
+  const other = structuredClone(history);
+  other.tasks[0].reply = '设备 B 的新回答';
+  await b.history.write(copy.id, other);
+  history.tasks[0].reply = '设备 A 再次更改';
+  await a.history.write(project.id, history);
+  await a.dav.sync(project);
+  const conflict = await b.dav.sync(await b.library.reopen(copy.id));
+  assert.equal(conflict.status, 'conflict');
+  assert.deepEqual(await b.history.read(copy.id), other);
+  assert.deepEqual(await b.history.read(conflict.project.id), history);
+  // A third device receives deletion as an empty snapshot, not missing data.
+  const c = await env.device('ai-c');
+  const third = await c.dav.download((await c.dav.list())[0].key);
+  await a.history.clear();
+  await a.dav.sync(project);
+  assert.equal((await c.dav.sync(third)).status, 'downloaded');
+  assert.deepEqual(await c.history.read(third.id), empty());
 });

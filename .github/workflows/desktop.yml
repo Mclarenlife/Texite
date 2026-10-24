@@ -19,6 +19,7 @@ on:
       - 'tests/chat-client.test.mjs'
       - 'tests/fixtures/acp-agent.cjs'
       - 'scripts/smoke-agent-workspace.cjs'
+      - 'scripts/smoke-ai-history-desktop.cjs'
       - 'scripts/smoke-sync-desktop.cjs'
       - 'scripts/smoke-navigation-desktop.cjs'
       - 'tests/offline-compatibility.test.mjs'
@@ -79,6 +80,7 @@ jobs:
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-project-actions-desktop.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-cleanup-desktop.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-agent-workspace.cjs
+          TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-ai-history-desktop.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: Texite-${{ runner.os }}-desktop

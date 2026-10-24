@@ -1,3 +1,4 @@
+import { migrateAIHistories } from '../platform/storage';
 import { Outline } from './Outline';
 import { pdfCover } from '../preview/cover';
 import { saveProjectCover } from '../platform/storage';
@@ -145,6 +146,15 @@ export function App() {
   const [aiOpen, setAiOpen] = useState(false);
   const [archivedProjects, setArchivedProjects] = useState<string[]>([]);
   const [syncDirty, setSyncDirty] = useState(false);
+  const [aiDataRevision, setAIDataRevision] = useState(0);
+  useEffect(() => {
+    const changed = () => setAIDataRevision((n) => n + 1);
+    window.addEventListener('texite-ai-history-updated', changed);
+    void migrateAIHistories()
+      .then(changed)
+      .catch((e) => notify('AI 记录迁移未完成：' + friendlyError(e)));
+    return () => window.removeEventListener('texite-ai-history-updated', changed);
+  }, []);
   const [backupGeneration, setBackupGeneration] = useState(0);
   useEffect(() => {
     let live = true;
@@ -167,7 +177,7 @@ export function App() {
       live = false;
       clearTimeout(timer);
     };
-  }, [davConfig, project, projects, archivedProjects]);
+  }, [davConfig, project, projects, archivedProjects, aiDataRevision]);
   const [editMode, setEditMode] = useState<'code' | 'visual'>('code');
   const [deleteTarget, setDeleteTarget] = useState<{
     projectId: string;
@@ -381,6 +391,8 @@ export function App() {
     () => Promise<{ unsaved: boolean; unsynced: number; syncing: boolean }>
   >(async () => ({ unsaved: true, unsynced: 0, syncing: false }));
   closeState.current = async () => {
+    await ai.flush();
+    await migrateAIHistories();
     const config = await window.texite?.webdav?.get();
     const stored = (await loadProjects()).projects;
     const locals = new Map(
@@ -646,7 +658,13 @@ export function App() {
         await window.texite!.saveProject(current);
         await editHistory.flush(current.id);
       }
+      await ai.flush();
+      await migrateAIHistories();
       const result = await api.batch({ mode, ids, excludedIds: archivedProjects });
+      for (const item of result.results)
+        if (item.status === 'downloaded' && item.id)
+          await window.texite?.ai?.clearHistory?.(item.id);
+      ai.reloadHistory();
       setDavConfig(result.config);
       const incoming = result.projects.map(validateProject).map((next) => ({
         ...next,
@@ -1122,6 +1140,7 @@ export function App() {
     }
   }
   const ai = useAI({
+    blocked: () => syncRunning.current || restoreLock.current,
     projectId: project?.id,
     getSelection: () => editor.current?.scope(),
     getProject: () => projectRef.current,

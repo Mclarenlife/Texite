@@ -39,9 +39,11 @@ export type SyncNode = {
   height: number;
 };
 export type DesktopAPI = {
+  aiHistory?: import('./ai').AIHistoryAPI;
   deleteProject?(id: string, deleteFiles: boolean): Promise<void>;
   updates?: {
     status(): Promise<{
+      directory?: string;
       info: UpdateInfo | null;
       busy: boolean;
       ready: boolean;

@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash, randomUUID } = require('node:crypto');
 const { validateSnapshot } = require('./workspace.cjs');
+const { validateHistory } = require('./ai-history.cjs');
 const hash = (data) => createHash('sha256').update(JSON.stringify(data)).digest('hex');
 const validKey = (key) =>
   typeof key === 'string' &&
@@ -26,6 +27,10 @@ function projectKey(name) {
   return key;
 }
 const resource = (key) => `Texite/${encodeURIComponent(key)}.texite.json`;
+function sourceOnly(project) {
+  const { aiHistory, ...source } = project;
+  return source;
+}
 function payload(project) {
   validateSnapshot(project);
   if (typeof project.name !== 'string' || project.name.length > 100)
@@ -39,16 +44,18 @@ function payload(project) {
       .map((f) => ({ path: f.path, content: f.content, binary: !!f.binary })),
     folders: [...(project.folders || [])].sort(),
     revision: 0,
+    ...(project.aiHistory ? { aiHistory: validateHistory(project.aiHistory) } : {}),
   };
 }
 
 // One conditional resource per project keeps a multi-file project atomic. Local
 // bindings/paths and credentials are never part of the transferable snapshot.
 class WebDAV {
-  constructor(directory, secureStorage, library) {
+  constructor(directory, secureStorage, library, aiHistory) {
     this.directory = directory;
     this.storage = secureStorage;
     this.library = library;
+    this.aiHistory = aiHistory;
     this.config = null;
     this.bindings = {};
     this.detached = {};
@@ -212,7 +219,10 @@ class WebDAV {
     if (response.status === 404) return null;
     if (response.status !== 200) throw new Error('无法读取云端项目。');
     const data = JSON.parse(await this.body(response));
-    if (data.format !== 'texite-webdav-1') throw new Error('云端项目格式无效。');
+    if (!['texite-webdav-1', 'texite-webdav-2'].includes(data.format))
+      throw new Error('云端项目格式无效。');
+    if (data.format === 'texite-webdav-2' && !data.project?.aiHistory)
+      throw new Error('云端 AI 对话数据缺失，未覆盖本机记录。');
     if (data.id !== undefined && !validId(data.id)) throw new Error('云端项目身份无效。');
     return {
       project: payload(data.project),
@@ -226,10 +236,11 @@ class WebDAV {
     const remote = await this.read(key);
     if (!remote) throw new Error('云端项目不存在。');
     const project = await this.library.import({
-      ...remote.project,
+      ...sourceOnly(remote.project),
       updatedAt: Date.now(),
       activeFile: remote.project.mainFile,
     });
+    if (remote.project.aiHistory) await this.aiHistory?.write(project.id, remote.project.aiHistory);
     this.bindings[project.id] = {
       key,
       id: remote.id,
@@ -304,7 +315,8 @@ class WebDAV {
   }
   async sync(project, upload = true) {
     await this.collection();
-    const local = payload(project),
+    const history = await this.aiHistory?.read(project.id);
+    const local = payload({ ...project, aiHistory: history || undefined }),
       localHash = hash(local);
     const binding = this.bindings[project.id] || (upload ? this.detached[project.id] : undefined);
     let key = binding?.key;
@@ -330,11 +342,13 @@ class WebDAV {
           if (existing) return { status: 'conflict', project: existing };
         }
         const copy = await this.library.import({
-          ...remote.project,
+          ...sourceOnly(remote.project),
           name: remote.project.name.slice(0, 75) + ' · 云端冲突副本',
           updatedAt: Date.now(),
           activeFile: remote.project.mainFile,
         });
+        if (remote.project.aiHistory)
+          await this.aiHistory?.write(copy.id, remote.project.aiHistory);
         this.bindings[project.id] = {
           ...binding,
           key,
@@ -353,7 +367,7 @@ class WebDAV {
       });
       const next = {
         ...project,
-        ...remote.project,
+        ...sourceOnly(remote.project),
         revision: project.revision + 1,
         updatedAt: Date.now(),
         activeFile: remote.project.mainFile,
@@ -362,6 +376,8 @@ class WebDAV {
         .filter((f) => !next.files.some((n) => n.path === f.path))
         .map((f) => ({ path: f.path, expected: f.content, binary: f.binary }));
       await this.library.save(next, removed, true);
+      if (remote.project.aiHistory)
+        await this.aiHistory?.write(project.id, remote.project.aiHistory);
       this.bindings[project.id] = {
         key,
         id,
@@ -384,7 +400,11 @@ class WebDAV {
           'Content-Type': 'application/json',
           ...(remote ? { 'If-Match': remote.etag } : { 'If-None-Match': '*' }),
         },
-        body: JSON.stringify({ format: 'texite-webdav-1', id, project: local }),
+        body: JSON.stringify({
+          format: local.aiHistory ? 'texite-webdav-2' : 'texite-webdav-1',
+          id,
+          project: local,
+        }),
       });
       if (response.status === 412)
         throw new Error('同步期间云端内容发生变化，未覆盖。请再次同步。');

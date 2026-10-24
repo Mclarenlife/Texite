@@ -1,3 +1,5 @@
+import { AIReply } from './AIReply';
+import { resizeAI, type WindowRect } from './resizeAI';
 import { AgentSettings } from './AgentSettings';
 import { AIConversationList } from './AIConversationList';
 import { selectionLabel, type InlineScope } from '../core/ai';
@@ -78,7 +80,7 @@ export function AIPanel({
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const panel = useRef<HTMLElement>(null);
   const [windowSize, setWindowSize] = useState<{ width: number; height: number } | null>(null);
-  const resizing = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  const resizing = useRef<(WindowRect & { x: number; y: number }) | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
   const [baseURL, setBaseURL] = useState('');
   const [apiModel, setApiModel] = useState('');
@@ -476,7 +478,7 @@ export function AIPanel({
                 </ol>
               </details>
             )}
-            {task.reply && <div className="ai-reply">{task.reply}</div>}
+            {task.reply && <AIReply text={task.reply} />}
             {task.error && <p className="ai-task-error">{task.error}</p>}
             {!!task.changes.length && (
               <button className="ai-changes" onClick={() => setReview(task)}>
@@ -577,69 +579,73 @@ export function AIPanel({
           </div>
         </div>
       </div>
-      {!minimized && (
-        <div
-          className="ai-resize-handle"
-          role="separator"
-          aria-label="调整 AI 窗口大小"
-          tabIndex={0}
-          onPointerDown={(e) => {
-            e.preventDefault();
-            e.currentTarget.setPointerCapture(e.pointerId);
-            const r = panel.current!.getBoundingClientRect();
-            resizing.current = { x: e.clientX, y: e.clientY, width: r.width, height: r.height };
-            setPosition({ x: r.left, y: r.top });
-          }}
-          onPointerMove={(e) => {
-            if (!resizing.current) return;
-            const r = panel.current!.getBoundingClientRect();
-            setWindowSize({
-              width: Math.max(
-                Math.min(360, window.innerWidth - 24),
-                Math.min(
-                  window.innerWidth - r.left - 8,
-                  resizing.current.width + e.clientX - resizing.current.x,
-                ),
-              ),
-              height: Math.max(
-                Math.min(420, window.innerHeight - 32),
-                Math.min(
-                  window.innerHeight - r.top - 8,
-                  resizing.current.height + e.clientY - resizing.current.y,
-                ),
-              ),
-            });
-          }}
-          onPointerUp={(e) => {
-            resizing.current = null;
-            e.currentTarget.releasePointerCapture(e.pointerId);
-          }}
-          onPointerCancel={() => {
-            resizing.current = null;
-          }}
-          onKeyDown={(e) => {
-            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-            e.preventDefault();
-            const r = panel.current!.getBoundingClientRect();
-            setWindowSize({
-              width: Math.max(
-                360,
-                Math.min(
-                  window.innerWidth - r.left - 8,
-                  r.width + (e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0),
-                ),
-              ),
-              height: Math.max(
-                420,
-                Math.min(
-                  window.innerHeight - r.top - 8,
-                  r.height + (e.key === 'ArrowUp' ? -20 : e.key === 'ArrowDown' ? 20 : 0),
-                ),
-              ),
-            });
-          }}
-        />
-      )}
+      {!minimized &&
+        Object.entries({
+          n: '上边',
+          s: '下边',
+          w: '左边',
+          e: '右边',
+          nw: '左上角',
+          ne: '右上角',
+          sw: '左下角',
+          se: '右下角',
+        }).map(([edge, label]) => (
+          <div
+            key={edge}
+            className={'ai-resize-edge ai-resize-' + edge}
+            role="separator"
+            aria-label={'调整 AI 窗口大小 · ' + label}
+            tabIndex={0}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const r = panel.current!.getBoundingClientRect();
+              resizing.current = {
+                x: e.clientX,
+                y: e.clientY,
+                left: r.left,
+                top: r.top,
+                width: r.width,
+                height: r.height,
+              };
+            }}
+            onPointerMove={(e) => {
+              const start = resizing.current;
+              if (!start) return;
+              const next = resizeAI(
+                start,
+                edge,
+                e.clientX - start.x,
+                e.clientY - start.y,
+                window.innerWidth,
+                window.innerHeight,
+              );
+              setPosition({ x: next.left, y: next.top });
+              setWindowSize({ width: next.width, height: next.height });
+            }}
+            onPointerUp={(e) => {
+              resizing.current = null;
+              e.currentTarget.releasePointerCapture(e.pointerId);
+            }}
+            onPointerCancel={() => {
+              resizing.current = null;
+            }}
+            onKeyDown={(e) => {
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
+              e.preventDefault();
+              const next = resizeAI(
+                panel.current!.getBoundingClientRect(),
+                edge,
+                e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0,
+                e.key === 'ArrowUp' ? -20 : e.key === 'ArrowDown' ? 20 : 0,
+                window.innerWidth,
+                window.innerHeight,
+              );
+              setPosition({ x: next.left, y: next.top });
+              setWindowSize({ width: next.width, height: next.height });
+            }}
+          />
+        ))}
       <Dialog
         open={configOpen}
         onClose={() => {

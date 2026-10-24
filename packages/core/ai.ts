@@ -230,3 +230,15 @@ export function undoAITask(current: Project, task: AITask) {
     updatedAt: Date.now(),
   });
 }
+
+export type AIHistory = { version: 1; tasks: AITask[]; conversations: AIConversations };
+export type AIHistoryAPI = {
+  read(id: string): Promise<AIHistory | null>;
+  update(
+    id: string,
+    patch: Partial<Pick<AIHistory, 'tasks' | 'conversations'>>,
+  ): Promise<AIHistory>;
+  directory(): Promise<string>;
+  choose(): Promise<string | null>;
+  clear(): Promise<void>;
+};

@@ -18,6 +18,11 @@ import {
 let connection: ReturnType<typeof openDB> | undefined;
 export type CleanupKind = 'backups' | 'history' | 'ai';
 export async function clearStoredRecords(kind: CleanupKind) {
+  if (kind === 'ai') {
+    await migrateAIHistories();
+    await window.texite?.aiHistory?.clear();
+    changedAIHistory();
+  }
   const db = await database();
   const tx = db.transaction(['settings', 'recoveries'], 'readwrite');
   try {
@@ -92,8 +97,43 @@ export async function clearProjectHistory(
     if (point.time >= from && point.time <= to) await tx.objectStore('recoveries').delete(point.id);
   await tx.done;
 }
+const migrations = new Map<string, Promise<void>>();
+async function ensureAIHistory(id: string) {
+  const api = window.texite?.aiHistory;
+  if (!api) return;
+  if (!migrations.has(id)) {
+    const pending = (async () => {
+      if (await api.read(id)) return;
+      const db = await database();
+      const tasks = (await db.get('settings', 'ai:' + id)) || [];
+      const conversations = (await db.get('settings', 'ai-conversations:' + id)) || {
+        items: [],
+        selected: {},
+      };
+      if (tasks.length || conversations.items.length)
+        await api.update(id, { tasks, conversations });
+    })();
+    migrations.set(id, pending);
+    pending.catch(() => migrations.delete(id));
+  }
+  await migrations.get(id);
+}
+export async function migrateAIHistories() {
+  const db = await database();
+  const ids = new Set<string>();
+  for (const key of await db.getAllKeys('settings')) {
+    const match = String(key).match(/^(?:ai:|ai-conversations:)(.+)$/);
+    if (match) ids.add(match[1]);
+  }
+  for (const id of ids) await ensureAIHistory(id);
+}
+function changedAIHistory() {
+  window.dispatchEvent(new Event('texite-ai-history-updated'));
+}
 export async function loadAITasks(projectId: string): Promise<import('../core/ai').AITask[]> {
-  const value = await (await database()).get('settings', 'ai:' + projectId);
+  await ensureAIHistory(projectId);
+  const disk = await window.texite?.aiHistory?.read(projectId);
+  const value = disk?.tasks ?? (await (await database()).get('settings', 'ai:' + projectId));
   return Array.isArray(value)
     ? value.map((task) =>
         task.status === 'running'
@@ -104,29 +144,43 @@ export async function loadAITasks(projectId: string): Promise<import('../core/ai
 }
 export async function saveAITasks(projectId: string, tasks: import('../core/ai').AITask[]) {
   if (JSON.stringify(tasks).length > 12_000_000)
-    throw new Error('AI 记录超过 12 MB，请导出项目并在新项目中继续。现有恢复记录仍保留。');
+    throw new Error('AI 记录超过 12 MB，请清理不再需要的对话。现有恢复记录仍保留。');
+  await ensureAIHistory(projectId);
+  await window.texite?.aiHistory?.update(projectId, { tasks });
   await (await database()).put('settings', tasks, 'ai:' + projectId);
+  changedAIHistory();
 }
 export async function loadAIConversations(
   projectId: string,
 ): Promise<import('../core/ai').AIConversations | undefined> {
-  return (await database()).get('settings', 'ai-conversations:' + projectId);
+  await ensureAIHistory(projectId);
+  const disk = await window.texite?.aiHistory?.read(projectId);
+  return (
+    disk?.conversations ??
+    (await (await database()).get('settings', 'ai-conversations:' + projectId))
+  );
 }
 export async function saveAIConversations(
   projectId: string,
-  value: import('../core/ai').AIConversations,
+  conversations: import('../core/ai').AIConversations,
 ) {
-  await (await database()).put('settings', value, 'ai-conversations:' + projectId);
+  await ensureAIHistory(projectId);
+  await window.texite?.aiHistory?.update(projectId, { conversations });
+  await (await database()).put('settings', conversations, 'ai-conversations:' + projectId);
+  changedAIHistory();
 }
 export async function saveAIConversationState(
   projectId: string,
   tasks: import('../core/ai').AITask[],
   conversations: import('../core/ai').AIConversations,
 ) {
+  await ensureAIHistory(projectId);
+  await window.texite?.aiHistory?.update(projectId, { tasks, conversations });
   const tx = (await database()).transaction('settings', 'readwrite');
   await tx.store.put(tasks, 'ai:' + projectId);
   await tx.store.put(conversations, 'ai-conversations:' + projectId);
   await tx.done;
+  changedAIHistory();
 }
 export async function commitAIProject(
   current: Project,
@@ -135,6 +189,9 @@ export async function commitAIProject(
 ) {
   if (JSON.stringify(tasks).length > 12_000_000)
     throw new Error('AI 恢复记录超过 12 MB，本次修改未执行。');
+  await ensureAIHistory(current.id);
+  await window.texite?.aiHistory?.update(current.id, { tasks });
+  changedAIHistory();
   const db = await database();
   const tx = db.transaction(['projects', 'settings'], 'readwrite');
   try {
@@ -263,6 +320,10 @@ export async function deleteBrowserFiles(id: string) {
     await binding.handle.removeEntry(name, { recursive: true });
 }
 export async function permanentlyDeleteStoredProject(id: string) {
+  await window.texite?.aiHistory?.update(id, {
+    tasks: [],
+    conversations: { items: [], selected: {} },
+  });
   const db = await database(),
     tx = db.transaction(['projects', 'settings', 'recoveries'], 'readwrite');
   await tx.objectStore('projects').delete(id);
