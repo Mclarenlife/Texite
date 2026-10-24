@@ -13,7 +13,7 @@ export function compileOffline(
 ): Promise<MobileCompileResult> {
   if (project.engine !== 'pdflatex')
     return Promise.reject(
-      new Error('安卓版目前仅提供 pdfLaTeX，请在项目设置中选择 pdfLaTeX。不会自动切换引擎。'),
+      new Error('移动版目前仅提供 pdfLaTeX，请在项目设置中选择 pdfLaTeX。不会自动切换引擎。'),
     );
   return new Promise((resolve, reject) => {
     const worker = new Worker('/android-tex/worker.js');

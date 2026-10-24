@@ -4,6 +4,7 @@ import { validateProject } from '../../packages/core/model';
 import { saveProject, loadProjects, exportZip, download } from '../../packages/platform/storage';
 
 const native = registerPlugin<{
+  importZip(): Promise<{ cancelled?: boolean; name?: string; base64?: string }>;
   readProjects(): Promise<{ projects: Project[] }>;
   background(): Promise<void>;
   saveProject(options: { project: Project }): Promise<void>;
@@ -15,12 +16,21 @@ const native = registerPlugin<{
   addListener(name: 'back', callback: () => void): Promise<{ remove(): Promise<void> }>;
 }>('TexiteFiles');
 export const isAndroid = Capacitor.getPlatform() === 'android';
+export const isIOS = Capacitor.getPlatform() === 'ios';
+export const isNativeMobile = isAndroid || isIOS;
+export const mobilePlatformName = isIOS ? 'iOS' : isAndroid ? 'Android' : 'Mobile';
+export async function chooseIOSProject(): Promise<File | undefined> {
+  const selected = await native.importZip();
+  if (selected.cancelled) return;
+  if (!selected.name || !selected.base64) throw new Error('未读取到 ZIP 文件');
+  return new File([Uint8Array.from(atob(selected.base64), c => c.charCodeAt(0))], selected.name, { type: 'application/zip' });
+}
 export function backgroundAndroid() {
   if (isAndroid) return native.background();
 }
 
 export async function readMobileProjects(): Promise<Project[]> {
-  if (isAndroid) return (await native.readProjects()).projects.map(validateProject);
+  if (isNativeMobile) return (await native.readProjects()).projects.map(validateProject);
   return (await loadProjects()).projects;
 }
 // Serialize native and IndexedDB writes: a slow older save must never overwrite newer text.
@@ -30,14 +40,14 @@ export function saveMobileProject(project: Project): Promise<void> {
   const pending = writes
     .catch(() => {})
     .then(async () => {
-      if (isAndroid) await native.saveProject({ project: snapshot });
+      if (isNativeMobile) await native.saveProject({ project: snapshot });
       else await saveProject(snapshot);
     });
   writes = pending;
   return pending;
 }
 export async function exportMobileFile(blob: Blob, name: string) {
-  if (!isAndroid) {
+  if (!isNativeMobile) {
     download(blob, name);
     return;
   }

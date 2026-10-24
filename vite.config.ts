@@ -36,7 +36,7 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     pdfResources(),
-    ...(mode === 'android'
+    ...(['android', 'ios'].includes(mode)
       ? [
           {
             name: 'android-offline-assets',
@@ -71,8 +71,9 @@ export default defineConfig(({ mode }) => ({
             closeBundle() {
               if (!fs.existsSync('.tools/android-runtime/busytex.wasm'))
                 throw new Error('Run android:runtime first.');
-              fs.cpSync('.tools/android-runtime', 'dist-mobile/android-tex', { recursive: true });
-              fs.copyFileSync('dist-mobile/android.html', 'dist-mobile/index.html');
+              const destination = mode === 'ios' ? 'dist-ios' : 'dist-mobile';
+              fs.cpSync('.tools/android-runtime', destination + '/android-tex', { recursive: true });
+              fs.copyFileSync(destination + '/android.html', destination + '/index.html');
             },
           },
         ]
@@ -87,8 +88,8 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1000,
-    ...(mode === 'android'
-      ? { outDir: 'dist-mobile', rollupOptions: { input: 'android.html' } }
+    ...(['android', 'ios'].includes(mode)
+      ? { outDir: mode === 'ios' ? 'dist-ios' : 'dist-mobile', rollupOptions: { input: 'android.html' } }
       : {}),
   },
 }));

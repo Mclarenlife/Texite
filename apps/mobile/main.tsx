@@ -6,9 +6,9 @@ import '../../packages/ui/navigation.css';
 import '../../packages/ui/polish.css';
 import './mobile.css';
 import { setNativeDownload } from '../../packages/platform/storage';
-import { exportMobileFile, isAndroid } from './native';
+import { exportMobileFile, isNativeMobile } from './native';
 
-if (isAndroid)
+if (isNativeMobile)
   setNativeDownload((blob, name) => {
     void exportMobileFile(blob, name).catch((error) =>
       window.dispatchEvent(

@@ -37,7 +37,11 @@ import { CompileDiagnostics } from '../../packages/preview/CompileDiagnostics';
 import { Dialog } from '../../packages/ui/Dialog';
 import { usePreference } from '../../packages/ui/preferences';
 import { compileOffline, type MobileCompileResult } from './compiler';
+import { useMobileViewport } from './useMobileViewport';
 import {
+  chooseIOSProject,
+  isIOS,
+  mobilePlatformName,
   exportMobileFile,
   backgroundAndroid,
   exportMobileProject,
@@ -56,7 +60,7 @@ const chinese = String.raw`\documentclass[12pt]{article}
 \begin{document}
 \begin{CJK*}{UTF8}{gbsn}
 \section{从这里开始}
-这是 Texite 安卓版的离线中文文稿。
+这是 Texite 移动版的离线中文文稿。
 \begin{equation}
   E = mc^2
 \end{equation}
@@ -66,6 +70,7 @@ const chinese = String.raw`\documentclass[12pt]{article}
 const message = (error: unknown) => (error instanceof Error ? error.message : '操作失败，请重试');
 
 export function MobileApp() {
+  useMobileViewport();
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<Project | null>(null);
   const current = useRef(project);
@@ -171,6 +176,19 @@ export function MobileApp() {
     } finally {
       setOpening(false);
     }
+  }
+  async function importProject(file: File) {
+    try {
+      const next = await importZip(file);
+      await saveMobileProject(next);
+      setProjects(items => [next, ...items]);
+      await open(next);
+    } catch (error) { setNotice(message(error)); }
+  }
+  async function chooseProject() {
+    if (!isIOS) { importInput.current?.click(); return; }
+    try { const file = await chooseIOSProject(); if (file) await importProject(file); }
+    catch (error) { setNotice(message(error)); }
   }
   async function compile() {
     if (busy || !current.current) return;
@@ -319,7 +337,7 @@ export function MobileApp() {
               aria-label="搜索项目"
             />
           </label>
-          <button className="mobile-import" onClick={() => importInput.current?.click()}>
+          <button className="mobile-import" onClick={() => void chooseProject()}>
             <Upload size={19} />
             <span>导入 ZIP 项目</span>
             <ChevronRight size={17} />
@@ -490,14 +508,7 @@ export function MobileApp() {
           const f = input.files?.[0];
           input.value = '';
           if (!f) return;
-          try {
-            const p = await importZip(f);
-            await saveMobileProject(p);
-            setProjects((items) => [p, ...items]);
-            await open(p);
-          } catch (error) {
-            setNotice(message(error));
-          }
+          await importProject(f);
         }}
       />
       <input
@@ -711,9 +722,9 @@ export function MobileApp() {
           )}
           <h3>关于</h3>
           <p>
-            Texite Android · 0.1.0 alpha
+            Texite {mobilePlatformName} · 0.1.0 alpha
             <br />
-            安卓首版：项目、源码编辑、离线编译与 PDF。WebDAV 和 AI 连接尚未移植。
+            移动首版：项目、源码编辑、离线编译与 PDF。WebDAV 和 AI 连接尚未移植。
           </p>
         </div>
       </Dialog>
