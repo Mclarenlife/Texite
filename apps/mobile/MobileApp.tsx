@@ -181,14 +181,23 @@ export function MobileApp() {
     try {
       const next = await importZip(file);
       await saveMobileProject(next);
-      setProjects(items => [next, ...items]);
+      setProjects((items) => [next, ...items]);
       await open(next);
-    } catch (error) { setNotice(message(error)); }
+    } catch (error) {
+      setNotice(message(error));
+    }
   }
   async function chooseProject() {
-    if (!isIOS) { importInput.current?.click(); return; }
-    try { const file = await chooseIOSProject(); if (file) await importProject(file); }
-    catch (error) { setNotice(message(error)); }
+    if (!isIOS) {
+      importInput.current?.click();
+      return;
+    }
+    try {
+      const file = await chooseIOSProject();
+      if (file) await importProject(file);
+    } catch (error) {
+      setNotice(message(error));
+    }
   }
   async function compile() {
     if (busy || !current.current) return;

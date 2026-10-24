@@ -23,7 +23,9 @@ export async function chooseIOSProject(): Promise<File | undefined> {
   const selected = await native.importZip();
   if (selected.cancelled) return;
   if (!selected.name || !selected.base64) throw new Error('未读取到 ZIP 文件');
-  return new File([Uint8Array.from(atob(selected.base64), c => c.charCodeAt(0))], selected.name, { type: 'application/zip' });
+  return new File([Uint8Array.from(atob(selected.base64), (c) => c.charCodeAt(0))], selected.name, {
+    type: 'application/zip',
+  });
 }
 export function backgroundAndroid() {
   if (isAndroid) return native.background();

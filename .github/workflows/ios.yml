@@ -37,6 +37,20 @@ jobs:
           xcrun simctl boot "$DEVICE" || true
           xcrun simctl bootstatus "$DEVICE" -b
           xcodebuild -project apps/ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath .tools/ios-build -resultBundlePath release/ios/iPhone-tests.xcresult CODE_SIGNING_ALLOWED=NO test > ios-test.log 2>&1
+          xcrun simctl shutdown "$DEVICE"
+      - name: Run iPad simulator tests
+        shell: bash
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import sys,json; print(next(d["udid"] for ds in json.load(sys.stdin)["devices"].values() for d in ds if "iPad" in d["name"]))')
+          xcrun simctl boot "$DEVICE" || true
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcodebuild -project apps/ios/App/App.xcodeproj -scheme App -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath .tools/ios-build -resultBundlePath release/ios/iPad-tests.xcresult CODE_SIGNING_ALLOWED=NO test > ios-ipad-test.log 2>&1
+      - name: Export simulator screenshots
+        if: always()
+        run: |
+          for RESULT in release/ios/*.xcresult; do
+            xcrun xcresulttool export attachments --path "$RESULT" --output-path "${RESULT%.xcresult}-screenshots" || true
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -45,4 +59,5 @@ jobs:
             release/ios/
             ios-build.log
             ios-test.log
+            ios-ipad-test.log
           retention-days: 14

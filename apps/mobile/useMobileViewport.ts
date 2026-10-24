@@ -6,8 +6,13 @@ export function useMobileViewport() {
     const viewport = window.visualViewport;
     const update = () => {
       if (viewport && Math.abs(viewport.scale - 1) > 0.02) return;
-      document.documentElement.style.setProperty('--mobile-height', `${viewport?.height ?? innerHeight}px`);
-      document.documentElement.dataset.keyboardOpen = String(!!viewport && innerHeight - viewport.height > 120);
+      document.documentElement.style.setProperty(
+        '--mobile-height',
+        `${viewport?.height ?? innerHeight}px`,
+      );
+      document.documentElement.dataset.keyboardOpen = String(
+        !!viewport && innerHeight - viewport.height > 120,
+      );
     };
     update();
     viewport?.addEventListener('resize', update);

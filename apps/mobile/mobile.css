@@ -405,10 +405,17 @@ body,
   padding: 24px;
   border-radius: 22px;
 }
-[data-keyboard-open='true'] .mobile-app { padding-bottom: 0; }
+[data-keyboard-open='true'] .mobile-app {
+  padding-bottom: 0;
+}
 @supports (-webkit-touch-callout: none) {
-  .mobile-app input, .mobile-sheet input { font-size: 16px; }
-  .mobile-sheet.dialog-content { top: calc(var(--mobile-height, 100dvh) / 2); }
+  .mobile-app input,
+  .mobile-sheet input {
+    font-size: 16px;
+  }
+  .mobile-sheet.dialog-content {
+    top: calc(var(--mobile-height, 100dvh) / 2);
+  }
 }
 .mobile-form {
   display: flex;
