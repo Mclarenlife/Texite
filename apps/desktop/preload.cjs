@@ -90,6 +90,8 @@ contextBridge.exposeInMainWorld('texite', {
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   detectEngines: () => ipcRenderer.invoke('compiler:detect'),
   listRuntime: () => ipcRenderer.invoke('runtime:list'),
+    getPackageDownloadSettings: () => ipcRenderer.invoke('runtime:online-get'),
+    setPackageDownloadSettings: (value) => ipcRenderer.invoke('runtime:online-set', value),
   chooseRuntimePack: () => ipcRenderer.invoke('runtime:choose'),
   installRuntimePack: (ids) => ipcRenderer.invoke('runtime:install', ids),
   removeRuntimeModule: (id) => ipcRenderer.invoke('runtime:remove', id),

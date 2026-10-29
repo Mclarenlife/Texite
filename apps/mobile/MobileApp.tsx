@@ -37,6 +37,7 @@ import { CompileDiagnostics } from '../../packages/preview/CompileDiagnostics';
 import { Dialog } from '../../packages/ui/Dialog';
 import { usePreference } from '../../packages/ui/preferences';
 import { compileOffline, type MobileCompileResult } from './compiler';
+import { compileWithFallback } from '../../packages/core/compile-target';
 import { useMobileViewport } from './useMobileViewport';
 import {
   applyNativeAppearance,
@@ -211,7 +212,11 @@ export function MobileApp() {
     abort.current = controller;
     try {
       await pendingSave.current;
-      const output = await compileOffline(p, controller.signal, setCompileStatus);
+      const output = await compileWithFallback(
+        p,
+        (snapshot) => compileOffline(snapshot, controller.signal, setCompileStatus),
+        () => controller.signal.aborted,
+      );
       setResult(output);
       setDiagnosticsOpen(!output.success);
       setTab('pdf');
@@ -220,15 +225,17 @@ export function MobileApp() {
         let binary = '';
         for (let i = 0; i < bytes.length; i += 8192)
           binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-        const path = p.mainFile.replace(/\.tex$/i, '.pdf');
+        const path = output.mainFile.replace(/\.tex$/i, '.pdf');
         const latest = current.current!;
         change({
           ...latest,
+          mainFile: output.mainFile,
           files: [
             ...latest.files.filter((f) => f.path !== path),
             { path, binary: true, content: btoa(binary) },
           ],
         });
+        if (output.fallbackFrom) setNotice(`已编译 ${output.mainFile}；当前打开的文件未作为入口。`);
       }
     } catch (e) {
       setNotice(message(e));

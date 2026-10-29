@@ -18,6 +18,12 @@ async function compileManaged(owner, project, root, job, append) {
     ),
   );
   Object.assign(env, selected.env || {});
+  const source = path.dirname(path.join(root, project.mainFile)).replaceAll('\\', '/');
+  // Keep the entry's directory first, then search the complete project, then runtime defaults.
+  const projectInputs = [source, root.replaceAll('\\', '/') + '//', ''].join(path.delimiter);
+  env.TEXINPUTS = projectInputs;
+  env.BIBINPUTS = projectInputs;
+  env.BSTINPUTS = projectInputs;
   env.TEXITE_PROJECT_ROOT = root.replaceAll('\\', '/');
   // Lua's font and Unicode libraries open resolved absolute resource paths.
   // luaotfload needs writable local font caches and is incompatible with --safer.

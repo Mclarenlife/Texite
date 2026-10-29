@@ -458,7 +458,10 @@ class Compiler {
             append(`实际编译器：${project.engine} · 系统 latexmk\n`);
             const child = spawn(binary, args, {
               cwd: root,
-              env: { ...environment(), TECTONIC_CACHE_DIR: path.join(this.cache, 'formats') },
+              env: { ...environment(), TECTONIC_CACHE_DIR: path.join(this.cache, 'formats'),
+                ...Object.fromEntries(['TEXINPUTS', 'BIBINPUTS', 'BSTINPUTS'].map((key) => [key,
+                  [path.dirname(path.join(root, project.mainFile)).replaceAll('\\', '/'), root.replaceAll('\\', '/') + '//', ''].join(path.delimiter)])),
+              },
               windowsHide: true,
               shell: false,
               detached: process.platform !== 'win32',

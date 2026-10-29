@@ -9,6 +9,9 @@ self.onmessage = async ({ data: { project } }) => {
   try {
     postMessage({ status: '加载本地宏包与字体' });
     const pipeline = new BusytexPipeline(root + 'busytex.js', root + 'busytex.wasm', packages, packages, ['/texite'], () => {}, () => {}, true, BusytexPipeline.ScriptLoaderWorker);
+    // preRun receives this same environment object before the module initializes.
+    for (const key of ['TEXINPUTS', 'BIBINPUTS', 'BSTINPUTS'])
+      pipeline.env[key] = '.:' + pipeline.project_dir + '//:';
     const module = await pipeline.Module;
     // Emscripten's generated main adapter prepends argv[0] in place. The
     // upstream pipeline reuses a command array for the two post-BibTeX passes.

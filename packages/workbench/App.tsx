@@ -102,6 +102,7 @@ import { useAI } from './useAI';
 import { AIPanel } from '../ui/AIPanel';
 import type { AITask } from '../core/ai';
 import { commitAIProject } from '../platform/storage';
+import { compileWithFallback } from '../core/compile-target';
 
 type Modal =
   'projects' | 'folder' | 'new' | 'file' | 'settings' | 'commands' | 'help' | 'rename' | null;
@@ -287,6 +288,7 @@ export function App() {
   const saveQueue = useRef(Promise.resolve());
   const autosaveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const compileRunning = useRef(false);
+  const compileCancelled = useRef(false);
   const compileToken = useRef(0);
   const latestText = useRef<ProjectFile | null>(null);
   const notify = useCallback((message: string) => {
@@ -1045,10 +1047,6 @@ export function App() {
   const compile = useCallback(async () => {
     const snapshot = projectRef.current;
     if (!snapshot || compileRunning.current || restoreLock.current) return;
-    if (!snapshot.mainFile) {
-      notify('请先创建 .tex 文件并设为主文件，再编译。');
-      return;
-    }
     if (!window.texite) {
       setModal('settings');
       setModalError(
@@ -1057,26 +1055,47 @@ export function App() {
       return;
     }
     compileRunning.current = true;
+    compileCancelled.current = false;
     const token = ++compileToken.current;
     setCompiling(true);
     setCompileFailed(false);
     setLog('');
     try {
       await saveProject(snapshot);
-      const result = await window.texite.compile(snapshot);
+      const result = await compileWithFallback(
+        snapshot,
+        (p) => window.texite!.compile(p),
+        () =>
+          compileCancelled.current ||
+          compileToken.current !== token ||
+          projectRef.current?.id !== snapshot.id,
+      );
       if (projectRef.current?.id !== snapshot.id || compileToken.current !== token) return;
       setLog(result.log);
       setCompileFailed(!result.cancelled && !(result.success && result.pdf));
       if (result.success && result.pdf) {
+        setProject((p) =>
+          p?.id === snapshot.id && p.files.some((f) => f.path === result.mainFile)
+            ? { ...p, mainFile: result.mainFile }
+            : p,
+        );
         setDiagnosticsOpen(false);
         setPdf(new Uint8Array(result.pdf));
         setSyncMap(result.syncMap || []);
         setPdfLocate(undefined);
         setPdfRevision(result.revision);
-        setPdfLabel(result.compilerLabel || engineNames[result.engine ?? snapshot.engine]);
+        setPdfLabel(
+          result.mainFile +
+            ' · ' +
+            (result.compilerLabel || engineNames[result.engine ?? snapshot.engine]),
+        );
         try {
           await saveProjectCover(snapshot.id, await pdfCover(result.pdf));
-          notify('编译完成，PDF 已更新。');
+          notify(
+            result.fallbackFrom
+              ? `已编译 ${result.mainFile}；当前打开的文件未作为入口。`
+              : '编译完成，PDF 已更新。',
+          );
         } catch {
           notify('编译完成，但项目封面保存失败，请重新编译重试。');
         }
@@ -1605,7 +1624,12 @@ export function App() {
               <button
                 aria-label={compiling ? '取消编译' : '编译文稿'}
                 className={'compile-button' + (compiling ? ' compiling' : '')}
-                onClick={() => (compiling ? void window.texite?.cancelCompile() : void compile())}
+                onClick={() => {
+                  if (compiling) {
+                    compileCancelled.current = true;
+                    void window.texite?.cancelCompile();
+                  } else void compile();
+                }}
               >
                 {compiling ? <Square size={14} /> : <Play size={14} fill="currentColor" />}
                 <span>{compiling ? '取消编译' : '编译'}</span>
@@ -2634,7 +2658,9 @@ export function App() {
               </Select>
             </label>
             <label className="setting-row">
-              <span>主文件</span>
+              <span>
+                备用编译入口<small>优先编译当前文稿，无法编译时回退；成功后自动更新此入口。</small>
+              </span>
               <Select
                 aria-label="主文件"
                 value={project.mainFile}

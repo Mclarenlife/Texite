@@ -30,6 +30,7 @@ test('compiler library previews optional modules, confirms removal and shows the
       dependencies: ['fonts'],
     };
     let installed: any[] = [base];
+    let autoDownload = true;
     window.texite = {
       openProject: async () => null,
       listProjects: async () => [],
@@ -48,6 +49,11 @@ test('compiler library previews optional modules, confirms removal and shows the
         details: { pdflatex: 'pdfLaTeX · TeX Live 2025 final · 离线' },
       }),
       listRuntime: async () => installed,
+      getPackageDownloadSettings: async () => ({ autoDownload }),
+      setPackageDownloadSettings: async (settings) => {
+        autoDownload = settings.autoDownload;
+        return { autoDownload };
+      },
       chooseRuntimePack: async () => ({
         label: 'XeLaTeX 离线扩展',
         platform: 'win32-x64',
@@ -78,10 +84,14 @@ test('compiler library previews optional modules, confirms removal and shows the
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('tab', { name: '编译设置' }).click();
   const library = page.getByRole('region', { name: '引擎与宏包管理' });
+  const automatic = library.getByRole('checkbox', { name: '自动补齐缺失宏包' });
+  await expect(automatic).toBeChecked();
+  await automatic.uncheck();
+  await expect(automatic).not.toBeChecked();
   await expect(library.getByText('TeX Live 2025 final · 2.0 MB')).toBeVisible();
   await library.getByRole('button', { name: '导入离线扩展包' }).click();
   await expect(library.getByText('XeLaTeX 离线扩展')).toBeVisible();
-  await expect(library.getByRole('checkbox')).toHaveCount(2);
+  await expect(library.getByRole('checkbox')).toHaveCount(3);
   await library.getByRole('button', { name: '取消', exact: true }).click();
   await expect(library.getByRole('button', { name: '卸载 XeLaTeX' })).toHaveCount(0);
   await library.getByRole('button', { name: '导入离线扩展包' }).click();

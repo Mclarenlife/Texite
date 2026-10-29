@@ -13,6 +13,7 @@ export function RuntimeSettings({ onChange }: { onChange: () => void }) {
   const [pack, setPack] =
     useState<Awaited<ReturnType<NonNullable<Window['texite']>['chooseRuntimePack']>>>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const [autoDownload, setAutoDownload] = useState(true);
   async function action(fn: () => Promise<void>) {
     setBusy(true);
     setError('');
@@ -26,6 +27,10 @@ export function RuntimeSettings({ onChange }: { onChange: () => void }) {
   }
   useEffect(() => {
     void action(async () => setModules(await window.texite!.listRuntime()));
+    void window.texite
+      ?.getPackageDownloadSettings?.()
+      .then((s) => setAutoDownload(s.autoDownload))
+      .catch((e) => setError(e.message));
   }, []);
   function selectedWithDependencies(ids: string[]) {
     const next = new Set(ids);
@@ -85,6 +90,31 @@ export function RuntimeSettings({ onChange }: { onChange: () => void }) {
           <RotateCcw size={15} />
         </button>
       </div>
+      {window.texite?.setPackageDownloadSettings && (
+        <label className="setting-row">
+          <span>
+            自动补齐缺失宏包
+            <small>
+              从 TeX Live 镜像下载匹配的 2025 版宏包及依赖。只在缺包时联网，安装后可离线使用。
+            </small>
+          </span>
+          <input
+            type="checkbox"
+            aria-label="自动补齐缺失宏包"
+            checked={autoDownload}
+            disabled={busy}
+            onChange={(e) => {
+              const value = e.target.checked;
+              void action(async () => {
+                const settings = await window.texite!.setPackageDownloadSettings!({
+                  autoDownload: value,
+                });
+                setAutoDownload(settings.autoDownload);
+              });
+            }}
+          />
+        </label>
+      )}
       <p className="runtime-hint">
         安装包仅带 pdfLaTeX。其他引擎从{' '}
         <a
@@ -94,7 +124,7 @@ export function RuntimeSettings({ onChange }: { onChange: () => void }) {
         >
           GitHub Release
         </a>{' '}
-        下载后导入；导入与编译均无需联网。
+        下载后导入；已安装的引擎与宏包可离线使用。
       </p>
       {pack ? (
         <div className="runtime-import">

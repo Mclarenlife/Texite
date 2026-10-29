@@ -20,6 +20,8 @@ export type Diagnostic = {
   line?: number;
 };
 export type CompileResult = {
+  mainFile?: string;
+  fallbackFrom?: string;
   syncMap?: SyncNode[];
   success: boolean;
   engine?: Engine;
@@ -102,6 +104,8 @@ export type DesktopAPI = {
     removedFolders?: string[],
   ): Promise<unknown>;
   listRuntime(): Promise<RuntimeModule[]>;
+  getPackageDownloadSettings?(): Promise<{ autoDownload: boolean }>;
+  setPackageDownloadSettings?(value: { autoDownload: boolean }): Promise<{ autoDownload: boolean }>;
   chooseRuntimePack(): Promise<{
     label: string;
     platform: string;

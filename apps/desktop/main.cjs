@@ -14,6 +14,7 @@ const {
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { Compiler, detectEngines } = require('./workspace.cjs');
+const { PackageRepository } = require('./package-repository.cjs');
 const { ProjectLibrary } = require('./projects.cjs');
 const { RuntimeManager } = require('./runtime-manager.cjs');
 const { AgentClient } = require('./agent-client.cjs');
@@ -162,6 +163,9 @@ app.whenReady().then(async () => {
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
   const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
   compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime, manager);
+  const packageRepository = new PackageRepository(manager, app.getPath('userData'));
+  handle('runtime:online-get', () => packageRepository.settings());
+  handle('runtime:online-set', (settings) => packageRepository.configure(settings));
   ai = new AgentClient(path.join(app.getPath('userData'), 'ai'), (event) => {
     if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
   });
@@ -199,7 +203,8 @@ app.whenReady().then(async () => {
   });
   let pendingPack;
   function checkIdle() {
-    if (compiler.active) throw new Error('请先停止编译，再更改引擎或宏包。');
+    if (compiler.active || packageRepository.active)
+      throw new Error('请先停止编译和宏包下载，再更改引擎或宏包。');
   }
   protocol.handle('texite', (request) => {
     const url = new URL(request.url);
@@ -263,11 +268,14 @@ app.whenReady().then(async () => {
     return manager.install(path.join(runtime, 'default.texite-runtime.zip'));
   });
   handle('compiler:run', (project) =>
-    compiler.compile(project, (chunk) => {
+    packageRepository.compile(project, compiler, (chunk) => {
       if (window && !window.isDestroyed()) window.webContents.send('compiler:log', chunk);
     }),
   );
-  handle('compiler:cancel', () => compiler.cancel());
+  handle('compiler:cancel', () => {
+    packageRepository.cancel();
+    return compiler.cancel();
+  });
   function createWindow() {
     window = new BrowserWindow({
       show: !process.env.TEXITE_TEST_USER_DATA,
@@ -329,6 +337,7 @@ app.whenReady().then(async () => {
         ).response === 1,
       cleanup: async () => {
         chat?.cancel();
+        packageRepository.cancel();
         await Promise.all([compiler.cancel(), ai.disconnect()]);
       },
       approved: () => {
@@ -364,6 +373,7 @@ app.whenReady().then(async () => {
       if (choice === 1) event.preventDefault();
     });
     window.on('closed', () => {
+      packageRepository.cancel();
       void compiler.cancel();
       void ai.disconnect();
       chat?.cancel();

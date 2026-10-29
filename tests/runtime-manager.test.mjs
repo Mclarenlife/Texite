@@ -6,6 +6,37 @@ import crypto from 'node:crypto';
 import JSZip from 'jszip';
 import runtime from '../apps/desktop/runtime-manager.cjs';
 const { RuntimeManager } = runtime;
+test('universal resource packs cannot import engine binaries or files outside texmf-dist', async () => {
+  await fs.mkdir('.qa', { recursive: true });
+  const base = await fs.mkdtemp(path.resolve('.qa/universal-pack-'));
+  const manager = new RuntimeManager(base, base);
+  async function write(module) {
+    const zip = new JSZip();
+    zip.file(
+      'pack.json',
+      JSON.stringify({ schema: 1, platform: 'all', texLive: '2025', modules: [module] }),
+    );
+    const file = path.join(base, 'invalid.zip');
+    await fs.writeFile(file, await zip.generateAsync({ type: 'nodebuffer' }));
+    return file;
+  }
+  await assert.rejects(
+    manager.readPack(await write({ id: 'engine-pdflatex', kind: 'engine', files: {} })),
+    /不能包含引擎/,
+  );
+  await assert.rejects(
+    manager.readPack(
+      await write({
+        id: 'pkg-test',
+        kind: 'package',
+        label: 'test',
+        dependencies: [],
+        files: { 'bin/test.exe': {} },
+      }),
+    ),
+    /目录外文件/,
+  );
+});
 test('Base35 maps use installed fonts, provide Base1 encoding and disappear after font removal', async () => {
   const base = await fs.mkdtemp(path.resolve('.qa/base35-map-'));
   const manager = new RuntimeManager(base, base);

@@ -5,6 +5,8 @@ export type MobileCompileResult = {
   log: string;
   revision: number;
   success: boolean;
+  mainFile?: string;
+  fallbackFrom?: string;
 };
 export function compileOffline(
   project: Project,

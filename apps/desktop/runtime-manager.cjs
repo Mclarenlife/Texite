@@ -105,7 +105,7 @@ class RuntimeManager {
     const pack = JSON.parse(await manifestFile.async('string'));
     if (
       pack.schema !== 1 ||
-      pack.platform !== `${process.platform}-${process.arch}` ||
+      (pack.platform !== `${process.platform}-${process.arch}` && pack.platform !== 'all') ||
       (pack.texLive !== '2025' && pack.texLive !== 'tectonic-2022')
     )
       throw new Error('扩展包版本或系统架构不兼容，请下载当前平台对应的版本。');
@@ -114,6 +114,8 @@ class RuntimeManager {
     const ids = new Set();
     let total = 0;
     for (const module of pack.modules) {
+      if (pack.platform === 'all' && module.kind !== 'package')
+        throw new Error('通用资源包不能包含引擎。');
       if (
         !identifier(module.id) ||
         ids.has(module.id) ||
@@ -136,6 +138,11 @@ class RuntimeManager {
       ids.add(module.id);
       for (const [name, meta] of Object.entries(module.files)) {
         safeFile(name);
+        if (
+          pack.platform === 'all' &&
+          (module.kind !== 'package' || !name.startsWith('texmf-dist/'))
+        )
+          throw new Error('通用资源包不能包含引擎或项目目录外文件。');
         if (
           !Number.isSafeInteger(meta.size) ||
           meta.size < 0 ||
