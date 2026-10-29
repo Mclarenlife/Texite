@@ -10,6 +10,7 @@ test('layout diagnostics are grouped, retain navigation and copy, and explain EP
   await page.evaluate(async () => {
     const pdf = Array.from(new Uint8Array(await (await fetch('./sample.pdf')).arrayBuffer()));
     window.texite = {
+      saveProject: async () => ({ cancelled: true }),
       compile: async (p) => ({
         success: true,
         revision: p.revision,

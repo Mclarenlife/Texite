@@ -335,7 +335,7 @@ test('panel selection edits only selected text and conversations persist indepen
   await send(page, 'edit');
   await expect(page.locator('.ai-task')).toHaveCount(2);
   await expect
-    .poll(() => page.evaluate(() => (window as any).aiTest.run.conversationId))
+    .poll(() => page.evaluate(() => (window as any).aiTest.run?.conversationId))
     .toBe(first);
   const panel = await page.locator('.ai-heading').boundingBox(),
     tabs = await page.getByRole('tablist', { name: 'AI 模式' }).boundingBox();

@@ -102,7 +102,7 @@ import { useAI } from './useAI';
 import { AIPanel } from '../ui/AIPanel';
 import type { AITask } from '../core/ai';
 import { commitAIProject } from '../platform/storage';
-import { compileWithFallback } from '../core/compile-target';
+import { compileTargets, compileWithFallback } from '../core/compile-target';
 
 type Modal =
   'projects' | 'folder' | 'new' | 'file' | 'settings' | 'commands' | 'help' | 'rename' | null;
@@ -1047,6 +1047,10 @@ export function App() {
   const compile = useCallback(async () => {
     const snapshot = projectRef.current;
     if (!snapshot || compileRunning.current || restoreLock.current) return;
+    if (!compileTargets(snapshot).length) {
+      notify('请先创建 .tex 文稿，或打开包含文档导言区的文件。');
+      return;
+    }
     if (!window.texite) {
       setModal('settings');
       setModalError(
@@ -1075,7 +1079,9 @@ export function App() {
       setCompileFailed(!result.cancelled && !(result.success && result.pdf));
       if (result.success && result.pdf) {
         setProject((p) =>
-          p?.id === snapshot.id && p.files.some((f) => f.path === result.mainFile)
+          p?.id === snapshot.id &&
+          p.mainFile !== result.mainFile &&
+          p.files.some((f) => f.path === result.mainFile)
             ? { ...p, mainFile: result.mainFile }
             : p,
         );
