@@ -82,6 +82,7 @@ jobs:
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-cleanup-desktop.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-agent-workspace.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-ai-history-desktop.cjs
+          TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-api-agent-desktop.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: Texite-${{ runner.os }}-desktop

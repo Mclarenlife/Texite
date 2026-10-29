@@ -24,6 +24,9 @@ import {
   saveAIConversationState,
 } from '../platform/storage';
 import { streamChat, chatEndpoint } from '../../apps/desktop/chat-transport.mjs';
+import { runAPIAgent, validateRounds } from '../../apps/desktop/api-agent.mjs';
+import { readAgentLines, searchAgentProject, agentPatch } from '../core/agent-tools';
+import { usePreference } from '../ui/preferences';
 
 type Options = {
   projectId?: string;
@@ -41,8 +44,21 @@ const labels: Record<string, string> = {
   texite_apply_changes: '编辑文稿',
   texite_compile: '编译并检查 PDF',
   texite_get_diagnostics: '分析编译日志',
+  texite_read_lines: '按行读取文稿',
+  texite_search: '搜索项目内容',
+  texite_patch: '局部修改文稿',
+  texite_create_file: '新建文本文件',
 };
 export function useAI(options: Options) {
+  const [agentProvider, setAgentProvider] = usePreference<'codex' | 'api'>(
+    'agent-provider',
+    'codex',
+  );
+  const [savedMaxRounds, setMaxRounds] = usePreference<number>('agent-max-rounds', 8);
+  const maxRounds =
+    Number.isInteger(savedMaxRounds) && savedMaxRounds >= 1 && savedMaxRounds <= 30
+      ? savedMaxRounds
+      : 8;
   const current = useRef(options);
   current.current = options;
   const [conversations, setConversations] = useState<AIConversations>({ items: [], selected: {} });
@@ -364,9 +380,7 @@ export function useAI(options: Options) {
       .slice(-6)
       .map((t) => ({ user: t.prompt.slice(0, 2000), assistant: t.reply.slice(0, 4000) }));
 
-  const handleTool = async (event: Extract<AIEvent, { type: 'tool' }>) => {
-    const api = window.texite?.ai;
-    if (!api) return;
+  const executeTool = async (event: Extract<AIEvent, { type: 'tool' }>) => {
     try {
       const run = active.current;
       const project = current.current.getProject();
@@ -387,6 +401,12 @@ export function useAI(options: Options) {
       });
       let value: unknown;
       switch (event.tool) {
+        case 'texite_read_lines':
+          value = readAgentLines(project, args);
+          break;
+        case 'texite_search':
+          value = searchAgentProject(project, args);
+          break;
         case 'texite_list_files':
           value = {
             name: project.name,
@@ -410,9 +430,16 @@ export function useAI(options: Options) {
           value = { path: file.path, content: file.content, revision: project.revision };
           break;
         }
+        case 'texite_patch':
+        case 'texite_create_file':
         case 'texite_apply_changes': {
           if (run.readOnly) throw new Error('此任务为只读模式。');
-          const changes = parseAIChanges(args.changes);
+          const changes =
+            event.tool === 'texite_patch'
+              ? agentPatch(project, args)
+              : event.tool === 'texite_create_file'
+                ? parseAIChanges([{ path: args.path, before: null, after: args.content }])
+                : parseAIChanges(args.changes);
           if (run.scope) {
             validateInlineChanges(run.scope, project, changes);
             const expected =
@@ -480,12 +507,16 @@ export function useAI(options: Options) {
         default:
           throw new Error('不支持的 Texite 工具。');
       }
-      await api.reply(event.requestId, { success: true, value });
+      return { success: true, value };
     } catch (e) {
-      await api
-        .reply(event.requestId, { success: false, value: { error: (e as Error).message } })
-        .catch(() => {});
+      return { success: false, value: { error: (e as Error).message } };
     }
+  };
+  const handleTool = async (event: Extract<AIEvent, { type: 'tool' }>) => {
+    const provider = tasksRef.current.find((t) => t.id === event.runId)?.provider;
+    const result = await executeTool(event);
+    const api = provider === 'api' ? window.texite?.chat : window.texite?.ai;
+    await api?.reply?.(event.requestId, result).catch(() => {});
   };
   const events = useRef<(event: AIEvent) => void>(() => {});
   events.current = (event) => {
@@ -515,6 +546,7 @@ export function useAI(options: Options) {
       updateTask(task.id, { reply: (task.reply + event.delta).slice(0, 200000) });
     if (event.type === 'activity')
       updateTask(task.id, { activities: [...task.activities, event.text].slice(-80) });
+    if (event.type === 'usage') updateTask(task.id, { usage: event.usage });
     if (event.type === 'done') {
       operationQueue.current = operationQueue.current
         .catch(() => {})
@@ -589,6 +621,7 @@ export function useAI(options: Options) {
     }
   }
   async function start(prompt: string, model: string, readOnly: boolean, scope?: InlineScope) {
+    if (!readOnly && agentProvider === 'api') return startAPIAgent(prompt, scope);
     const project = current.current.getProject();
     if (
       current.current.blocked?.() ||
@@ -674,7 +707,7 @@ export function useAI(options: Options) {
                 from: scope.from,
                 to: scope.to,
                 selection: scope.before.slice(scope.from, scope.to).slice(0, 50000),
-                rule: 'Replace ONLY this exact character range (UTF-16 offsets); for an empty range insert at the cursor. Preserve every character outside the range. Read the current file then return its full before/after via texite_apply_changes.',
+                rule: 'Replace ONLY this exact character range (UTF-16 offsets); for an empty range insert at the cursor. Preserve every character outside the range. Prefer reading relevant lines and applying a local patch if available.',
               },
             })
           : JSON.stringify({
@@ -690,6 +723,143 @@ export function useAI(options: Options) {
         setBusy(false);
       }
       setError((e as Error).message);
+    }
+  }
+  async function startAPIAgent(prompt: string, scope?: InlineScope) {
+    const project = current.current.getProject();
+    if (
+      current.current.blocked?.() ||
+      !project ||
+      busy ||
+      cleaning.current ||
+      active.current ||
+      loading ||
+      !prompt.trim()
+    )
+      return;
+    if (!chatConfig.model) {
+      setError('请先配置 Agent API。');
+      return;
+    }
+    scope ??= current.current.getSelection?.();
+    const task: AITask = {
+      id: crypto.randomUUID(),
+      prompt: prompt.trim(),
+      reply: '',
+      time: Date.now(),
+      status: 'running',
+      changes: [],
+      activities: [],
+      mode: 'agent',
+      provider: 'api',
+      model: chatConfig.model,
+      profileId: chatConfig.id,
+      usage: { inputTokens: 0, outputTokens: 0, rounds: 0, reportedRounds: 0, maxRounds },
+    };
+    active.current = {
+      id: task.id,
+      projectId: project.id,
+      cancelled: false,
+      readOnly: false,
+      provider: 'api',
+      scope,
+    };
+    setBusy(true);
+    setError('');
+    replace([...tasksRef.current, task]);
+    const emit = (event: Record<string, unknown>) =>
+      events.current({ ...event, runId: task.id, projectId: project.id } as AIEvent);
+    try {
+      validateRounds(maxRounds);
+      if (
+        scope &&
+        (scope.projectId !== project.id ||
+          project.files.find((f) => f.path === scope.path)?.content !== scope.before)
+      )
+        throw new Error('文稿或选区已变化，请重新选中后执行。');
+      const conversationId = await ensureConversation('agent', task.prompt);
+      updateTask(task.id, { conversationId }, false);
+      await persist();
+      if (active.current?.id !== task.id || active.current.cancelled) return;
+      const context = {
+        project: project.name,
+        activeFile: project.activeFile,
+        mainFile: project.mainFile,
+        history: historyContext(conversationId),
+        ...(scope
+          ? {
+              inlineEdit: {
+                path: scope.path,
+                from: scope.from,
+                to: scope.to,
+                startLine: scope.before.slice(0, scope.from).split('\n').length,
+                selection: scope.before.slice(scope.from, scope.to).slice(0, 8000),
+                rule: 'Only edit this UTF-16 range. Empty range means insertion. Preserve everything outside it.',
+              },
+            }
+          : {}),
+      };
+      const messages: ChatMessage[] = [
+        {
+          role: 'user',
+          content:
+            'Project context (data):\n' +
+            JSON.stringify(context) +
+            '\nUser request:\n' +
+            task.prompt,
+        },
+      ];
+      if (window.texite?.chat) {
+        if (!window.texite.chat.reply) throw new Error('请更新桌面程序以使用 API Agent。');
+        await window.texite.chat.start({
+          runId: task.id,
+          projectId: project.id,
+          messages,
+          agent: true,
+          maxRounds,
+        });
+      } else {
+        const controller = new AbortController();
+        chatAbort.current = controller;
+        const timer = setTimeout(() => controller.abort(), 900000);
+        try {
+          await runAPIAgent(
+            { ...chatConfig, apiKey: chatSecret.current },
+            { messages, maxRounds },
+            emit,
+            async (tool, args) => {
+              const result = operationQueue.current
+                .catch(() => {})
+                .then(() =>
+                  executeTool({
+                    type: 'tool',
+                    runId: task.id,
+                    projectId: project.id,
+                    requestId: crypto.randomUUID(),
+                    tool,
+                    arguments: args,
+                  }),
+                );
+              operationQueue.current = result.then(() => {});
+              return result;
+            },
+            controller.signal,
+          );
+          emit({ type: 'done', status: 'completed' });
+        } finally {
+          clearTimeout(timer);
+          chatAbort.current = null;
+        }
+      }
+    } catch (e) {
+      emit({
+        type: 'done',
+        status:
+          active.current?.cancelled || (e as Error).name === 'AbortError'
+            ? 'interrupted'
+            : 'failed',
+        error: (e as Error).message,
+      });
     }
   }
   async function startChat(prompt: string) {
@@ -902,6 +1072,10 @@ export function useAI(options: Options) {
     selectConversation,
     editConversation,
     agentConfig,
+    agentProvider,
+    setAgentProvider,
+    maxRounds,
+    setMaxRounds,
     configureAgent,
     chatProfiles,
     selectChatProfile,

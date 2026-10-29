@@ -19,6 +19,7 @@ test('AI history survives process replacement, migrates without deleting source 
     status: 'completed',
     changes: [],
     activities: [],
+    usage: { inputTokens: 123, outputTokens: 45, rounds: 2, reportedRounds: 2, maxRounds: 8 },
   });
   await store.write('project', value);
   const original = store.root;

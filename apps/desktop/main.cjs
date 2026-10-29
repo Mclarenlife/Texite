@@ -177,6 +177,7 @@ app.whenReady().then(async () => {
   handle('chat:save', (config) => chat.save(config));
   handle('chat:start', (input) => chat.start(input));
   handle('chat:cancel', () => chat.cancel());
+  handle('chat:reply', (id, result) => chat.reply(id, result));
   handle('ai:connect', () => ai.connect());
   handle('ai:idle-get', () => ai.getIdleSettings());
   handle('ai:idle-set', (settings) => ai.setIdleSettings(settings));

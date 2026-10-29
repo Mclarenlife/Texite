@@ -57,6 +57,17 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         <section>
           <h4>
             {packageInfo.version}
+            <time>2026.10.29</time>
+          </h4>
+          <ul>
+            <li>Agent 支持 CLI 与 API 两种接入，共用差异记录和整次撤回。</li>
+            <li>新增按行读取、项目搜索和局部补丁，减少传输全文。</li>
+            <li>API Agent 可设置最大请求轮数，并显示实际返回的 Token 用量。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.11.0
             <time>2026.10.24</time>
           </h4>
           <ul>

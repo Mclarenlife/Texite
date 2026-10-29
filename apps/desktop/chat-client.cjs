@@ -8,6 +8,7 @@ class ChatClient {
     this.active = null;
     this.settings = null;
     this.settingsQueue = Promise.resolve();
+    this.toolRequests = new Map();
   }
   async loadAll() {
     if (this.settings) return this.settings;
@@ -141,18 +142,36 @@ class ChatClient {
       JSON.stringify(input.messages).length > 150000
     )
       throw new Error('对话请求无效或过长。');
+    if (input.agent !== undefined && typeof input.agent !== 'boolean')
+      throw new Error('Agent 模式无效。');
+    if (input.agent) {
+      const { validateRounds } = await import('./api-agent.mjs');
+      validateRounds(input.maxRounds);
+    }
+    if (this.active) throw new Error('已有 API 任务正在运行。');
     const controller = new AbortController();
     this.active = controller;
     const emit = (data) => this.emit({ ...data, runId: input.runId, projectId: input.projectId });
-    const timer = setTimeout(() => controller.abort(), 180000);
+    const timer = setTimeout(() => controller.abort(), input.agent ? 900000 : 180000);
     try {
-      const { streamChat } = await import('./chat-transport.mjs');
-      await streamChat(
-        await this.load(),
-        input.messages,
-        (delta) => emit({ type: 'text', delta }),
-        controller.signal,
-      );
+      if (input.agent) {
+        const { runAPIAgent } = await import('./api-agent.mjs');
+        await runAPIAgent(
+          await this.load(),
+          input,
+          emit,
+          (tool, args) => this.requestTool(emit, tool, args, controller.signal),
+          controller.signal,
+        );
+      } else {
+        const { streamChat } = await import('./chat-transport.mjs');
+        await streamChat(
+          await this.load(),
+          input.messages,
+          (delta) => emit({ type: 'text', delta }),
+          controller.signal,
+        );
+      }
       emit({ type: 'done', status: 'completed' });
     } catch (e) {
       emit({
@@ -171,6 +190,40 @@ class ChatClient {
   }
   cancel() {
     this.active?.abort();
+  }
+  requestTool(emit, tool, args, signal) {
+    signal.throwIfAborted();
+    return new Promise((resolve, reject) => {
+      const requestId = require('node:crypto').randomUUID();
+      const cleanup = () => {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', abort);
+        this.toolRequests.delete(requestId);
+      };
+      const abort = () => {
+        cleanup();
+        reject(new Error('API 任务已停止。'));
+      };
+      const timer = setTimeout(
+        () => {
+          cleanup();
+          reject(new Error('项目工具执行超时。'));
+        },
+        tool === 'texite_compile' ? 240000 : 45000,
+      );
+      signal.addEventListener('abort', abort, { once: true });
+      this.toolRequests.set(requestId, (value) => {
+        cleanup();
+        resolve(value);
+      });
+      emit({ type: 'tool', requestId, tool, arguments: args });
+    });
+  }
+  reply(requestId, result) {
+    const resolve = this.toolRequests.get(requestId);
+    if (!resolve) return;
+    if (!result || typeof result.success !== 'boolean') throw new Error('工具结果无效。');
+    resolve(result);
   }
 }
 module.exports = { ChatClient };

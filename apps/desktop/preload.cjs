@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('texite', {
     save: (config) => ipcRenderer.invoke('chat:save', config),
     start: (input) => ipcRenderer.invoke('chat:start', input),
     cancel: () => ipcRenderer.invoke('chat:cancel'),
+    reply: (id, result) => ipcRenderer.invoke('chat:reply', id, result),
   },
   writeClipboard: (text) => ipcRenderer.invoke('clipboard:write', text),
   ai: {

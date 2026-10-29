@@ -87,7 +87,8 @@ export function AIPanel({
   const [apiKey, setApiKey] = useState('');
   const [configError, setConfigError] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
-  const custom = mode === 'chat' && provider === 'api';
+  const service = mode === 'agent' ? ai.agentProvider : provider;
+  const custom = service === 'api';
   const visibleTasks = ai.tasks.filter(
     (t) =>
       (t.mode || 'agent') === mode &&
@@ -155,7 +156,7 @@ export function AIPanel({
       return;
     const message = prompt;
     setPrompt('');
-    if (custom) void ai.startChat(message);
+    if (custom && mode === 'chat') void ai.startChat(message);
     else
       void ai.start(message, selected, mode === 'chat', mode === 'agent' ? selection : undefined);
   };
@@ -320,17 +321,21 @@ export function AIPanel({
           <Trash2 size={15} />
         </button>
         <div className="ai-service-controls">
-          {mode === 'chat' && (
+          {
             <Select
-              aria-label="对话服务"
-              value={provider}
+              aria-label={mode === 'agent' ? 'Agent 接入方式' : '对话服务'}
+              value={service}
               disabled={ai.busy}
-              onValueChange={(value) => setProvider(value as 'codex' | 'api')}
+              onValueChange={(value) =>
+                mode === 'agent'
+                  ? ai.setAgentProvider(value as 'codex' | 'api')
+                  : setProvider(value as 'codex' | 'api')
+              }
             >
               <option value="codex">Agent CLI</option>
               <option value="api">自定义 API</option>
             </Select>
-          )}
+          }
           {!custom && ai.connection && (
             <button
               className="icon-button"
@@ -345,8 +350,8 @@ export function AIPanel({
           {custom ? (
             <button
               className="icon-button"
-              aria-label="配置对话 API"
-              title="配置对话 API"
+              aria-label={mode === 'agent' ? '配置 Agent API' : '配置对话 API'}
+              title={mode === 'agent' ? '配置 Agent API' : '配置对话 API'}
               onClick={configure}
             >
               <Settings2 size={16} />
@@ -377,7 +382,7 @@ export function AIPanel({
           <span>
             {desktop
               ? ai.connectionNote || '发送指令时自动连接 Agent CLI'
-              : 'Agent CLI 需要桌面版；网页可使用对话 API。'}
+              : 'Agent CLI 需要桌面版；网页可切换到 API。'}
           </span>
           {desktop && (
             <button
@@ -499,6 +504,28 @@ export function AIPanel({
               </details>
             )}
             {task.reply && <AIReply text={task.reply} />}
+            {task.usage && (
+              <div
+                className="ai-usage"
+                aria-label="Agent 用量"
+                title="累计各轮 API 返回的 Token；包含重复发送的上下文，不代表金额。"
+              >
+                <span>
+                  {task.usage.rounds}/{task.usage.maxRounds} 轮
+                </span>
+                {task.usage.reportedRounds > 0 ? (
+                  <span>
+                    输入 {task.usage.inputTokens.toLocaleString()} · 输出{' '}
+                    {task.usage.outputTokens.toLocaleString()} Token
+                    {task.usage.reportedRounds < task.usage.rounds ? '（部分轮次）' : ''}
+                  </span>
+                ) : (
+                  <span>
+                    {task.status === 'running' ? '等待 API 用量' : 'API 未提供 Token 用量'}
+                  </span>
+                )}
+              </div>
+            )}
             {task.error && <p className="ai-task-error">{task.error}</p>}
             {!!task.changes.length && (
               <button className="ai-changes" onClick={() => setReview(task)}>
@@ -578,6 +605,20 @@ export function AIPanel({
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {custom && mode === 'agent' && (
+              <Select
+                aria-label="API Agent 最大执行轮数"
+                value={String(ai.maxRounds)}
+                disabled={ai.busy}
+                onValueChange={(v) => ai.setMaxRounds(Number(v))}
+              >
+                {[1, 3, 5, 8, 12, 20, 30].map((n) => (
+                  <option key={n} value={String(n)}>
+                    最多 {n} 轮
                   </option>
                 ))}
               </Select>
@@ -672,8 +713,8 @@ export function AIPanel({
           setConfigOpen(false);
           setApiKey('');
         }}
-        title="配置对话 API"
-        description="支持 OpenAI 兼容的 Chat Completions 接口。"
+        title={mode === 'agent' ? '配置 Agent API' : '配置对话 API'}
+        description="Agent 与对话共用 API 配置。Agent 需要支持工具调用的 Chat Completions 接口；轮数指单次任务最多发送的模型请求次数。"
       >
         <form
           className="api-settings"

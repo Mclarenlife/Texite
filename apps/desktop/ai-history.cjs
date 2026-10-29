@@ -51,6 +51,14 @@ function validateHistory(input) {
       if (!['codex', 'api'].includes(t.provider)) throw new Error('AI 服务无效。');
       task.provider = t.provider;
     }
+    if (t.usage !== undefined) {
+      task.usage = {};
+      for (const key of ['inputTokens', 'outputTokens', 'rounds', 'reportedRounds', 'maxRounds']) {
+        if (!Number.isSafeInteger(t.usage?.[key]) || t.usage[key] < 0)
+          throw new Error('AI 用量数据无效。');
+        task.usage[key] = t.usage[key];
+      }
+    }
     return task;
   });
   const items = input.conversations.items.map((c) => {

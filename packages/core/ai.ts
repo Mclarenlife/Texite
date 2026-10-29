@@ -44,6 +44,14 @@ export type AITask = {
   mode?: 'agent' | 'chat';
   provider?: 'codex' | 'api';
   model?: string;
+  usage?: AIUsage;
+};
+export type AIUsage = {
+  inputTokens: number;
+  outputTokens: number;
+  rounds: number;
+  reportedRounds: number;
+  maxRounds: number;
 };
 export type AIConnection = {
   connected: boolean;
@@ -62,6 +70,7 @@ export type AIEvent =
     }
   | { type: 'text'; runId: string; projectId: string; delta: string }
   | { type: 'activity'; runId: string; projectId: string; text: string }
+  | { type: 'usage'; runId: string; projectId: string; usage: AIUsage }
   | {
       type: 'done';
       runId: string;
@@ -119,7 +128,14 @@ export type ChatAPI = {
   select?(id: string): Promise<ChatConfig>;
   get(): Promise<ChatConfig>;
   save(config: ChatConfig & { clearKey?: boolean }): Promise<ChatConfig>;
-  start(input: { runId: string; projectId: string; messages: ChatMessage[] }): Promise<void>;
+  start(input: {
+    runId: string;
+    projectId: string;
+    messages: ChatMessage[];
+    agent?: boolean;
+    maxRounds?: number;
+  }): Promise<void>;
+  reply?(requestId: string, result: { success: boolean; value: unknown }): Promise<void>;
   cancel(): Promise<void>;
 };
 export type AgentConfig = {

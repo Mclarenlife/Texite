@@ -44,6 +44,9 @@ const tools = [
   ['texite_get_diagnostics', 'Get the latest compiler log and located errors.', schema({})],
 ].map(([name, description, inputSchema]) => ({ type: 'function', name, description, inputSchema }));
 const toolNames = new Set(tools.map((t) => t.name));
+for (const name of ['texite_read_lines', 'texite_search', 'texite_patch', 'texite_create_file'])
+  toolNames.add(name);
+const writeTools = ['texite_apply_changes', 'texite_compile', 'texite_patch', 'texite_create_file'];
 const disabledFeatures = [
   'plugins',
   'apps',
@@ -417,8 +420,7 @@ class CodexClient {
       (p.namespace && p.namespace !== '')
     )
       return reject('This tool call is not authorized for the active Texite project.');
-    if (run.readOnly && ['texite_apply_changes', 'texite_compile'].includes(p.tool))
-      return reject('This task is read-only.');
+    if (run.readOnly && writeTools.includes(p.tool)) return reject('This task is read-only.');
     if (++run.calls > 80)
       return reject('Tool budget reached. Finish with the verified results so far.');
     const requestId = randomUUID();
@@ -489,6 +491,8 @@ class CodexClient {
       run.key = key;
       let threadId = this.threads[key];
       if (!threadId) {
+        const { compactTools } = await import('./agent-tools.mjs');
+        const availableTools = [...tools, ...compactTools.map((t) => ({ type: 'function', ...t }))];
         const result = await this.request('thread/start', {
           model: input.model,
           cwd: path.join(this.directory, 'workspace'),
@@ -497,10 +501,12 @@ class CodexClient {
           ephemeral: true,
           environments: [],
           config: { ...this.disabledMcp, web_search: 'disabled' },
-          developerInstructions: instructions,
+          developerInstructions:
+            instructions +
+            ' Prefer texite_search, texite_read_lines and texite_patch for existing files to minimize token usage; use texite_create_file for new files.',
           dynamicTools: run.readOnly
-            ? tools.filter((t) => !['texite_apply_changes', 'texite_compile'].includes(t.name))
-            : tools,
+            ? availableTools.filter((t) => !writeTools.includes(t.name))
+            : availableTools,
         });
         threadId = result.thread.id;
         if (!run.cancelled && this.active === run) this.threads[key] = threadId;

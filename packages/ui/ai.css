@@ -889,3 +889,16 @@
   border-top: 1px solid var(--line);
   margin: 1em 0;
 }
+.ai-usage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 10px;
+  color: var(--secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ai-composer-controls [aria-label='API Agent 最大执行轮数'] {
+  max-width: 110px;
+  margin-left: auto;
+}
