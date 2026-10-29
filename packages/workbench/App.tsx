@@ -1126,7 +1126,7 @@ export function App() {
           if (window.texite) {
             if (!window.texite.saveAIProject) throw new Error('请更新桌面程序以保存 AI 修改。');
             await window.texite.saveAIProject(next, removals);
-          }
+          } else await saveBrowserDirectory(next, removals);
           setSaved('saved');
         } catch (e) {
           setSaved('error');
