@@ -61,7 +61,7 @@ public class TexiteFilesPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDel
         io.async {
             do {
                 let data = try JSONSerialization.data(withJSONObject: project, options: [.sortedKeys])
-                guard data.count <= 80 * 1024 * 1024 else { call.reject("项目超过 80 MB，请拆分项目"); return }
+                guard data.count <= 384 * 1024 * 1024 else { call.reject("项目序列化数据超过 384 MB，请拆分项目"); return }
                 let url = try self.directory().appendingPathComponent(id + ".json")
                 // Atomic replacement preserves the previous file if a write fails.
                 try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
@@ -83,7 +83,7 @@ public class TexiteFilesPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDel
     }
 
     @objc func exportFile(_ call: CAPPluginCall) {
-        guard let encoded = call.getString("base64"), encoded.utf8.count <= 110 * 1024 * 1024,
+        guard let encoded = call.getString("base64"), encoded.utf8.count <= 384 * 1024 * 1024,
               let data = Data(base64Encoded: encoded) else { call.reject("导出数据无效或过大"); return }
         let requested = (call.getString("name") ?? "Texite.zip").replacingOccurrences(of: "\\", with: "_")
         let name = URL(fileURLWithPath: requested).lastPathComponent
@@ -120,9 +120,9 @@ public class TexiteFilesPlugin: CAPPlugin, CAPBridgedPlugin, UIDocumentPickerDel
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
                 let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                guard size <= 50 * 1024 * 1024 else { throw NSError(domain: "Texite", code: 1, userInfo: [NSLocalizedDescriptionKey: "支持最多 50 MB 的 ZIP"] ) }
+                guard size <= 250 * 1024 * 1024 else { throw NSError(domain: "Texite", code: 1, userInfo: [NSLocalizedDescriptionKey: "支持最多 250 MB 的 ZIP"] ) }
                 let data = try Data(contentsOf: url)
-                guard data.count <= 50 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }
+                guard data.count <= 250 * 1024 * 1024 else { throw CocoaError(.fileReadTooLarge) }
                 DispatchQueue.main.async { self.finish(result: ["name": url.lastPathComponent, "base64": data.base64EncodedString()]) }
             } catch { DispatchQueue.main.async { self.finish(error: error) } }
         }

@@ -3520,3 +3520,62 @@ h1 {
     flex-basis: 100%;
   }
 }
+/* Secondary compilation actions live inside diagnostics, not in the main toolbar. */
+.compile-output-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.compile-output-files {
+  margin-bottom: 18px;
+}
+.compile-output-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.compile-output-file:hover {
+  background: var(--tint);
+}
+.compile-output-file span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.compile-output-file small {
+  opacity: 0.6;
+}
+.compile-tools {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.compile-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+}
+.compile-tool-row > div {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 6px;
+}
+.compile-tool-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.6;
+}
+.compile-tool-row .secondary-button {
+  flex-shrink: 0;
+}

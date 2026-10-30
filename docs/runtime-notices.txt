@@ -1,6 +1,6 @@
 Texite 0.5.0 modular offline typesetting runtime
 
-The default installer contains only pdfTeX and BibTeX binaries, selected runtime
+The default installer contains pdfTeX, BibTeX, Biber, MakeIndex and Kpathsea binaries, selected runtime
 packages from the frozen TeX Live 2025 distribution, and Texite configuration.
 XeTeX/xdvipdfmx and LuaHBTeX are separate optional downloads. Modules retain their
 original copyrights and licenses. No third-party engine binary is modified.
@@ -36,7 +36,27 @@ https://data1b.fullyjustified.net/tlextras-2022.0r0.tar
 https://github.com/tectonic-typesetting/tectonic-texlive-bundles
 https://ftp.math.utah.edu/pub/tex/historic/systems/texlive/2022/
 
-Compilation never invokes a package manager or downloads missing resources.
+Missing macro/font resources can optionally be downloaded from the pinned TeX Live
+2025 repository, with archive checksum verification. External executable tools are
+not downloaded by the package resolver. EPS, Biber and MakeIndex work offline.
+Inkscape and latexminted can be selected from the user's local installation; these
+applications and their Python dependencies are not redistributed inside Texite.
+The Windows tlmgr.bat marker is Texite-authored and only identifies the private
+kpsewhich directory for latexrestricted; it does not execute a package manager.
+
+EPS conversion uses the unmodified @wasm-zoo/ghostscript 0.7.2 distribution of
+Ghostscript 10.08.0. The worker supplies a single file to its virtual MEMFS; no
+host filesystem, command execution or network interface is exposed to PostScript.
+Ghostscript is AGPL-3.0-or-later; the WASM Zoo wrapper is MIT. This does not
+relicense Ghostscript under Texite's GPL-3.0-only license. Exact license texts,
+third-party notices, BUILDINFO, checksums, provenance and SBOM are bundled in
+node_modules/@wasm-zoo/ghostscript within the app archive.
+Corresponding source bundle and reproducible build instructions:
+https://github.com/ttomohisa/wasm-zoo/releases/tag/ghostscript-v0.7.2
+https://github.com/ttomohisa/wasm-zoo/releases/download/ghostscript-v0.7.2/ghostscript-sources-10.08.0-zoo-0.7.2.tar.gz
+https://github.com/ArtifexSoftware/ghostpdl/tree/4d175558193ad50d6fbc329fe28dbb48af626126
+Upstream source archive SHA256:
+c20492bc8ebb96c87fa2e52a0926e1cda8cde95d66145e018ac713fed5da38cf
 
 Texite also retains two small upstream font support files in apps/desktop/fonts:
 ps2pk35.map (Thomas Esser, public domain) from texlive-scripts, and the unchanged

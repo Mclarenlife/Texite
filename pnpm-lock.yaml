@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@wasm-zoo/ghostscript':
+        specifier: 0.7.2
+        version: 0.7.2
       jszip:
         specifier: 3.10.2
         version: 3.10.2
@@ -1002,6 +1005,9 @@ packages:
         optional: true
       oxc-transform-react:
         optional: true
+
+  '@wasm-zoo/ghostscript@0.7.2':
+    resolution: {integrity: sha512-hdrEwyyYoyRbJya/sXvPpziIDRg1kuuAHPdlNg1S/bYpWVckiD1MzWqS2Lka86Yh5xSezl+gm/RfFKP3foNXYw==}
 
   '@xmldom/xmldom@0.8.15':
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
@@ -3504,6 +3510,8 @@ snapshots:
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.4(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)
+
+  '@wasm-zoo/ghostscript@0.7.2': {}
 
   '@xmldom/xmldom@0.8.15': {}
 

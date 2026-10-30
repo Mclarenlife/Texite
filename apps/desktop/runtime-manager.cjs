@@ -173,6 +173,22 @@ class RuntimeManager {
     return this.exclusive(async () => {
       if (!(await this.state()).initialized)
         await this.installUnlocked(path.join(this.runtime, 'default.texite-runtime.zip'));
+      // Install new auxiliary tools once on upgrade without restoring user-removed engines/packages.
+      const state = await this.state();
+      const helpers = path.join(this.runtime, 'helpers.texite-runtime.zip');
+      if (
+        !state.helpersV2 &&
+        (await fs.stat(helpers).then(
+          () => true,
+          () => false,
+        ))
+      ) {
+        await this.installUnlocked(helpers);
+        const updated = await this.state();
+        updated.helpersV1 = true;
+        updated.helpersV2 = true;
+        await this.save(updated);
+      }
     });
   }
   async install(file, selected) {
@@ -185,8 +201,9 @@ class RuntimeManager {
     const wanted = new Set();
     function select(id) {
       if (wanted.has(id)) return;
-      if (state.modules[id]) return;
       const m = catalog.get(id);
+      if (state.modules[id] && (!m || JSON.stringify(state.modules[id]) === JSON.stringify(m)))
+        return;
       if (!m) throw new Error('缺少依赖：' + id + '。请先恢复默认环境或导入包含此依赖的扩展包。');
       wanted.add(id);
       m.dependencies.forEach(select);
@@ -195,6 +212,7 @@ class RuntimeManager {
     await fs.mkdir(path.join(this.directory, 'modules'), { recursive: true });
     const stage = await fs.mkdtemp(path.join(this.directory, 'import-'));
     const moved = [];
+    const backups = [];
     try {
       for (const id of wanted) {
         const m = catalog.get(id);
@@ -210,8 +228,17 @@ class RuntimeManager {
       }
       for (const id of wanted) {
         const target = this.modulePath(id);
-        // A directory left by an interrupted import is not active until state.json commits.
-        await removeTree(target);
+        // Preserve installed files until every replacement and state.json have committed.
+        const backup = path.join(stage, 'previous-' + id);
+        if (
+          await fs.stat(target).then(
+            () => true,
+            () => false,
+          )
+        ) {
+          await move(target, backup);
+          backups.push({ target, backup });
+        }
         await move(path.join(stage, id), target);
         moved.push(target);
         state.modules[id] = catalog.get(id);
@@ -220,6 +247,7 @@ class RuntimeManager {
       await this.save(state);
     } catch (error) {
       for (const target of moved) await removeTree(target);
+      for (const { target, backup } of backups.reverse()) await move(backup, target);
       throw error;
     } finally {
       await removeTree(stage);
@@ -368,6 +396,20 @@ class RuntimeManager {
       cache,
       binary: path.join(bin, binaryName),
       bibtex: path.join(bin, process.platform === 'win32' ? 'bibtex.exe' : 'bibtex'),
+      biber: state.modules['tools-bibliography-index']
+        ? path.join(
+            this.modulePath('tools-bibliography-index'),
+            'bin',
+            process.platform === 'win32' ? 'biber.exe' : 'biber',
+          )
+        : null,
+      makeindex: state.modules['tools-bibliography-index']
+        ? path.join(
+            this.modulePath('tools-bibliography-index'),
+            'bin',
+            process.platform === 'win32' ? 'makeindex.exe' : 'makeindex',
+          )
+        : null,
       bin,
       env: {
         TEXMFCNF: sep(cache),

@@ -21,6 +21,47 @@ const sample = {
   ],
   folders: ['empty'],
 };
+test(
+  'large project round trip crosses the previous file, project and 100 MB snapshot limits',
+  { timeout: 180000 },
+  async (t) => {
+    const env = await setup(t),
+      a = await env.device('large-a'),
+      b = await env.device('large-b');
+    const project = await a.library.import({
+      ...sample,
+      files: [
+        ...sample.files,
+        ...Array.from({ length: 600 }, (_, i) => ({
+          path: `parts/${i}.tex`,
+          content: `part ${i}`,
+        })),
+        {
+          path: 'dataset.bin',
+          content: Buffer.alloc(81 * 1024 * 1024, 35).toString('base64'),
+          binary: true,
+        },
+      ],
+    });
+    const start = performance.now();
+    assert.equal((await a.dav.sync(project)).status, 'uploaded');
+    const key = (await b.dav.list())[0].key;
+    const copy = await b.dav.download(key);
+    assert.equal(copy.files.length, 603);
+    assert.equal(
+      copy.files.find((f) => f.path === 'dataset.bin').content,
+      project.files.find((f) => f.path === 'dataset.bin').content,
+    );
+    assert.equal((await b.dav.sync(copy)).status, 'unchanged');
+    t.diagnostic(
+      JSON.stringify({
+        webdavBinaryMiB: 81,
+        files: 603,
+        elapsedMs: Math.round(performance.now() - start),
+      }),
+    );
+  },
+);
 test('detached projects retain both copies, stay skipped after restart, and upload relinks without duplication', async (t) => {
   const env = await setup(t),
     a = await env.device('detached');

@@ -31,7 +31,19 @@ test('compiler library previews optional modules, confirms removal and shows the
     };
     let installed: any[] = [base];
     let autoDownload = true;
+    let compileTools = { inkscape: '', latexminted: '' };
     window.texite = {
+      compileTools: {
+        get: async () => compileTools,
+        choose: async (name) => {
+          compileTools = { ...compileTools, [name]: '/tools/' + name };
+          return compileTools;
+        },
+        remove: async (name) => {
+          compileTools = { ...compileTools, [name]: '' };
+          return compileTools;
+        },
+      },
       openProject: async () => null,
       listProjects: async () => [],
       reopenProject: async () => null,
@@ -88,6 +100,12 @@ test('compiler library previews optional modules, confirms removal and shows the
   await expect(automatic).toBeChecked();
   await automatic.uncheck();
   await expect(automatic).not.toBeChecked();
+  const tools = page.getByRole('region', { name: '外部编译工具' });
+  await tools.getByRole('button', { name: '选择程序' }).first().click();
+  await expect(tools.getByText('/tools/inkscape', { exact: true })).toBeVisible();
+  await page.screenshot({ animations: 'disabled', path: '.qa/compile-tools-settings.png' });
+  await tools.getByRole('button', { name: '取消关联 inkscape' }).click();
+  await expect(tools.getByText('未配置', { exact: true })).toHaveCount(2);
   await expect(library.getByText('TeX Live 2025 final · 2.0 MB')).toBeVisible();
   await library.getByRole('button', { name: '导入离线扩展包' }).click();
   await expect(library.getByText('XeLaTeX 离线扩展')).toBeVisible();

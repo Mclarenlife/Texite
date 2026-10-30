@@ -93,7 +93,8 @@ xe = closure(['xetex', 'dvipdfmx', 'fandol', 'fontspec', 'xecjk', 'adobemapping'
 lua = closure(['luahbtex', 'luatex', 'luaotfload', 'luatexja', 'chinese-jfm', 'fandol', 'fontspec'], ['luahbtex','luatex','luaotfload','luatexja','fandol'])
 core, default, xe, lua = [{n for n in group if not n.startswith('collection-')} for group in (core,default,xe,lua)]
 binary_roots = { 'pdflatex': ['pdftex', 'kpathsea', 'bibtex'], 'xelatex': ['xetex', 'dvipdfmx', 'kpathsea', 'bibtex'], 'lualatex': ['luahbtex', 'luatex', 'kpathsea', 'bibtex'] }
-binary_packages = {p + '.' + ARCH for roots in binary_roots.values() for p in roots}
+helper_roots = ['biber', 'makeindex', 'kpathsea']
+binary_packages = {p + '.' + ARCH for roots in binary_roots.values() for p in roots} | {p + '.' + ARCH for p in helper_roots}
 all_packages = default | xe | lua | binary_packages
 
 def download(name):
@@ -135,6 +136,18 @@ for name in sorted(all_packages - binary_packages):
     record('pkg-' + name, name, files, ['pkg-' + d for d in dependencies], maps=maps, core=name in core)
 
 record('opentype-fonts', 'OpenType 字体 · Fandol / Latin Modern / TeX Gyre', opentype)
+helper_files = {}
+for pkg in helper_roots:
+    with tarfile.open(archives[pkg + '.' + ARCH]) as tar:
+        for member in tar:
+            name = PurePosixPath(member.name).name
+            if member.isfile() and member.name.startswith('bin/') and (name in {'biber', 'biber.exe', 'makeindex', 'makeindex.exe', 'kpsewhich', 'kpsewhich.exe'} or name.endswith('.dll')):
+                helper_files['bin/' + name] = tar.extractfile(member).read()
+if os.name == 'nt':
+    # latexrestricted locates kpsewhich beside a tlmgr marker on Windows. This is
+    # not a package manager: downloads remain under Texite's verified repository.
+    helper_files['bin/tlmgr.bat'] = b'@echo Use Texite settings to manage packages.\r\n@exit /b 1\r\n'
+record('tools-bibliography-index', 'Biber / MakeIndex · 参考文献与索引工具', helper_files)
 for engine, roots in binary_roots.items():
     files = {}
     for pkg in roots:
@@ -246,13 +259,14 @@ def bundle(label, selected, destination):
 default_ids = {'pkg-' + n for n in default} | {'engine-pdflatex', 'texite-config'}
 artifacts = []
 artifacts.append(bundle('pdfLaTeX · 中文与常用宏包', default_ids, OUT / 'default.texite-runtime.zip'))
+helpers = bundle('参考文献与索引辅助工具', {'tools-bibliography-index'}, OUT / 'helpers.texite-runtime.zip')
 if artifacts[0]['bytes'] > 200_000_000:
     raise RuntimeError('Default runtime exceeds the 200 MB budget.')
 shutil.copyfile(OUT / 'default.texite-runtime.zip', PACKS / f'Texite-0.5.0-pdflatex-{TARGET}.texite-runtime.zip')
 for engine, pkgs in [('xelatex',xe),('lualatex',lua)]:
     ids = {'pkg-' + n for n in pkgs} | {'engine-' + engine, 'opentype-fonts'}
     artifacts.append(bundle(engine + ' · 离线扩展', ids - default_ids, PACKS / f'Texite-0.5.0-{engine}-{TARGET}.texite-runtime.zip'))
-(OUT / 'modular-manifest.json').write_text(json.dumps({'schema':1,'platform':TARGET,'texLive':'2025','databaseSha256':DATABASE_SHA,'default':artifacts[0]},indent=2))
+(OUT / 'modular-manifest.json').write_text(json.dumps({'schema':1,'platform':TARGET,'texLive':'2025','databaseSha256':DATABASE_SHA,'default':artifacts[0],'helpers':helpers},indent=2))
 (PACKS / f'checksums-{TARGET}.json').write_text(json.dumps(artifacts,indent=2))
 licenses=OUT/'licenses'
 licenses.mkdir(exist_ok=True)

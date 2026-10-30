@@ -1,12 +1,15 @@
-import { Crosshair } from 'lucide-react';
-import type { Diagnostic, Project } from '../core/model';
+import { Crosshair, Download, RotateCcw } from 'lucide-react';
+import { useState } from 'react';
+import type { Diagnostic, Project, CompileResult } from '../core/model';
 
 const isLayout = (d: Diagnostic) =>
   d.severity !== 'error' && /^(?:Over|Under)full \\[hv]box/.test(d.message);
 
 function diagnosticHelp(d: Diagnostic) {
   if (/^Package epstopdf Warning: Shell escape feature is not enabled\./.test(d.message))
-    return '未启用 EPS 图片自动转换。PDF、PNG、JPEG 图片通常不受影响；若文稿引用 EPS，请先将图片转换为 PDF。';
+    return '未开放文稿执行系统命令。桌面版 pdfLaTeX / LuaLaTeX 会在编译前自动将项目 EPS 转为 PDF；此提示本身不代表图片缺失。若转换失败，请查看日志中的 EPS → PDF 记录。';
+  if (/eps-converted-to\.pdf/.test(d.message))
+    return 'EPS 转换结果未找到。请检查原始 EPS 是否已导入项目、文件名大小写与路径是否一致，并查看日志中的 EPS 转换结果；自定义 epstopdf 输出目录暂需手动提供 PDF。';
   if (/^Underfull \\hbox/.test(d.message))
     return '该段落的字间距可能偏大。可定位检查文字、表格列宽或手动换行。';
   if (/^Underfull \\vbox/.test(d.message))
@@ -34,6 +37,8 @@ export function CompileDiagnostics({
   failed = false,
   onLocate,
   onNotify,
+  outputs,
+  onRecompile,
 }: {
   diagnostics: Diagnostic[];
   log: string;
@@ -42,7 +47,22 @@ export function CompileDiagnostics({
   failed?: boolean;
   onLocate: (file: string, line: number) => void;
   onNotify: (message: string) => void;
+  outputs?: CompileResult['outputs'];
+  onRecompile?: () => void;
 }) {
+  const [exporting, setExporting] = useState(false);
+  async function exportOutput(file?: string) {
+    if (!outputs || !window.texite?.exportCompileOutput) return;
+    setExporting(true);
+    try {
+      if (await window.texite.exportCompileOutput(outputs.buildId, file))
+        onNotify(file ? '编译产物已导出。' : '投稿包已导出，包含该次编译的源码与生成文件。');
+    } catch (error) {
+      onNotify(error instanceof Error ? error.message : '导出失败。');
+    } finally {
+      setExporting(false);
+    }
+  }
   const ordered = [...diagnostics].sort(
     (a, b) => Number(a.severity !== 'error') - Number(b.severity !== 'error'),
   );
@@ -92,6 +112,48 @@ export function CompileDiagnostics({
   return (
     <section className="diagnostics diagnostics-full" aria-label="编译诊断">
       <div id="compile-diagnostics-body" className="diagnostics-body">
+        {(onRecompile || outputs) && (
+          <div className="compile-output-actions">
+            {onRecompile && (
+              <button
+                className="secondary-button"
+                disabled={compiling || exporting}
+                onClick={onRecompile}
+              >
+                <RotateCcw size={14} />
+                清理并重新编译
+              </button>
+            )}
+            {outputs && window.texite?.exportCompileOutput && (
+              <button
+                className="secondary-button"
+                disabled={compiling || exporting}
+                onClick={() => void exportOutput()}
+                title="导出上次成功编译的源码、参考文献与生成文件"
+              >
+                <Download size={14} />
+                导出投稿包
+              </button>
+            )}
+          </div>
+        )}
+        {outputs && window.texite?.exportCompileOutput && (
+          <details className="compile-output-files">
+            <summary>生成文件 · {outputs.files.length}</summary>
+            {outputs.files.map((file) => (
+              <button
+                key={file.path}
+                className="compile-output-file"
+                disabled={compiling || exporting}
+                onClick={() => void exportOutput(file.path)}
+              >
+                <span>{file.path.replace(/^\.texite-build\//, '')}</span>
+                <small>{Math.max(1, Math.round(file.bytes / 1024))} KB</small>
+                <Download size={14} />
+              </button>
+            ))}
+          </details>
+        )}
         {!!ordered.length && (
           <p className="diagnostics-summary">
             {errors} 个错误 · {issues.length - errors} 个警告 · {layout.length} 条排版提示

@@ -64,6 +64,9 @@ jobs:
         if: runner.os == 'Windows'
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Verify Windows packaged offline compiler helpers
+        if: runner.os == 'Windows'
+        run: node scripts/smoke-compile-mechanisms.cjs
       # macOS packages use an ad-hoc signature until Developer ID credentials are configured.
       - run: pnpm runtime:verify && pnpm build && pnpm exec install-electron && pnpm exec electron-builder --mac dmg --publish never -c.mac.identity=- -c.mac.hardenedRuntime=false -c.mac.notarize=false
         if: runner.os == 'macOS'
@@ -76,6 +79,7 @@ jobs:
           test -n "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
           codesign -dv --verbose=2 "$APP"
+          TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-compile-mechanisms.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-sync-desktop.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-navigation-desktop.cjs
           TEXITE_TEST_EXECUTABLE="$PWD/$APP/Contents/MacOS/Texite" node scripts/smoke-project-actions-desktop.cjs

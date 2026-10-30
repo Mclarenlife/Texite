@@ -10,6 +10,16 @@ import {
 import { createProject } from '../packages/core/sample';
 import { diagnosticTarget } from '../packages/preview/CompileDiagnostics';
 
+test('tool-assisted retries clear resolved TeX errors but retain final failures', () => {
+  const first = 'pdfLaTeX · 第 1 遍\n! Package minted Error: Missing executable.\n';
+  assert.equal(parseDiagnostics(first).length, 1);
+  const repaired =
+    first +
+    'Texite: 外部工具资源已生成，重新编译。\npdfLaTeX · 第 1 遍\nOutput written on main.pdf.\n';
+  assert.equal(parseDiagnostics(repaired).length, 0);
+  assert.equal(parseDiagnostics(repaired + '! Undefined control sequence.\n').length, 1);
+});
+
 test('rejects traversal, Windows device paths, reserved directories and ambiguous file names', () => {
   for (const name of [
     '../outside.tex',
@@ -95,6 +105,14 @@ test('managed passes replace resolved citation warnings while preserving final p
   );
   assert.equal(bibFailure[0].severity, 'error');
   assert.match(bibFailure[0].message, /absent.bib/);
+  const biber = parseDiagnostics(
+    'pdfLaTeX · 第 1 遍\nWARN - Missing date\npdfLaTeX · 第 2 遍\nERROR - Cannot find bibliography',
+  );
+  assert.deepEqual(
+    biber.map((d) => d.severity),
+    ['error', 'warning'],
+  );
+  assert.match(biber[0].message, /Biber: Cannot find bibliography/);
 });
 
 test('box diagnostics exclude shipout progress, keep wrapped locations and preserve subsequent file nesting', () => {

@@ -5,6 +5,10 @@ const { spawn } = require('node:child_process');
 const { RuntimeManager } = require('./runtime-manager.cjs');
 const { compileManaged } = require('./managed-compiler.cjs');
 const { readSyncTeX } = require('./synctex.cjs');
+const LIMITS = require('./project-limits.json');
+const { contentDigest, diskDigest, writeContent } = require('./file-content.cjs');
+const { BuildCache } = require('./build-cache.cjs');
+const { dependencies, publishAux } = require('./cross-references.cjs');
 
 const textPattern = /\.(tex|bib|sty|cls|txt|md|csv|json|bst|tikz)$/i;
 const engines = ['tectonic', 'xelatex', 'pdflatex', 'lualatex'];
@@ -42,7 +46,7 @@ function validateSnapshot(project) {
     !project ||
     !engines.includes(project.engine) ||
     !Array.isArray(project.files) ||
-    project.files.length > 500
+    project.files.length > LIMITS.files
   )
     throw new Error('Invalid project');
   const names = new Set();
@@ -57,10 +61,15 @@ function validateSnapshot(project) {
     const key = file.path.toLowerCase();
     if (names.has(key)) throw new Error('Duplicate file');
     names.add(key);
-    total += file.content.length;
+    const bytes = Buffer.byteLength(file.content, file.binary ? 'base64' : 'utf8');
+    if (bytes > LIMITS.fileBytes) throw new Error(`文件 ${file.path} 超过 128 MB。`);
+    total += bytes;
   }
-  if (total > 70 * 1024 * 1024) throw new Error('Project exceeds 50 MB');
-  if (project.folders && (!Array.isArray(project.folders) || project.folders.length > 500))
+  if (total > LIMITS.projectBytes) throw new Error('项目总量超过 250 MB。');
+  if (
+    project.folders &&
+    (!Array.isArray(project.folders) || project.folders.length > LIMITS.folders)
+  )
     throw new Error('Invalid folders');
   const folders = new Set();
   for (const name of [...(project.folders || []), ...project.files.map((f) => f.path)]) {
@@ -93,22 +102,22 @@ async function readDirectory(root) {
       if (
         entry.isSymbolicLink() ||
         entry.name.startsWith('.') ||
-        ['node_modules', 'build', 'dist'].includes(entry.name)
+        ['node_modules', 'build', 'dist', '__MACOSX'].includes(entry.name)
       )
         continue;
       const name = safeRelative(relative ? relative + '/' + entry.name : entry.name);
       if (entry.isDirectory()) {
-        if (folders.length >= 500) throw new Error('最多支持 500 个文件夹。');
+        if (folders.length >= LIMITS.folders) throw new Error('最多支持 5,000 个文件夹。');
         folders.push(name);
         await visit(name);
         continue;
       }
-      if (!entry.isFile() || /\.(aux|log|out|toc|fls|fdb_latexmk|synctex\.gz)$/i.test(name))
-        continue;
+      if (!entry.isFile() || /\.(log|out|toc|fls|fdb_latexmk|synctex\.gz)$/i.test(name)) continue;
       const stat = await fs.stat(path.join(root, name));
       total += stat.size;
-      if (total > 50 * 1024 * 1024 || files.length >= 500)
-        throw new Error('初版支持最多 500 个文件、50 MB 的项目。');
+      if (stat.size > LIMITS.fileBytes) throw new Error(`文件 ${name} 超过 128 MB。`);
+      if (total > LIMITS.projectBytes || files.length >= LIMITS.files)
+        throw new Error('项目超过 5,000 个文件或 250 MB。');
       const bytes = await fs.readFile(path.join(root, name));
       hashes.set(name, digest(bytes));
       files.push({
@@ -151,12 +160,12 @@ async function saveDirectory(
   removedFolders = [],
 ) {
   validateSnapshot(project);
-  if (!Array.isArray(removals) || removals.length > (sync ? 500 : 30))
+  if (!Array.isArray(removals) || removals.length > (sync ? LIMITS.files : 30))
     throw new Error('Invalid removals');
   const deletes = [];
   if (
     !Array.isArray(removedFolders) ||
-    removedFolders.length > 500 ||
+    removedFolders.length > LIMITS.folders ||
     (!sync && removedFolders.length)
   )
     throw new Error('Invalid folder removals');
@@ -219,24 +228,17 @@ async function saveDirectory(
     deletes.push({ target, name, expected: digest(bytes) });
   }
   const writes = [];
+  const unchanged = [];
   for (const file of project.files) {
     const target = await ensureSafeDestination(root, file.path);
-    const content = Buffer.from(file.content, file.binary ? 'base64' : 'utf8');
-    let existing;
-    try {
-      existing = await fs.readFile(target);
-    } catch (e) {
-      if (e.code !== 'ENOENT') throw e;
-    }
-    if (
-      existing &&
-      digest(existing) !== hashes.get(file.path) &&
-      digest(existing) !== digest(content)
-    )
+    const incoming = contentDigest(file);
+    const existing = await diskDigest(target);
+    if (existing && existing !== hashes.get(file.path) && existing !== incoming)
       throw new Error(
         `文件 ${file.path} 已被外部修改或目标目录已有同名文件。请重新打开项目，或另存到空目录。`,
       );
-    writes.push({ target, content, name: file.path });
+    if (existing === incoming) unchanged.push([file.path, incoming]);
+    else writes.push({ target, file, incoming, existing, name: file.path });
   }
   // Each file is atomic; the whole directory is not a multi-file transaction.
   for (const folder of project.folders || [])
@@ -245,13 +247,16 @@ async function saveDirectory(
     await fs.mkdir(path.dirname(write.target), { recursive: true });
     const temp = write.target + '.texite-' + crypto.randomUUID() + '.tmp';
     try {
-      await fs.writeFile(temp, write.content);
+      await writeContent(temp, write.file);
+      if ((await diskDigest(write.target)) !== write.existing)
+        throw new Error(`文件 ${write.name} 在保存期间被外部修改，未覆盖。`);
       await fs.rename(temp, write.target);
     } finally {
       await fs.rm(temp, { force: true });
     }
-    hashes.set(write.name, digest(write.content));
+    hashes.set(write.name, write.incoming);
   }
+  for (const [name, hash] of unchanged) hashes.set(name, hash);
   for (const item of deletes) {
     if (digest(await fs.readFile(item.target)) !== item.expected)
       throw new Error(`文件 ${item.name} 已被外部修改，未删除。`);
@@ -372,11 +377,13 @@ class Compiler {
       manager ||
       (runtime ? new RuntimeManager(runtime, path.join(cache, 'runtime-modules')) : null);
     this.active = null;
+    this.builds = new BuildCache(cache);
   }
   async cancel() {
     const job = this.active;
     if (!job) return;
     job.cancelled = true;
+    if (job.worker) await job.worker.terminate();
     const child = job.child;
     if (!child?.pid) return;
     if (process.platform === 'win32') {
@@ -399,7 +406,16 @@ class Compiler {
       }
     }
   }
-  async compile(project, onLog = () => {}) {
+  async exportBuild(buildId, filename, target) {
+    if (this.active) throw new Error('请等待编译完成后导出。');
+    this.active = { exporting: true };
+    try {
+      await this.builds.exportTo(buildId, filename, target);
+    } finally {
+      this.active = null;
+    }
+  }
+  async compile(project, onLog = () => {}, options = {}) {
     validateSnapshot(project);
     if (!project.mainFile) throw new Error('请先创建 .tex 文件并设为主文件，再编译。');
     if (this.active) throw new Error('已有编译正在进行。');
@@ -425,14 +441,22 @@ class Compiler {
       if (job.cancelled)
         return { success: false, cancelled: true, revision: project.revision, log: '编译已取消。' };
       await fs.mkdir(this.cache, { recursive: true });
-      root = await fs.mkdtemp(path.join(this.cache, 'compile-'));
-      await fs.mkdir(path.join(root, '.texite-build'));
+      if (this.manager) {
+        await this.manager.init();
+        const environment = crypto
+          .createHash('sha256')
+          .update(JSON.stringify([1, await this.manager.state(), this.toolSettings || {}]))
+          .digest('hex');
+        job.build = await this.builds.prepare(project, environment, options.clean === true);
+        root = job.build.root;
+      } else root = await fs.mkdtemp(path.join(this.cache, 'compile-'));
+      await fs.mkdir(path.join(root, '.texite-build'), { recursive: true });
       for (const folder of project.folders || [])
         await fs.mkdir(path.join(root, safeRelative(folder)), { recursive: true });
       for (const file of project.files) {
         const target = path.join(root, safeRelative(file.path));
         await fs.mkdir(path.dirname(target), { recursive: true });
-        await fs.writeFile(target, file.content, file.binary ? 'base64' : 'utf8');
+        if (!job.build) await writeContent(target, file);
         if (/\.tex$/i.test(file.path))
           await fs.mkdir(path.join(root, '.texite-build', path.dirname(safeRelative(file.path))), {
             recursive: true,
@@ -448,7 +472,52 @@ class Compiler {
           onLog(chunk);
         }
       };
-      const managed = this.manager ? await compileManaged(this, project, root, job, append) : null;
+      let managed = null;
+      if (this.manager) {
+        append(
+          job.build.reused
+            ? `复用项目编译缓存 · 更新 ${job.build.writes} 个文件\n`
+            : '建立项目编译缓存\n',
+        );
+        const graph = dependencies(project);
+        let previousReferences = '';
+        // Cycles can change pagination in other documents, so iterate until AUX content settles.
+        for (let sweep = 0; sweep < (graph.cyclic ? 6 : 1); sweep++) {
+          for (const item of graph.ordered) {
+            if (job.cancelled) break;
+            if (item.file !== project.mainFile) append(`\n跨文档引用 · ${item.file}\n`);
+            managed = await compileManaged(
+              this,
+              { ...project, mainFile: item.file },
+              root,
+              job,
+              append,
+            );
+            if (managed.code !== 0) break;
+            await publishAux(
+              root,
+              graph.cyclic && item.file === project.mainFile
+                ? { ...item, outputName: item.file.replace(/\.tex$/i, '.aux') }
+                : item,
+              project.files,
+            );
+          }
+          if (managed?.code !== 0 || job.cancelled) break;
+          if (graph.cyclic) {
+            const currentReferences = JSON.stringify(
+              await Promise.all(
+                graph.ordered.map((item) =>
+                  diskDigest(path.join(root, item.file.replace(/\.tex$/i, '.aux'))),
+                ),
+              ),
+            );
+            if (currentReferences === previousReferences) break;
+            previousReferences = currentReferences;
+            if (sweep === 5)
+              append('\nLaTeX Warning: 跨文档引用在 6 轮后仍未稳定，请检查循环引用。\n');
+          }
+        }
+      }
       compilerLabel = managed?.label;
       const code = managed
         ? managed.code
@@ -458,9 +527,19 @@ class Compiler {
             append(`实际编译器：${project.engine} · 系统 latexmk\n`);
             const child = spawn(binary, args, {
               cwd: root,
-              env: { ...environment(), TECTONIC_CACHE_DIR: path.join(this.cache, 'formats'),
-                ...Object.fromEntries(['TEXINPUTS', 'BIBINPUTS', 'BSTINPUTS'].map((key) => [key,
-                  [path.dirname(path.join(root, project.mainFile)).replaceAll('\\', '/'), root.replaceAll('\\', '/') + '//', ''].join(path.delimiter)])),
+              env: {
+                ...environment(),
+                TECTONIC_CACHE_DIR: path.join(this.cache, 'formats'),
+                ...Object.fromEntries(
+                  ['TEXINPUTS', 'BIBINPUTS', 'BSTINPUTS'].map((key) => [
+                    key,
+                    [
+                      path.dirname(path.join(root, project.mainFile)).replaceAll('\\', '/'),
+                      root.replaceAll('\\', '/') + '//',
+                      '',
+                    ].join(path.delimiter),
+                  ]),
+                ),
               },
               windowsHide: true,
               shell: false,
@@ -487,16 +566,23 @@ class Compiler {
         '.texite-build',
         path.basename(project.mainFile).replace(/\.tex$/i, '.pdf'),
       );
-      const stat = await fs.stat(pdfPath);
-      if (stat.size > 50 * 1024 * 1024) throw new Error('PDF 超过 50 MB。');
+      const stat = await fs.stat(pdfPath).catch((error) => {
+        if (error.code === 'ENOENT')
+          throw new Error('编译没有生成 PDF，请检查文稿是否包含可排版的内容。');
+        throw error;
+      });
+      if (stat.size > LIMITS.pdfBytes) throw new Error('PDF 超过 128 MB。');
       return {
         success: true,
         engine: project.engine,
         compilerLabel: compilerLabel || `${project.engine} · 系统`,
         revision: project.revision,
         log,
-        pdf: [...(await fs.readFile(pdfPath))],
+        pdf: await fs.readFile(pdfPath),
         syncMap: await readSyncTeX(pdfPath, root, project.files),
+        outputs: job.build
+          ? await this.builds.finish(job.build, project, compilerLabel)
+          : undefined,
       };
     } catch (error) {
       return {

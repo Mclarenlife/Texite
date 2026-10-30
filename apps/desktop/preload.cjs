@@ -90,13 +90,19 @@ contextBridge.exposeInMainWorld('texite', {
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   detectEngines: () => ipcRenderer.invoke('compiler:detect'),
   listRuntime: () => ipcRenderer.invoke('runtime:list'),
-    getPackageDownloadSettings: () => ipcRenderer.invoke('runtime:online-get'),
-    setPackageDownloadSettings: (value) => ipcRenderer.invoke('runtime:online-set', value),
+  getPackageDownloadSettings: () => ipcRenderer.invoke('runtime:online-get'),
+  setPackageDownloadSettings: (value) => ipcRenderer.invoke('runtime:online-set', value),
   chooseRuntimePack: () => ipcRenderer.invoke('runtime:choose'),
   installRuntimePack: (ids) => ipcRenderer.invoke('runtime:install', ids),
   removeRuntimeModule: (id) => ipcRenderer.invoke('runtime:remove', id),
   restoreDefaultRuntime: () => ipcRenderer.invoke('runtime:restore'),
-  compile: (project) => ipcRenderer.invoke('compiler:run', project),
+  compile: (project, options) => ipcRenderer.invoke('compiler:run', project, options),
+  exportCompileOutput: (buildId, file) => ipcRenderer.invoke('compiler:export', buildId, file),
+  compileTools: {
+    get: () => ipcRenderer.invoke('compiler:tools'),
+    choose: (name) => ipcRenderer.invoke('compiler:tool-choose', name),
+    remove: (name) => ipcRenderer.invoke('compiler:tool-remove', name),
+  },
   cancelCompile: () => ipcRenderer.invoke('compiler:cancel'),
   onCompileLog: (callback) => {
     const handler = (_event, chunk) => callback(chunk);

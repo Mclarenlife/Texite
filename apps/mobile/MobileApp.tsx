@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { PROJECT_LIMITS, projectBytes } from '../../packages/core/project-size';
+import { bytesToBase64 } from '../../packages/core/binary';
 import {
   ArrowLeft,
   BookOpen,
@@ -540,19 +542,23 @@ export function MobileApp() {
           try {
             const p = current.current;
             if (!p) return;
+            if (p.files.length + files.length > PROJECT_LIMITS.files)
+              throw new Error('最多支持 5,000 个文件');
+            if (
+              projectBytes(p.files) + files.reduce((n, f) => n + f.size, 0) >
+              PROJECT_LIMITS.projectBytes
+            )
+              throw new Error('项目总量超过 250 MB');
             const imported = [];
             for (const f of files) {
-              if (f.size > 20 * 1024 * 1024) throw new Error('单文件不能超过 20 MB');
+              if (f.size > PROJECT_LIMITS.fileBytes) throw new Error('单文件不能超过 128 MB');
               const path = safePath(f.name);
               if (p.files.some((item) => item.path === path))
                 throw new Error(path + ' 已存在，请先重命名');
               if (isTextFile(path)) imported.push({ path, content: await f.text() });
               else {
                 const bytes = new Uint8Array(await f.arrayBuffer());
-                let text = '';
-                for (let i = 0; i < bytes.length; i += 8192)
-                  text += String.fromCharCode(...bytes.subarray(i, i + 8192));
-                imported.push({ path, content: btoa(text), binary: true });
+                imported.push({ path, content: bytesToBase64(bytes), binary: true });
               }
             }
             change({ ...p, files: [...p.files, ...imported], revision: p.revision + 1 });

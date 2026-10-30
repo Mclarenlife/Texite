@@ -2,7 +2,7 @@ import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 GlobalWorkerOptions.workerSrc = workerUrl;
 
-export async function pdfCover(bytes: number[]) {
+export async function pdfCover(bytes: number[] | Uint8Array) {
   const task = getDocument({
     data: new Uint8Array(bytes),
     cMapUrl: new URL('pdfjs/cmaps/', document.baseURI).href,

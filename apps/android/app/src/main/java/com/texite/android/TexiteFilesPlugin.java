@@ -47,7 +47,7 @@ public class TexiteFilesPlugin extends Plugin {
         String id = project.getString("id", "");
         if (!id.matches("[a-zA-Z0-9-]{1,80}")) { call.reject("无效项目 ID"); return; }
         byte[] bytes = project.toString().getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > 80 * 1024 * 1024) { call.reject("项目超过 80 MB，请拆分项目"); return; }
+        if (bytes.length > 384 * 1024 * 1024) { call.reject("项目序列化数据超过 384 MB，请拆分项目"); return; }
         io.execute(() -> {
             AtomicFile target = null;
             FileOutputStream output = null;

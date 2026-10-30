@@ -1,5 +1,14 @@
 import { openDB } from 'idb';
 import JSZip from 'jszip';
+import { PROJECT_LIMITS, ignoredImportPath } from '../core/project-size';
+import { bytesToBase64, base64ToBytes } from '../core/binary';
+import {
+  prepareProject,
+  putPrepared,
+  hydrateProject,
+  sameStoredFiles,
+  collectUnusedAssets,
+} from './project-assets';
 import {
   type EditRecord,
   type RecoveryPoint,
@@ -43,6 +52,8 @@ export async function clearStoredRecords(kind: CleanupKind) {
     await tx.done.catch(() => {});
     throw error;
   }
+  if (kind === 'backups')
+    for (const id of await db.getAllKeys('projects')) await collectUnusedAssets(db, String(id));
 }
 export type ProjectBackup = {
   id: string;
@@ -66,9 +77,15 @@ export async function readProjectCovers(ids: string[]): Promise<Record<string, s
 }
 export async function readProjectBackups(id: string): Promise<ProjectBackup[]> {
   const prefix = 'backup:' + id + ':';
-  return (
-    await (await database()).getAll('settings', IDBKeyRange.bound(prefix, prefix + '\uffff'))
-  ).sort((a, b) => b.time - a.time);
+  const db = await database();
+  const backups = (await db.getAll('settings', IDBKeyRange.bound(prefix, prefix + '\uffff'))).sort(
+    (a, b) => b.time - a.time,
+  );
+  const cache = new Map<string, Promise<string>>();
+  const result: ProjectBackup[] = [];
+  for (const backup of backups)
+    result.push({ ...backup, project: await hydrateProject(backup.project, db, cache) });
+  return result;
 }
 export async function createProjectBackup(project: Project, note: string) {
   const backup: ProjectBackup = {
@@ -76,13 +93,33 @@ export async function createProjectBackup(project: Project, note: string) {
     projectId: project.id,
     time: Date.now(),
     note: note.trim().slice(0, 200),
-    project: structuredClone(validateProject(project)),
+    project: validateProject({
+      ...project,
+      files: project.files.map((file) => ({ ...file })),
+      folders: project.folders && [...project.folders],
+    }),
   };
-  await (await database()).put('settings', backup, 'backup:' + project.id + ':' + backup.id);
+  const prepared = await prepareProject(backup.project);
+  const tx = (await database()).transaction(['settings', 'assets'], 'readwrite');
+  try {
+    await putPrepared(tx, prepared, false);
+    await tx
+      .objectStore('settings')
+      .put({ ...backup, project: prepared.project }, 'backup:' + project.id + ':' + backup.id);
+    await tx.done;
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {}
+    await tx.done.catch(() => {});
+    throw error;
+  }
   return backup;
 }
 export async function deleteProjectBackup(projectId: string, id: string) {
-  await (await database()).delete('settings', 'backup:' + projectId + ':' + id);
+  const db = await database();
+  await db.delete('settings', 'backup:' + projectId + ':' + id);
+  await collectUnusedAssets(db, projectId);
 }
 export async function clearProjectHistory(
   projectId: string,
@@ -193,18 +230,20 @@ export async function commitAIProject(
   await window.texite?.aiHistory?.update(current.id, { tasks });
   changedAIHistory();
   const db = await database();
-  const tx = db.transaction(['projects', 'settings'], 'readwrite');
+  const prepared = await prepareProject(next),
+    before = await prepareProject(current);
+  const tx = db.transaction(['projects', 'settings', 'assets'], 'readwrite');
   try {
     const saved: Project | undefined = await tx.objectStore('projects').get(current.id);
     if (
       saved &&
       (saved.revision > current.revision ||
         (saved.revision === current.revision &&
-          JSON.stringify(saved.files) !== JSON.stringify(current.files)))
+          !sameStoredFiles(saved.files, current.files, before.project.files)))
     )
       throw new Error('项目已被其他窗口修改，请重新打开后继续。');
     await tx.objectStore('settings').put(tasks, 'ai:' + current.id);
-    await tx.objectStore('projects').put(next);
+    await putPrepared(tx, prepared);
     await tx.done;
   } catch (error) {
     try {
@@ -217,11 +256,13 @@ export async function commitAIProject(
 const database = () =>
   (connection ??= new Promise((resolve, reject) => {
     let blocked = false;
-    const opening = openDB('texite-workspace', 2, {
+    const opening = openDB('texite-workspace', 3, {
       upgrade(db) {
         if (!db.objectStoreNames.contains('projects'))
           db.createObjectStore('projects', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings');
+        if (!db.objectStoreNames.contains('assets'))
+          db.createObjectStore('assets', { keyPath: 'key' }).createIndex('projectId', 'projectId');
         if (!db.objectStoreNames.contains('recoveries'))
           db.createObjectStore('recoveries', { keyPath: 'id' }).createIndex(
             'projectId',
@@ -250,7 +291,8 @@ export async function readRecoveries(projectId: string): Promise<RecoveryPoint[]
 export async function commitRecovery(current: Project, request: RestoreRequest) {
   const result = prepareRestore(current, request);
   const db = await database();
-  const tx = db.transaction(['projects', 'settings', 'recoveries'], 'readwrite');
+  const prepared = await prepareProject(result.restored);
+  const tx = db.transaction(['projects', 'settings', 'recoveries', 'assets'], 'readwrite');
   try {
     const saved: Project | undefined = await tx.objectStore('projects').get(current.id);
     if (
@@ -261,7 +303,7 @@ export async function commitRecovery(current: Project, request: RestoreRequest) 
     )
       throw new Error('本地项目已被其他窗口更新，请重新打开项目再恢复。');
     await tx.objectStore('recoveries').add(result.backup);
-    await tx.objectStore('projects').put(result.restored);
+    await putPrepared(tx, prepared);
     await tx.objectStore('settings').put(current.id, 'lastProject');
     await tx.done;
     return result;
@@ -277,10 +319,26 @@ export async function commitRecovery(current: Project, request: RestoreRequest) 
 }
 export async function saveProject(project: Project) {
   const db = await database();
-  const tx = db.transaction(['projects', 'settings'], 'readwrite');
-  await tx.objectStore('projects').put(project);
-  await tx.objectStore('settings').put(project.id, 'lastProject');
-  await tx.done;
+  const prepared = await prepareProject(validateProject(project));
+  const tx = db.transaction(['projects', 'settings', 'assets'], 'readwrite');
+  let removedAssets = false;
+  try {
+    const previous = await tx.objectStore('projects').get(project.id);
+    const used = new Set(prepared.project.files.map((f) => f.assetKey));
+    removedAssets = previous?.files.some(
+      (file: { assetKey?: string }) => file.assetKey && !used.has(file.assetKey),
+    );
+    await putPrepared(tx, prepared);
+    await tx.objectStore('settings').put(project.id, 'lastProject');
+    await tx.done;
+  } catch (error) {
+    try {
+      tx.abort();
+    } catch {}
+    await tx.done.catch(() => {});
+    throw error;
+  }
+  if (removedAssets) await collectUnusedAssets(db, project.id);
 }
 export async function readHistory(id: string): Promise<EditRecord[]> {
   const value = await (await database()).get('settings', 'history:' + id);
@@ -304,7 +362,9 @@ export async function writeHistory(id: string, records: EditRecord[]) {
 export async function loadProjects(): Promise<{ projects: Project[]; lastId: string | undefined }> {
   const db = await database();
   const data = await db.getAll('projects');
-  const projects = data.map(validateProject).sort((a, b) => b.updatedAt - a.updatedAt);
+  const projects: Project[] = [];
+  for (const stored of data) projects.push(validateProject(await hydrateProject(stored, db)));
+  projects.sort((a, b) => b.updatedAt - a.updatedAt);
   return { projects, lastId: await db.get('settings', 'lastProject') };
 }
 export async function readArchivedProjects(): Promise<string[]> {
@@ -325,8 +385,10 @@ export async function permanentlyDeleteStoredProject(id: string) {
     conversations: { items: [], selected: {} },
   });
   const db = await database(),
-    tx = db.transaction(['projects', 'settings', 'recoveries'], 'readwrite');
+    tx = db.transaction(['projects', 'settings', 'recoveries', 'assets'], 'readwrite');
   await tx.objectStore('projects').delete(id);
+  const assets = tx.objectStore('assets');
+  for (const key of await assets.index('projectId').getAllKeys(id)) await assets.delete(key);
   const settings = tx.objectStore('settings');
   for (const key of await settings.getAllKeys()) {
     if (
@@ -369,7 +431,7 @@ export async function renameStoredProject(id: string, name: string) {
   };
   await tx.store.put(next);
   await tx.done;
-  return next;
+  return hydrateProject(next, db);
 }
 export async function exportZip(project: Project) {
   const zip = new JSZip();
@@ -385,11 +447,58 @@ export async function exportZip(project: Project) {
   );
   return zip.generateAsync({ type: 'blob' });
 }
+export function readZipEntry(
+  entry: JSZip.JSZipObject,
+  maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer>> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    let size = 0,
+      stopped = false;
+    const stream = (
+      entry as JSZip.JSZipObject & {
+        internalStream(type: 'uint8array'): JSZip.JSZipStreamHelper<Uint8Array<ArrayBuffer>>;
+      }
+    ).internalStream('uint8array');
+    stream
+      .on('data', (chunk: Uint8Array) => {
+        if (stopped) return;
+        size += chunk.byteLength;
+        if (size > maxBytes) {
+          stopped = true;
+          stream.pause();
+          chunks.length = 0;
+          reject(new Error('解压数据超过大小上限，已停止导入。'));
+        } else chunks.push(chunk);
+      })
+      .on('error', (error: Error) => {
+        stopped = true;
+        reject(error);
+      })
+      .on('end', () => {
+        if (stopped) return;
+        const data = new Uint8Array(size);
+        let offset = 0;
+        for (const chunk of chunks) {
+          data.set(chunk, offset);
+          offset += chunk.byteLength;
+        }
+        resolve(data);
+      })
+      .resume();
+  });
+}
 export async function importZip(file: File): Promise<Project> {
-  if (file.size > 50 * 1024 * 1024) throw new Error('初版支持最多 50 MB 的 ZIP。');
+  if (file.size > PROJECT_LIMITS.zipBytes) throw new Error('ZIP 超过 250 MB。');
   const zip = await JSZip.loadAsync(file);
-  const entries = Object.values(zip.files);
-  if (entries.length > 500) throw new Error('初版支持最多 500 个文件。');
+  const entries = Object.values(zip.files).filter((entry) => !ignoredImportPath(entry.name));
+  if (
+    entries.filter((entry) => !entry.dir && !/(?:^|\/)\.texite\.json$/.test(entry.name)).length >
+    PROJECT_LIMITS.files
+  )
+    throw new Error('最多支持 5,000 个文件。');
+  if (entries.filter((entry) => entry.dir).length > PROJECT_LIMITS.folders)
+    throw new Error('最多支持 5,000 个文件夹。');
   const files: ProjectFile[] = [];
   const folders: string[] = [];
   let size = 0;
@@ -408,10 +517,17 @@ export async function importZip(file: File): Promise<Project> {
       continue;
     const declared = (entry as unknown as { _data?: { uncompressedSize: number } })._data
       ?.uncompressedSize;
-    if (declared && size + declared > 50 * 1024 * 1024) throw new Error('解压后的项目超过 50 MB。');
-    const bytes = await entry.async('uint8array');
+    if (
+      declared &&
+      (declared > PROJECT_LIMITS.fileBytes || size + declared > PROJECT_LIMITS.projectBytes)
+    )
+      throw new Error('解压后超过单文件 128 MB 或项目 250 MB 上限。');
+    const bytes = await readZipEntry(
+      entry,
+      Math.min(PROJECT_LIMITS.fileBytes, PROJECT_LIMITS.projectBytes - size),
+    );
     size += bytes.length;
-    if (size > 50 * 1024 * 1024) throw new Error('解压后的项目超过 50 MB。');
+    if (size > PROJECT_LIMITS.projectBytes) throw new Error('解压后的项目超过 250 MB。');
     if (path === '.texite.json') {
       try {
         settings = JSON.parse(new TextDecoder().decode(bytes));
@@ -421,7 +537,7 @@ export async function importZip(file: File): Promise<Project> {
       continue;
     }
     if (isTextFile(path)) files.push({ path, content: new TextDecoder().decode(bytes) });
-    else files.push({ path, content: await entry.async('base64'), binary: true });
+    else files.push({ path, content: bytesToBase64(bytes), binary: true });
   }
   // Archives downloaded from GitHub often have a single wrapper directory.
   // Remove that wrapper so relative inputs and assets keep their intended project root.
@@ -461,7 +577,10 @@ export function setNativeDownload(handler: (blob: Blob, name: string) => void) {
   nativeDownload = handler;
 }
 export function download(blob: Blob, name: string) {
-  if (nativeDownload) { nativeDownload(blob, name); return; }
+  if (nativeDownload) {
+    nativeDownload(blob, name);
+    return;
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -490,28 +609,27 @@ async function scanDirectory(
   let total = 0;
   async function visit(directory: Directory, prefix = '') {
     for await (const [name, child] of directory.entries()) {
-      if (name.startsWith('.') || ['node_modules', 'build', 'dist'].includes(name)) continue;
+      if (name.startsWith('.') || ['node_modules', 'build', 'dist', '__MACOSX'].includes(name))
+        continue;
       const path = safePath(prefix + name);
       if (child.kind === 'directory') {
-        if (folders.length >= 500) throw new Error('最多支持 500 个文件夹。');
+        if (folders.length >= PROJECT_LIMITS.folders) throw new Error('最多支持 5,000 个文件夹。');
         folders.push(path);
         await visit(child as Directory, path + '/');
       } else {
-        if (/\.(aux|log|out|toc|fls|fdb_latexmk|synctex\.gz)$/i.test(name)) continue;
+        if (/\.(log|out|toc|fls|fdb_latexmk|synctex\.gz)$/i.test(name)) continue;
         const file = await (child as FileSystemFileHandle).getFile();
         total += file.size;
-        if (total > 50 * 1024 * 1024 || files.length >= 500)
-          throw new Error('项目超过 500 个文件或 50 MB。');
+        if (file.size > PROJECT_LIMITS.fileBytes) throw new Error(`文件 ${path} 超过 128 MB。`);
+        if (total > PROJECT_LIMITS.projectBytes || files.length >= PROJECT_LIMITS.files)
+          throw new Error('项目超过 5,000 个文件或 250 MB。');
         const bytes = await file.arrayBuffer();
         hashes[path] = await hashBytes(bytes);
         const text = isTextFile(path);
         let content = '';
         if (text) content = new TextDecoder().decode(bytes);
         else {
-          const data = new Uint8Array(bytes);
-          for (let i = 0; i < data.length; i += 8192)
-            content += String.fromCharCode(...data.subarray(i, i + 8192));
-          content = btoa(content);
+          content = bytesToBase64(new Uint8Array(bytes));
         }
         files.push({ path, content, binary: !text });
       }
@@ -612,7 +730,7 @@ export async function saveBrowserDirectory(
       for (const part of parts) parent = (await parent.getDirectoryHandle(part)) as Directory;
       const bytes = await (await (await parent.getFileHandle(name)).getFile()).arrayBuffer();
       const expected = item.binary
-        ? Uint8Array.from(atob(item.expected), (c) => c.charCodeAt(0))
+        ? base64ToBytes(item.expected)
         : new TextEncoder().encode(item.expected);
       const digest = await hashBytes(bytes);
       if (digest !== (await hashBytes(expected.buffer)) || digest !== binding.hashes[item.path])
@@ -629,7 +747,7 @@ export async function saveBrowserDirectory(
       name = parts.pop()!;
     const parent = await directory(parts.join('/'));
     const content = file.binary
-      ? Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0))
+      ? base64ToBytes(file.content)
       : new TextEncoder().encode(file.content);
     const digest = await hashBytes(content.buffer);
     try {
@@ -637,17 +755,21 @@ export async function saveBrowserDirectory(
       const current = await hashBytes(await existing.arrayBuffer());
       if (current !== binding.hashes[file.path] && current !== digest)
         throw new Error(file.path + ' 已被外部修改，请导出恢复副本后重新打开文件夹。');
+      if (current === digest) {
+        binding.hashes[file.path] = digest;
+        continue;
+      }
     } catch (error) {
       if ((error as DOMException).name !== 'NotFoundError') throw error;
     }
-    pending.push({ parent, name, file, content, digest });
+    pending.push({ parent, name, file, digest });
   }
   for (const folder of project.folders || []) await directory(safePath(folder));
   for (const item of pending) {
     const stream = await (
       await item.parent.getFileHandle(item.name, { create: true })
     ).createWritable();
-    await stream.write(item.content);
+    await stream.write(item.file.binary ? base64ToBytes(item.file.content) : item.file.content);
     await stream.close();
     binding.hashes[item.file.path] = item.digest;
   }

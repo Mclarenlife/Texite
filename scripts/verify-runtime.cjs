@@ -8,6 +8,30 @@ const { RuntimeManager } = require('../apps/desktop/runtime-manager.cjs');
     await fs.readFile(path.join(runtime, 'modular-manifest.json'), 'utf8'),
   );
   const file = path.join(runtime, 'default.texite-runtime.zip');
+  const helpers = await fs.readFile(path.join(runtime, 'helpers.texite-runtime.zip'));
+  if (
+    !metadata.helpers ||
+    helpers.length > 100_000_000 ||
+    helpers.length !== metadata.helpers.bytes ||
+    crypto.createHash('sha256').update(helpers).digest('hex') !== metadata.helpers.sha256
+  )
+    throw new Error('Auxiliary runtime checksum or 100 MB budget failed.');
+  const { pack: helperPack } = await new RuntimeManager(runtime, runtime).readPack(
+    path.join(runtime, 'helpers.texite-runtime.zip'),
+  );
+  const toolFiles = Object.keys(
+    helperPack.modules.find((m) => m.id === 'tools-bibliography-index')?.files || {},
+  );
+  if (
+    !toolFiles.some((f) => /^bin\/biber(?:\.exe)?$/.test(f)) ||
+    !toolFiles.some((f) => /^bin\/makeindex(?:\.exe)?$/.test(f)) ||
+    !toolFiles.some((f) => /^bin\/kpsewhich(?:\.exe)?$/.test(f)) ||
+    (process.platform === 'win32' && !toolFiles.includes('bin/tlmgr.bat'))
+  )
+    throw new Error(
+      'Biber / MakeIndex / Kpathsea auxiliary tools missing; rebuild runtime before packaging.',
+    );
+  await fs.access(require.resolve('@wasm-zoo/ghostscript/gs-core.wasm'));
   const data = await fs.readFile(file);
   if (
     data.length > 200_000_000 ||

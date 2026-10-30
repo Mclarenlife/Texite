@@ -57,9 +57,24 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         <section>
           <h4>
             {packageInfo.version}
-            <time>2026.10.29</time>
+            <time>2026.10.30</time>
           </h4>
           <ul>
+            <li>自动处理跨文档引用，复用编译缓存，支持清理重编译与投稿文件导出。</li>
+            <li>重新编译保留 PDF 阅读位置；支持 TikZ 外部化及连接 SVG、代码高亮工具。</li>
+            <li>项目上限提高至 5,000 个文件、250 MB，图片去重保存，减少重复写入和同步内存占用。</li>
+            <li>桌面离线自动转换 EPS 图片，修复 Springer 等模板的图片草稿占位问题。</li>
+            <li>内置 Biber 与 MakeIndex，自动生成参考文献、索引和标准术语表。</li>
+            <li>辅助文件变化时继续编译，显示外部工具缺失的具体原因。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.12.0-beta.2<time>2026.10.29</time>
+          </h4>
+          <ul>
+            <li>自动选择当前独立文稿作为入口，递归查找项目中的模板与资源。</li>
+            <li>从固定 TeX Live 镜像按需补齐缺失宏包，下载后可离线使用。</li>
             <li>Agent 支持 CLI 与 API 两种接入，共用差异记录和整次撤回。</li>
             <li>新增按行读取、项目搜索和局部补丁，减少传输全文。</li>
             <li>API Agent 可设置最大请求轮数，并显示实际返回的 Token 用量。</li>

@@ -1,9 +1,11 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { createHash, randomUUID } = require('node:crypto');
+const { randomUUID } = require('node:crypto');
+const { Readable } = require('node:stream');
+const { jsonChunks, jsonHash: hash, jsonBytes } = require('./json-stream.cjs');
 const { validateSnapshot } = require('./workspace.cjs');
 const { validateHistory } = require('./ai-history.cjs');
-const hash = (data) => createHash('sha256').update(JSON.stringify(data)).digest('hex');
+const LIMITS = require('./project-limits.json');
 const validKey = (key) =>
   typeof key === 'string' &&
   key.length > 0 &&
@@ -152,7 +154,7 @@ class WebDAV {
     const response = await fetch(new URL(resource, this.config.url), {
       method,
       redirect: 'error',
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(300000),
       ...options,
       headers: {
         Authorization:
@@ -165,15 +167,17 @@ class WebDAV {
       throw new Error(`WebDAV 请求失败（HTTP ${response.status}）。请检查地址、账号及读写权限。`);
     return response;
   }
-  async body(response, max = 100 * 1024 * 1024) {
+  async body(response, max = LIMITS.snapshotBytes) {
+    const decoder = new TextDecoder();
     const chunks = [];
     let size = 0;
     for await (const chunk of response.body || []) {
       size += chunk.length;
       if (size > max) throw new Error('云端项目超过大小限制。');
-      chunks.push(chunk);
+      chunks.push(decoder.decode(chunk, { stream: true }));
     }
-    return Buffer.concat(chunks).toString('utf8');
+    chunks.push(decoder.decode());
+    return chunks.join('');
   }
   async collection() {
     await this.init();
@@ -362,7 +366,7 @@ class WebDAV {
       // Keep a durable snapshot before replacing local files, including deletions.
       const backup = path.join(this.directory, 'sync-backups');
       await fs.mkdir(backup, { recursive: true });
-      await fs.writeFile(path.join(backup, randomUUID() + '.json'), JSON.stringify(local), {
+      await fs.writeFile(path.join(backup, randomUUID() + '.json'), jsonChunks(local), {
         mode: 0o600,
       });
       const next = {
@@ -395,16 +399,19 @@ class WebDAV {
         throw new Error(
           '服务未提供强 ETag，无法安全覆盖云端项目。请更换支持条件写入的 WebDAV 服务。',
         );
+      const snapshot = {
+        format: local.aiHistory ? 'texite-webdav-2' : 'texite-webdav-1',
+        id,
+        project: local,
+      };
       const response = await this.request(resource(key), 'PUT', {
         headers: {
           'Content-Type': 'application/json',
+          'Content-Length': String(jsonBytes(snapshot, LIMITS.snapshotBytes)),
           ...(remote ? { 'If-Match': remote.etag } : { 'If-None-Match': '*' }),
         },
-        body: JSON.stringify({
-          format: local.aiHistory ? 'texite-webdav-2' : 'texite-webdav-1',
-          id,
-          project: local,
-        }),
+        body: Readable.from(jsonChunks(snapshot)),
+        duplex: 'half',
       });
       if (response.status === 412)
         throw new Error('同步期间云端内容发生变化，未覆盖。请再次同步。');

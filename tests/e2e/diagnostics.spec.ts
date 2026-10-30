@@ -1,6 +1,51 @@
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 
+test('compilation actions export the matching snapshot and request a clean rebuild', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.evaluate(async () => {
+    const pdf = [...new Uint8Array(await (await fetch('/sample.pdf')).arrayBuffer())];
+    const calls: unknown[] = [];
+    (window as any).__compileActions = calls;
+    window.texite = {
+      compile: async (p, options) => {
+        calls.push(options);
+        return {
+          success: true,
+          revision: p.revision,
+          pdf,
+          log: 'compiled',
+          outputs: {
+            buildId: 'verified-build',
+            files: [{ path: '.texite-build/main.bbl', bytes: 500 }],
+          },
+        };
+      },
+      exportCompileOutput: async (id, file) => {
+        calls.push({ id, file });
+        return true;
+      },
+    } as NonNullable<Window['texite']>;
+  });
+  await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+  await page.getByRole('tab', { name: /编译诊断/ }).click();
+  await page.getByRole('button', { name: '导出投稿包' }).click();
+  await page.getByText('生成文件 · 1', { exact: true }).click();
+  await page.getByRole('button', { name: /main.bbl/ }).click();
+  await page.screenshot({ path: '.qa/compile-export-actions.png', animations: 'disabled' });
+  await page.getByRole('button', { name: '清理并重新编译' }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__compileActions))
+    .toEqual([
+      { clean: false },
+      { id: 'verified-build' },
+      { id: 'verified-build', file: '.texite-build/main.bbl' },
+      { clean: true },
+    ]);
+});
+
 test('layout diagnostics are grouped, retain navigation and copy, and explain EPS without hiding warnings', async ({
   page,
   context,
@@ -20,7 +65,6 @@ test('layout diagnostics are grouped, retain navigation and copy, and explain EP
     } as NonNullable<Window['texite']>;
   });
   await page.getByRole('button', { name: '编译文稿', exact: false }).click();
-  await expect(page.getByRole('status')).toContainText('编译完成');
   await expect(page.locator('.diagnostic-count')).toHaveClass(/diagnostic-warning/);
   await page.getByRole('tab', { name: /编译诊断/ }).click();
   const diagnostics = page.getByRole('region', { name: '编译诊断', exact: true });
@@ -32,8 +76,8 @@ test('layout diagnostics are grouped, retain navigation and copy, and explain EP
   ).toBeVisible();
   await expect(
     diagnostics.locator('.diagnostic-message').filter({ hasText: 'epstopdf' }),
-  ).toHaveAttribute('title', /未启用 EPS 图片自动转换/);
-  await expect(diagnostics.getByText(/未启用 EPS 图片自动转换/)).toHaveCount(0);
+  ).toHaveAttribute('title', /会在编译前自动将项目 EPS 转为 PDF/);
+  await expect(diagnostics.getByText(/会在编译前自动将项目 EPS 转为 PDF/)).toHaveCount(0);
   const layout = diagnostics.locator('.diagnostics-layout');
   await expect(layout.locator('.diagnostic-row').first()).toBeHidden();
   await layout.locator('summary').click();

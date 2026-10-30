@@ -169,7 +169,7 @@ class PackageRepository {
   cancel() {
     this.active?.abort();
   }
-  async compile(project, compiler, append) {
+  async compile(project, compiler, append, options = {}) {
     if (this.active) throw new Error('已有编译或宏包下载正在进行。');
     const controller = new AbortController();
     this.active = controller;
@@ -183,7 +183,7 @@ class PackageRepository {
       const settings = await this.settings();
       for (let attempt = 0; attempt < 9; attempt++) {
         controller.signal.throwIfAborted();
-        result = await compiler.compile(project, append);
+        result = await compiler.compile(project, append, options);
         if (
           result.success ||
           result.cancelled ||

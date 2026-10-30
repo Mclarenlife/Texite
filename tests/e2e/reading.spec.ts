@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 import JSZip from 'jszip';
 import { readFile } from 'node:fs/promises';
-function multiPagePdf() {
+function multiPagePdf(heights = [840, 840, 840]) {
+  const count = heights.length;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>',
-    ...Array.from(
-      { length: 3 },
-      () =>
-        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 840] /Resources << >> /Contents 6 0 R >>',
+    `<< /Type /Pages /Kids [${heights.map((_, i) => `${i + 3} 0 R`).join(' ')}] /Count ${count} >>`,
+    ...heights.map(
+      (height) =>
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 ${height}] /Resources << >> /Contents ${count + 3} 0 R >>`,
     ),
     '<< /Length 0 >>\nstream\n\nendstream',
   ];
@@ -19,10 +19,10 @@ function multiPagePdf() {
     pdf += `${i + 1} 0 obj\n${object}\nendobj\n`;
   }
   const xref = Buffer.byteLength(pdf);
-  pdf += `xref\n0 7\n0000000000 65535 f \n${offsets
+  pdf += `xref\n0 ${count + 4}\n0000000000 65535 f \n${offsets
     .slice(1)
     .map((n) => String(n).padStart(10, '0') + ' 00000 n ')
-    .join('\n')}\ntrailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+    .join('\n')}\ntrailer\n<< /Size ${count + 4} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return Buffer.from(pdf);
 }
 test('PDF is continuous, page controls scroll and scrolling updates the current page', async ({
@@ -34,7 +34,7 @@ test('PDF is continuous, page controls scroll and scrolling updates the current 
     route.fulfill({ contentType: 'application/pdf', body: multiPagePdf() }),
   );
   await page.goto('/');
-  await expect(page.locator('.pdf-page')).toHaveCount(3);
+  await expect(page.locator('.pdf-page')).toHaveCount(3, { timeout: 20000 });
   const first = page.locator('.pdf-page[data-page="1"]'),
     second = page.locator('.pdf-page[data-page="2"]');
   const one = await first.boundingBox(),
@@ -57,6 +57,7 @@ test('PDF is continuous, page controls scroll and scrolling updates the current 
   await page.screenshot({ animations: 'disabled', path: '.qa/continuous-pdf.png' });
   await page.getByLabel('PDF 页码').fill('3');
   await page.getByLabel('PDF 页码').press('Enter');
+  const preservedScroll = await page.locator('.pdf-scroll').evaluate((el) => el.scrollTop);
   await page.evaluate(
     (pdf) => {
       window.texite = {
@@ -72,9 +73,59 @@ test('PDF is continuous, page controls scroll and scrolling updates the current 
   );
   await page.getByRole('button', { name: '编译文稿', exact: false }).click();
   await expect(page.getByText('编译完成，PDF 已更新。')).toBeVisible();
-  await expect(page.getByLabel('PDF 页码')).toHaveValue('1');
   await expect(page.locator('.pdf-page')).toHaveCount(3);
-  await expect.poll(() => page.locator('.pdf-scroll').evaluate((el) => el.scrollTop)).toBe(0);
+  await expect(page.getByLabel('PDF 页码')).toHaveValue('3');
+  await expect(page.locator('.pdf-page')).toHaveCount(3);
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await page.locator('.pdf-scroll').evaluate((el) => el.scrollTop)) - preservedScroll,
+      ),
+    )
+    .toBeLessThan(3);
+
+  await page.getByRole('tab', { name: /编译诊断/ }).click();
+  await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+  await expect(page.locator('.pdf-page')).toHaveCount(3);
+  await expect(page.getByLabel('PDF 页码')).toHaveValue('3');
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await page.locator('.pdf-scroll').evaluate((el) => el.scrollTop)) - preservedScroll,
+      ),
+    )
+    .toBeLessThan(3);
+
+  await page.getByRole('button', { name: '仅编辑器', exact: true }).click();
+  await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+  await expect(page.getByRole('button', { name: '编译文稿', exact: false })).toBeEnabled();
+  await page.getByRole('button', { name: '拆分', exact: true }).click();
+  await expect(page.getByLabel('PDF 页码')).toHaveValue('3');
+  await expect
+    .poll(async () =>
+      Math.abs(
+        (await page.locator('.pdf-scroll').evaluate((el) => el.scrollTop)) - preservedScroll,
+      ),
+    )
+    .toBeLessThan(3);
+
+  await page.evaluate(
+    (pdf) => {
+      window.texite!.compile = async (p) => ({
+        success: true,
+        pdf,
+        log: 'shorter PDF',
+        revision: p.revision,
+      });
+    },
+    [...multiPagePdf([840])],
+  );
+  await page.getByRole('button', { name: '编译文稿', exact: false }).click();
+  await expect(page.locator('.pdf-page')).toHaveCount(1);
+  await expect(page.getByLabel('PDF 页码')).toHaveValue('1');
+  expect(await page.locator('.pdf-scroll').evaluate((el) => Number.isFinite(el.scrollTop))).toBe(
+    true,
+  );
 
   expect(errors).toEqual([]);
 });

@@ -121,6 +121,24 @@ test('offline module import is checked, transactional, dependency-aware and pers
   await manager.install(valid, ['pkg-extra']);
   assert.equal((await manager.list()).length, 2);
   await assert.rejects(manager.remove('pkg-base'), /仍被/);
+  const upgraded = await pack('upgrade', [['pkg-base', [], 'updated']]);
+  await manager.install(upgraded);
+  const baseFile = path.join(manager.modulePath('pkg-base'), 'texmf-dist/tex/test/pkg-base.sty');
+  assert.equal(await fs.readFile(baseFile, 'utf8'), 'updated');
+  const save = manager.save.bind(manager);
+  manager.save = async () => {
+    throw new Error('simulated state write failure');
+  };
+  await assert.rejects(
+    manager.install(await pack('rollback', [['pkg-base', [], 'broken']])),
+    /simulated/,
+  );
+  assert.equal(
+    await fs.readFile(baseFile, 'utf8'),
+    'updated',
+    'failed upgrades restore the previous module',
+  );
+  manager.save = save;
   const wrong = await pack('wrong', [['pkg-bad', [], 'bad']], (m) => (m.platform = 'wrong'));
   await assert.rejects(manager.install(wrong), /不兼容/);
   const corrupt = await pack(

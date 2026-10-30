@@ -1,4 +1,6 @@
 import { migrateAIHistories } from '../platform/storage';
+import { PROJECT_LIMITS, projectBytes } from '../core/project-size';
+import { bytesToBase64 } from '../core/binary';
 import { Outline } from './Outline';
 import { pdfCover } from '../preview/cover';
 import { saveProjectCover } from '../platform/storage';
@@ -264,6 +266,8 @@ export function App() {
   const [syncMap, setSyncMap] = useState<SyncNode[]>([]);
   const [pdfLocate, setPdfLocate] = useState<PdfLocate>();
   const [pdfLabel, setPdfLabel] = useState('');
+  const [compileOutputs, setCompileOutputs] =
+    useState<import('../core/model').CompileResult['outputs']>();
   const [pdfRevision, setPdfRevision] = useState(-1);
   const [compiling, setCompiling] = useState(false);
   const [compileFailed, setCompileFailed] = useState(false);
@@ -475,10 +479,12 @@ export function App() {
   useEffect(() => {
     if (!project) return;
     const id = project.id;
+    let disposed = false;
     setPdf(null);
     setSyncMap([]);
     setPdfLocate(undefined);
     setPdfLabel('');
+    setCompileOutputs(undefined);
     setPdfRevision(-1);
     setLog('');
     setCompileFailed(false);
@@ -494,7 +500,7 @@ export function App() {
           return r.arrayBuffer();
         })
         .then((data) => {
-          if (projectRef.current?.id === id) {
+          if (!disposed && projectRef.current?.id === id) {
             setPdf(new Uint8Array(data));
             setPdfLabel('预编译示例');
             setPdfRevision(project.revision);
@@ -502,6 +508,9 @@ export function App() {
         })
         .catch(() => {});
     }
+    return () => {
+      disposed = true;
+    };
   }, [project?.id]);
   const update = useCallback(
     (change: (p: Project) => Project) =>
@@ -1044,84 +1053,89 @@ export function App() {
       if ((e as DOMException).name !== 'AbortError') notify(friendlyError(e));
     }
   }
-  const compile = useCallback(async () => {
-    const snapshot = projectRef.current;
-    if (!snapshot || compileRunning.current || restoreLock.current) return;
-    if (!compileTargets(snapshot).length) {
-      notify('请先创建 .tex 文稿，或打开包含文档导言区的文件。');
-      return;
-    }
-    if (!window.texite) {
-      setModal('settings');
-      setModalError(
-        '网页版初版支持编辑、保存和 PDF 查看。LaTeX 编译请使用桌面版；浏览器 WASM 引擎将在后续接入。',
-      );
-      return;
-    }
-    compileRunning.current = true;
-    compileCancelled.current = false;
-    const token = ++compileToken.current;
-    setCompiling(true);
-    setCompileFailed(false);
-    setLog('');
-    try {
-      await saveProject(snapshot);
-      const result = await compileWithFallback(
-        snapshot,
-        (p) => window.texite!.compile(p),
-        () =>
-          compileCancelled.current ||
-          compileToken.current !== token ||
-          projectRef.current?.id !== snapshot.id,
-      );
-      if (projectRef.current?.id !== snapshot.id || compileToken.current !== token) return;
-      setLog(result.log);
-      setCompileFailed(!result.cancelled && !(result.success && result.pdf));
-      if (result.success && result.pdf) {
-        setProject((p) =>
-          p?.id === snapshot.id &&
-          p.mainFile !== result.mainFile &&
-          p.files.some((f) => f.path === result.mainFile)
-            ? { ...p, mainFile: result.mainFile }
-            : p,
+  const compile = useCallback(
+    async (clean = false) => {
+      const snapshot = projectRef.current;
+      if (!snapshot || compileRunning.current || restoreLock.current) return;
+      if (!compileTargets(snapshot).length) {
+        notify('请先创建 .tex 文稿，或打开包含文档导言区的文件。');
+        return;
+      }
+      if (!window.texite) {
+        setModal('settings');
+        setModalError(
+          '网页版初版支持编辑、保存和 PDF 查看。LaTeX 编译请使用桌面版；浏览器 WASM 引擎将在后续接入。',
         );
-        setDiagnosticsOpen(false);
-        setPdf(new Uint8Array(result.pdf));
-        setSyncMap(result.syncMap || []);
-        setPdfLocate(undefined);
-        setPdfRevision(result.revision);
-        setPdfLabel(
-          result.mainFile +
-            ' · ' +
-            (result.compilerLabel || engineNames[result.engine ?? snapshot.engine]),
+        return;
+      }
+      compileRunning.current = true;
+      compileCancelled.current = false;
+      const token = ++compileToken.current;
+      setCompiling(true);
+      setCompileOutputs(undefined);
+      setCompileFailed(false);
+      setLog('');
+      try {
+        await saveProject(snapshot);
+        const result = await compileWithFallback(
+          snapshot,
+          (p) => window.texite!.compile(p, { clean }),
+          () =>
+            compileCancelled.current ||
+            compileToken.current !== token ||
+            projectRef.current?.id !== snapshot.id,
         );
-        try {
-          await saveProjectCover(snapshot.id, await pdfCover(result.pdf));
-          notify(
-            result.fallbackFrom
-              ? `已编译 ${result.mainFile}；当前打开的文件未作为入口。`
-              : '编译完成，PDF 已更新。',
+        if (projectRef.current?.id !== snapshot.id || compileToken.current !== token) return;
+        setLog(result.log);
+        setCompileOutputs(result.outputs);
+        setCompileFailed(!result.cancelled && !(result.success && result.pdf));
+        if (result.success && result.pdf) {
+          setProject((p) =>
+            p?.id === snapshot.id &&
+            p.mainFile !== result.mainFile &&
+            p.files.some((f) => f.path === result.mainFile)
+              ? { ...p, mainFile: result.mainFile }
+              : p,
           );
-        } catch {
-          notify('编译完成，但项目封面保存失败，请重新编译重试。');
+          setDiagnosticsOpen(false);
+          setPdf(new Uint8Array(result.pdf));
+          setSyncMap(result.syncMap || []);
+          setPdfLocate(undefined);
+          setPdfRevision(result.revision);
+          setPdfLabel(
+            result.mainFile +
+              ' · ' +
+              (result.compilerLabel || engineNames[result.engine ?? snapshot.engine]),
+          );
+          try {
+            await saveProjectCover(snapshot.id, await pdfCover(result.pdf));
+            notify(
+              result.fallbackFrom
+                ? `已编译 ${result.mainFile}；当前打开的文件未作为入口。`
+                : '编译完成，PDF 已更新。',
+            );
+          } catch {
+            notify('编译完成，但项目封面保存失败，请重新编译重试。');
+          }
+        } else if (result.cancelled) notify('编译已取消，上次预览已保留。');
+        else {
+          setDiagnosticsOpen(true);
+          setMode((current) => (current === 'editor' ? 'split' : current));
+          notify('编译未完成，请查看诊断信息。');
         }
-      } else if (result.cancelled) notify('编译已取消，上次预览已保留。');
-      else {
+        return result;
+      } catch (e) {
+        setLog(friendlyError(e));
+        setCompileFailed(true);
         setDiagnosticsOpen(true);
         setMode((current) => (current === 'editor' ? 'split' : current));
-        notify('编译未完成，请查看诊断信息。');
+      } finally {
+        compileRunning.current = false;
+        setCompiling(false);
       }
-      return result;
-    } catch (e) {
-      setLog(friendlyError(e));
-      setCompileFailed(true);
-      setDiagnosticsOpen(true);
-      setMode((current) => (current === 'editor' ? 'split' : current));
-    } finally {
-      compileRunning.current = false;
-      setCompiling(false);
-    }
-  }, [notify, persist]);
+    },
+    [notify, persist],
+  );
   async function mutateAI(transform: (current: Project) => Project, tasks: AITask[]) {
     if (restoreLock.current) throw new Error('项目正在保存恢复版本，请稍后重试。');
     restoreLock.current = true;
@@ -1314,13 +1328,13 @@ export function App() {
       setRestoreBusy(true);
       setImportProgress(0);
       const names = new Set(current.files.map((f) => f.path.toLowerCase()));
-      if (current.files.length + inputs.length > 500) throw new Error('最多支持 500 个文件。');
+      if (current.files.length + inputs.length > PROJECT_LIMITS.files)
+        throw new Error('最多支持 5,000 个文件。');
+      if (inputs.some((file) => file.size > PROJECT_LIMITS.fileBytes))
+        throw new Error('单文件不能超过 128 MB。');
       const total = inputs.reduce((sum, f) => sum + f.size, 0);
-      if (
-        current.files.reduce((sum, f) => sum + f.content.length, 0) + total * 1.4 >
-        70 * 1024 * 1024
-      )
-        throw new Error('项目大小超过初版上限。');
+      if (projectBytes(current.files) + total > PROJECT_LIMITS.projectBytes)
+        throw new Error('项目总量超过 250 MB。');
       const paths = inputs.map((file) => {
         const path = safePath((targetFolder ? targetFolder + '/' : '') + file.name);
         if (names.has(path.toLowerCase())) throw new Error(path + ' 已存在，请先重命名。');
@@ -1343,11 +1357,11 @@ export function App() {
         if (isTextFile(paths[i]))
           additions.push({ path: paths[i], content: new TextDecoder().decode(bytes) });
         else {
-          const data = new Uint8Array(bytes);
-          let raw = '';
-          for (let n = 0; n < data.length; n += 8192)
-            raw += String.fromCharCode(...data.subarray(n, n + 8192));
-          additions.push({ path: paths[i], content: btoa(raw), binary: true });
+          additions.push({
+            path: paths[i],
+            content: bytesToBase64(new Uint8Array(bytes)),
+            binary: true,
+          });
         }
         read += file.size;
         setImportProgress(Math.floor((read / Math.max(total, 1)) * 90));
@@ -2195,6 +2209,7 @@ export function App() {
               </div>
               <div className="preview-container">
                 <PdfViewer
+                  documentKey={project.id + ':' + project.mainFile}
                   bytes={pdf}
                   locate={pdfLocate}
                   onLocateSource={locateSource}
@@ -2207,6 +2222,8 @@ export function App() {
                   stale={!!pdf && pdfRevision >= 0 && pdfRevision !== project.revision}
                   diagnostics={
                     <CompileDiagnostics
+                      outputs={compileOutputs}
+                      onRecompile={window.texite ? () => void compile(true) : undefined}
                       diagnostics={diagnostics}
                       compiling={compiling}
                       failed={compileFailed}

@@ -1,3 +1,4 @@
+import { PROJECT_LIMITS, fileBytes } from './project-size';
 export type Engine = 'tectonic' | 'xelatex' | 'pdflatex' | 'lualatex';
 export type Mode = 'split' | 'editor' | 'pdf';
 export type ProjectFile = { path: string; content: string; binary?: boolean };
@@ -26,10 +27,11 @@ export type CompileResult = {
   success: boolean;
   engine?: Engine;
   compilerLabel?: string;
-  pdf?: number[];
+  pdf?: number[] | Uint8Array;
   log: string;
   revision: number;
   cancelled?: boolean;
+  outputs?: { buildId: string; files: { path: string; bytes: number }[] };
 };
 export type SyncNode = {
   file: string;
@@ -136,7 +138,13 @@ export type DesktopAPI = {
     engines: Record<Engine, boolean>;
     details?: Partial<Record<Engine, string>>;
   }>;
-  compile(project: Project): Promise<CompileResult>;
+  compile(project: Project, options?: { clean?: boolean }): Promise<CompileResult>;
+  exportCompileOutput?(buildId: string, file?: string): Promise<boolean>;
+  compileTools?: {
+    get(): Promise<Record<'inkscape' | 'latexminted', string>>;
+    choose(name: 'inkscape' | 'latexminted'): Promise<Record<'inkscape' | 'latexminted', string>>;
+    remove(name: 'inkscape' | 'latexminted'): Promise<Record<'inkscape' | 'latexminted', string>>;
+  };
   cancelCompile(): Promise<void>;
   writeClipboard?(text: string): Promise<void>;
   onCompileLog(callback: (chunk: string) => void): () => void;
@@ -206,7 +214,12 @@ export function safePath(path: string): string {
 }
 export function validateProject(value: unknown): Project {
   const p = value as Project;
-  if (!p || !Array.isArray(p.files) || p.files.length > 500 || typeof p.name !== 'string')
+  if (
+    !p ||
+    !Array.isArray(p.files) ||
+    p.files.length > PROJECT_LIMITS.files ||
+    typeof p.name !== 'string'
+  )
     throw new Error('无效的项目数据。');
   const paths = new Set<string>();
   let total = 0;
@@ -220,9 +233,11 @@ export function validateProject(value: unknown): Project {
     const key = file.path.toLowerCase();
     if (paths.has(key)) throw new Error('项目中存在重复文件名。');
     paths.add(key);
-    total += file.content.length;
+    const bytes = fileBytes(file);
+    if (bytes > PROJECT_LIMITS.fileBytes) throw new Error(`文件 ${file.path} 超过 128 MB。`);
+    total += bytes;
   }
-  if (total > 70 * 1024 * 1024) throw new Error('初版支持最多 50 MB 的项目。');
+  if (total > PROJECT_LIMITS.projectBytes) throw new Error('项目总量超过 250 MB。');
   const folders = validateFolders(
     p.folders ?? [],
     p.files.map((f) => f.path),
@@ -248,7 +263,8 @@ export function validateProject(value: unknown): Project {
   };
 }
 export function validateFolders(folders: string[], files: string[]) {
-  if (!Array.isArray(folders) || folders.length > 500) throw new Error('最多支持 500 个文件夹。');
+  if (!Array.isArray(folders) || folders.length > PROJECT_LIMITS.folders)
+    throw new Error('最多支持 5,000 个文件夹。');
   const all = new Set(folders.map(safePath));
   for (const path of [...files, ...all]) {
     const parts = path.split('/');
@@ -305,6 +321,12 @@ export function parseDiagnostics(log: string): Diagnostic[] {
     }
   }
   for (let i = 0; i < lines.length; i++) {
+    if (lines[i] === 'Texite: 外部工具资源已生成，重新编译。') {
+      const persistent = entries.filter((e) => bibliographyEntries.has(e));
+      entries.splice(0, entries.length, ...persistent);
+      files.length = 0;
+      continue;
+    }
     // References are normally unresolved until BibTeX and subsequent TeX passes.
     // Replace transient TeX warnings at each managed pass, not just duplicates.
     // Bibliography warnings can remain relevant without another BibTeX run.
@@ -323,6 +345,16 @@ export function parseDiagnostics(log: string): Diagnostic[] {
       const entry: Diagnostic = {
         severity: lines[i].startsWith('Warning--') ? 'warning' : 'error',
         message: 'BibTeX: ' + lines[i].trim(),
+      };
+      entries.push(entry);
+      bibliographyEntries.add(entry);
+      continue;
+    }
+    const biber = lines[i].match(/^(?:\[\d+\]\s+.*?>\s*)?(WARN|ERROR|FATAL)\s+-\s+(.+)$/);
+    if (biber) {
+      const entry: Diagnostic = {
+        severity: biber[1] === 'WARN' ? 'warning' : 'error',
+        message: 'Biber: ' + biber[2],
       };
       entries.push(entry);
       bibliographyEntries.add(entry);

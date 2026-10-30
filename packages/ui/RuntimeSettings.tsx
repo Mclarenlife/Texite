@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Download, Package, Trash2, Cpu, RotateCcw, Check, LoaderCircle } from 'lucide-react';
 import type { RuntimeModule } from '../core/model';
+import { CompileTools } from './CompileTools';
 const size = (bytes: number) =>
   bytes >= 1e6 ? (bytes / 1e6).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1000)) + ' KB';
 export function RuntimeSettings({ onChange }: { onChange: () => void }) {
@@ -265,6 +266,7 @@ export function RuntimeSettings({ onChange }: { onChange: () => void }) {
           {error}
         </p>
       )}
+      <CompileTools />
     </section>
   );
 }

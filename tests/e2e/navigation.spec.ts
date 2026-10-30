@@ -91,7 +91,7 @@ test('history time range removes only matching records and failed full-backup st
   await expect(page.getByText('本地恢复副本已保存', { exact: true })).toBeVisible();
   await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve) => {
-      const r = indexedDB.open('texite-workspace', 2);
+      const r = indexedDB.open('texite-workspace');
       r.onsuccess = () => resolve(r.result);
     });
     const tx = db.transaction(['settings', 'projects'], 'readwrite'),

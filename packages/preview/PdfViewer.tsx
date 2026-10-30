@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { getDocument, GlobalWorkerOptions, TextLayer, type PDFDocumentProxy } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
@@ -29,6 +29,7 @@ export function PdfViewer({
   downloadName = 'document.pdf',
   locate,
   onLocateSource,
+  documentKey = downloadName,
 }: {
   bytes: Uint8Array | null;
   stale: boolean;
@@ -41,6 +42,7 @@ export function PdfViewer({
   downloadName?: string;
   locate?: PdfLocate;
   onLocateSource?(point: { page: number; x: number; y: number; text: string }): void;
+  documentKey?: string;
 }) {
   const [highlights, setHighlights] = useState<Record<number, { from: number; to: number }>>({});
   const [selection, setSelection] = useState<{
@@ -72,11 +74,17 @@ export function PdfViewer({
   useEffect(() => setPageInput(String(page)), [page]);
   const [error, setError] = useState('');
   const [width, setWidth] = useState(600);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const container = useRef<HTMLDivElement>(null);
+  const previousKey = useRef(documentKey);
+  const restorePosition = useRef<{ page: number; offset: number } | null>(null);
+  const readingPosition = useRef({ page: 1, offset: 0 });
+  const [pageRatios, setPageRatios] = useState<number[]>([]);
   useEffect(() => {
     if (!container.current) return;
     const observer = new ResizeObserver((entries) => {
       if (entries[0].contentRect.width > 0) setWidth(entries[0].contentRect.width);
+      setViewportHeight(entries[0].contentRect.height);
     });
     observer.observe(container.current);
     return () => observer.disconnect();
@@ -93,6 +101,21 @@ export function PdfViewer({
     return () => root.removeEventListener('wheel', wheel);
   }, []);
   useEffect(() => {
+    const root = container.current;
+    const sameDocument = previousKey.current === documentKey;
+    previousKey.current = documentKey;
+    let anchor = sameDocument && bytes ? readingPosition.current : { page: 1, offset: 0 };
+    if (sameDocument && bytes && root && root.clientHeight > 0) {
+      const top = root.getBoundingClientRect().top;
+      const pages = [...root.querySelectorAll<HTMLElement>('[data-page]')];
+      const first = pages.find((node) => node.getBoundingClientRect().bottom > top + 1);
+      if (first) {
+        const rect = first.getBoundingClientRect();
+        anchor = { page: Number(first.dataset.page), offset: (top - rect.top) / rect.height };
+      }
+    }
+    readingPosition.current = anchor;
+    restorePosition.current = anchor;
     setError('');
     setHighlights({});
     setSelection(null);
@@ -107,11 +130,19 @@ export function PdfViewer({
     });
     let disposed = false;
     task.promise
-      .then((document) => {
+      .then(async (document) => {
+        const target = Math.min(anchor.page, document.numPages);
+        const ratios: number[] = [];
+        for (let n = 1; n <= Math.min(target + 1, document.numPages); n++) {
+          const viewport = (await document.getPage(n)).getViewport({ scale: 1 });
+          ratios.push(viewport.height / viewport.width);
+          if (disposed) return;
+        }
         if (!disposed) {
+          restorePosition.current = { page: target, offset: anchor.offset };
+          setPageRatios(ratios);
           setPdf(document);
-          setPage(1);
-          if (container.current) container.current.scrollTop = 0;
+          setPage(target);
         }
       })
       .catch((e) => {
@@ -121,7 +152,17 @@ export function PdfViewer({
       disposed = true;
       void task.destroy();
     };
-  }, [bytes]);
+  }, [bytes, documentKey]);
+  useLayoutEffect(() => {
+    const root = container.current,
+      anchor = restorePosition.current;
+    if (!pdf || !root || !anchor || root.clientHeight === 0) return;
+    const node = root.querySelector<HTMLElement>(`[data-page="${anchor.page}"]`);
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    root.scrollTop += rect.top - root.getBoundingClientRect().top + rect.height * anchor.offset;
+    restorePosition.current = null;
+  }, [pdf, diagnosticsOpen, width, viewportHeight]);
   const navigate = (value: number) => {
     const target = Math.max(1, Math.min(pdf?.numPages || 1, value));
     const element = container.current?.querySelector<HTMLElement>(`[data-page="${target}"]`);
@@ -141,32 +182,39 @@ export function PdfViewer({
     const track = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const top = root.getBoundingClientRect().top + Math.min(root.clientHeight * 0.3, 180);
+        if (root.clientHeight === 0 || restorePosition.current) return;
+        const viewportTop = root.getBoundingClientRect().top;
+        const viewportBottom = viewportTop + root.clientHeight;
         const pages = [...root.querySelectorAll<HTMLElement>('[data-page]')];
-        const containing = pages.find((node) => {
+        const first = pages.find((node) => node.getBoundingClientRect().bottom > viewportTop + 1);
+        if (first) {
+          const rect = first.getBoundingClientRect();
+          readingPosition.current = {
+            page: Number(first.dataset.page),
+            offset: (viewportTop - rect.top) / rect.height,
+          };
+        }
+        const visibleHeight = (node: HTMLElement) => {
           const rect = node.getBoundingClientRect();
-          return rect.top <= top && rect.bottom > top;
-        });
-        const closest =
-          containing ||
-          pages.reduce<HTMLElement | null>(
-            (best, node) =>
-              !best ||
-              Math.abs(node.getBoundingClientRect().top - top) <
-                Math.abs(best.getBoundingClientRect().top - top)
-                ? node
-                : best,
-            null,
+          return Math.max(
+            0,
+            Math.min(rect.bottom, viewportBottom) - Math.max(rect.top, viewportTop),
           );
+        };
+        const closest = pages.reduce<HTMLElement | null>(
+          (best, node) => (!best || visibleHeight(node) > visibleHeight(best) ? node : best),
+          null,
+        );
         if (closest) setPage(Number(closest.dataset.page));
       });
     };
     root.addEventListener('scroll', track, { passive: true });
+    track();
     return () => {
       root.removeEventListener('scroll', track);
       cancelAnimationFrame(frame);
     };
-  }, [pdf]);
+  }, [pdf, viewportHeight]);
   useEffect(() => {
     if (!pdf || !locate) return;
     let disposed = false;
@@ -382,6 +430,7 @@ export function PdfViewer({
           pdf &&
           Array.from({ length: pdf.numPages }, (_, index) => (
             <PdfPage
+              aspectRatio={pageRatios[index]}
               key={index}
               pdf={pdf}
               number={index + 1}
@@ -436,6 +485,7 @@ export function PdfViewer({
 }
 
 function PdfPage({
+  aspectRatio,
   pdf,
   number,
   width,
@@ -444,6 +494,7 @@ function PdfPage({
   highlight,
   locate,
 }: {
+  aspectRatio?: number;
   pdf: PDFDocumentProxy;
   number: number;
   width: number;
@@ -589,7 +640,7 @@ function PdfPage({
       className="pdf-page"
       ref={holder}
       data-page={number}
-      style={{ width: pageWidth, height: pageWidth * ratio }}
+      style={{ width: pageWidth, height: pageWidth * (aspectRatio ?? ratio) }}
     >
       <canvas
         ref={canvas}

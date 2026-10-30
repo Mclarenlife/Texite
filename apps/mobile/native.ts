@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import type { Project } from '../../packages/core/model';
 import { validateProject } from '../../packages/core/model';
+import { base64ToBytes, bytesToBase64 } from '../../packages/core/binary';
 import { saveProject, loadProjects, exportZip, download } from '../../packages/platform/storage';
 
 const native = registerPlugin<{
@@ -27,7 +28,7 @@ export async function chooseIOSProject(): Promise<File | undefined> {
   const selected = await native.importZip();
   if (selected.cancelled) return;
   if (!selected.name || !selected.base64) throw new Error('未读取到 ZIP 文件');
-  return new File([Uint8Array.from(atob(selected.base64), (c) => c.charCodeAt(0))], selected.name, {
+  return new File([base64ToBytes(selected.base64)], selected.name, {
     type: 'application/zip',
   });
 }
@@ -58,12 +59,9 @@ export async function exportMobileFile(blob: Blob, name: string) {
     return;
   }
   const bytes = new Uint8Array(await blob.arrayBuffer());
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += 8192)
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
   return native.exportFile({
     name,
-    base64: btoa(binary),
+    base64: bytesToBase64(bytes),
     mime: blob.type || 'application/octet-stream',
   });
 }

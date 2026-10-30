@@ -15,6 +15,7 @@ const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { Compiler, detectEngines } = require('./workspace.cjs');
 const { PackageRepository } = require('./package-repository.cjs');
+const { ToolSettings } = require('./tool-settings.cjs');
 const { ProjectLibrary } = require('./projects.cjs');
 const { RuntimeManager } = require('./runtime-manager.cjs');
 const { AgentClient } = require('./agent-client.cjs');
@@ -163,7 +164,31 @@ app.whenReady().then(async () => {
   const runtime = path.join(app.isPackaged ? process.resourcesPath : app.getAppPath(), 'runtime');
   const manager = new RuntimeManager(runtime, path.join(app.getPath('userData'), 'runtimes'));
   compiler = new Compiler(path.join(app.getPath('userData'), 'compile-cache'), runtime, manager);
-  const packageRepository = new PackageRepository(manager, app.getPath('userData'));
+  const toolSettings = new ToolSettings(app.getPath('userData'));
+  compiler.toolSettings = await toolSettings.get();
+  handle('compiler:tools', () => toolSettings.get());
+  handle('compiler:tool-choose', async (name) => {
+    checkIdle();
+    if (!['inkscape', 'latexminted'].includes(name)) throw new Error('未知的外部工具。');
+    const selected = await dialog.showOpenDialog(window, {
+      title: '选择 ' + name,
+      properties: ['openFile'],
+    });
+    if (selected.canceled) return toolSettings.get();
+    checkIdle();
+    let binary = selected.filePaths[0];
+    if (name === 'inkscape' && binary.toLowerCase().endsWith('.app'))
+      binary = path.join(binary, 'Contents/MacOS/inkscape');
+    return (compiler.toolSettings = await toolSettings.set(name, binary));
+  });
+  handle('compiler:tool-remove', async (name) => {
+    checkIdle();
+    return (compiler.toolSettings = await toolSettings.set(name, ''));
+  });
+  // Chromium networking follows the desktop's system proxy/PAC configuration.
+  const packageRepository = new PackageRepository(manager, app.getPath('userData'), (url, init) =>
+    net.fetch(url, init),
+  );
   handle('runtime:online-get', () => packageRepository.settings());
   handle('runtime:online-set', (settings) => packageRepository.configure(settings));
   ai = new AgentClient(path.join(app.getPath('userData'), 'ai'), (event) => {
@@ -263,15 +288,38 @@ app.whenReady().then(async () => {
     checkIdle();
     return manager.remove(id);
   });
-  handle('runtime:restore', () => {
+  handle('runtime:restore', async () => {
     checkIdle();
-    return manager.install(path.join(runtime, 'default.texite-runtime.zip'));
+    await manager.install(path.join(runtime, 'default.texite-runtime.zip'));
+    return manager.install(path.join(runtime, 'helpers.texite-runtime.zip'));
   });
-  handle('compiler:run', (project) =>
-    packageRepository.compile(project, compiler, (chunk) => {
-      if (window && !window.isDestroyed()) window.webContents.send('compiler:log', chunk);
-    }),
+  handle('compiler:run', (project, options = {}) =>
+    packageRepository.compile(
+      project,
+      compiler,
+      (chunk) => {
+        if (window && !window.isDestroyed()) window.webContents.send('compiler:log', chunk);
+      },
+      { clean: options?.clean === true },
+    ),
   );
+  handle('compiler:export', async (buildId, file) => {
+    checkIdle();
+    const saved = await compiler.builds.get(buildId);
+    if (
+      file !== undefined &&
+      (typeof file !== 'string' || !saved.state.files.some((f) => f.path === file))
+    )
+      throw new Error('未知的编译产物。');
+    const name = file
+      ? path.basename(file)
+      : saved.state.project.name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_') + '-投稿.zip';
+    const selected = await dialog.showSaveDialog(window, { defaultPath: name });
+    if (selected.canceled || !selected.filePath) return false;
+    checkIdle();
+    await compiler.exportBuild(buildId, file, selected.filePath);
+    return true;
+  });
   handle('compiler:cancel', () => {
     packageRepository.cancel();
     return compiler.cancel();
