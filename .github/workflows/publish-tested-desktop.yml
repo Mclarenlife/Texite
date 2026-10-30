@@ -1,0 +1,60 @@
+name: Publish tested desktop beta
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/api-agent]
+    paths: ['.github/workflows/publish-tested-desktop.yml']
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-tested-beta2
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Verify tested build and download desktop installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          for RUN in 40845940198 40845940178; do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN" --jq '[.head_sha,.conclusion] | join(" ")' | grep -Fx '61276c7f162d697807abd8cffdfb3799478e77e4 success'
+          done
+          gh run download 40845940198 --repo "$GITHUB_REPOSITORY" --name Texite-Windows-desktop --name Texite-macOS-desktop --dir installers
+      - name: Upload two installers and publish existing draft
+        shell: python
+        run: |
+          import os,json,hashlib,urllib.request,pathlib
+          api='https://api.github.com/repos/'+os.environ['GITHUB_REPOSITORY']
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','User-Agent':'Texite-release'}
+          def request(route,method='GET',body=None):
+              data=json.dumps(body).encode() if body is not None else None
+              with urllib.request.urlopen(urllib.request.Request(api+route,data=data,headers={**headers,'Content-Type':'application/json'},method=method),timeout=90) as r:
+                  value=r.read(); return json.loads(value) if value else None
+          release=request('/releases/428596882')
+          assert release['tag_name']=='v0.12.0-beta.2'
+          assert release['target_commitish']=='61276c7f162d697807abd8cffdfb3799478e77e4'
+          files=[next(pathlib.Path('installers').rglob(name)) for name in ['Texite Setup 0.12.0-beta.2.exe','Texite-0.12.0-beta.2-arm64.dmg']]
+          digests={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+          assert digests[files[1].name]=='ecdc05b7e9e89d17456604dd585785507757b291305c219bec49a750fb212f3b'
+          for p in files:
+              existing=next((a for a in request('/releases/428596882/assets') if a['name']==p.name),None)
+              if existing:
+                  assert existing.get('digest')=='sha256:'+digests[p.name], 'Refusing to overwrite an existing asset'
+                  continue
+              assert release['draft'], 'Missing attachment on published release'
+              from urllib.parse import quote
+              url=release['upload_url'].split('{')[0]+'?name='+quote(p.name)
+              with urllib.request.urlopen(urllib.request.Request(url,data=p.read_bytes(),headers={**headers,'Content-Type':'application/octet-stream'},method='POST'),timeout=600) as r: asset=json.load(r)
+              assert asset['digest']=='sha256:'+digests[p.name]
+              print('Uploaded and verified',p.name,digests[p.name],flush=True)
+          assets=request('/releases/428596882/assets')
+          assert set(a['name'] for a in assets)==set(digests), 'Unexpected attachments'
+          body=release['body'].split('SHA-256：')[0]+'附件来自已通过测试的同一提交的 GitHub Actions 构建。\n\nSHA-256：\n'
+          body+='\n'.join('`'+name+'`\n```text\n'+digest+'\n```' for name,digest in digests.items())
+          release=request('/releases/428596882','PATCH',{'draft':False,'prerelease':True,'make_latest':'false','body':body})
+          assert not release['draft']
+          print(release['html_url'])
