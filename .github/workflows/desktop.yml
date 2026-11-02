@@ -59,6 +59,7 @@ jobs:
         with:
           name: Texite-${{ runner.os }}-compile-diagnostics
           path: .qa/**/*.log
+          include-hidden-files: true
           retention-days: 7
       - run: pnpm dist:win
         if: runner.os == 'Windows'

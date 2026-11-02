@@ -76,7 +76,12 @@ const hooks = String.raw`\makeatletter
 `;
 async function prepareHooks(root, project) {
   if (/[{}%#\\]/.test(project.mainFile)) throw new Error('编译入口文件名不能包含 TeX 控制字符。');
-  await fs.writeFile(path.join(root, '.texite-hooks.tex'), hooks);
+  // Unix Kpathsea rejects hidden basenames under openin_any=p; keep the private
+  // helper non-hidden without relaxing file-access restrictions.
+  const helper = 'texite-compile-hooks.tex';
+  if (project.files.some((file) => file.path.toLowerCase() === helper))
+    throw new Error('texite-compile-hooks.tex 为编译保留文件名，请重命名项目中的同名文件。');
+  await fs.writeFile(path.join(root, helper), hooks);
   for (const file of project.files.filter((f) => /\.tex$/i.test(f.path))) {
     for (const m of file.content.matchAll(/\\tikzexternalize\s*\[[^\]]*?prefix\s*=\s*([^,\]]+)/g)) {
       const name = m[1].trim().replace(/\/$/, '');
@@ -85,7 +90,7 @@ async function prepareHooks(root, project) {
           await fs.mkdir(localPath(base, name), { recursive: true });
     }
   }
-  return `\\input{.texite-hooks.tex}\\input{\\detokenize{${project.mainFile}}}`;
+  return `\\input{${helper}}\\input{\\detokenize{${project.mainFile}}}`;
 }
 async function processRequests({
   root,

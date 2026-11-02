@@ -100,7 +100,7 @@ test(
     assert.equal(await zip.file('main.tex').async('string'), project.files[0].content);
     assert(zip.file('main.bbl'));
     assert(zip.file('supplement.aux'));
-    assert(!Object.keys(zip.files).some((f) => f.includes('texite-hooks')));
+    assert(!Object.keys(zip.files).some((f) => /texite-(?:compile-)?hooks/.test(f)));
     await assert.rejects(
       compiler.exportBuild(second.outputs.buildId, '../secret', path.join(base, 'bad')),
       /未知/,
