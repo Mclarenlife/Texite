@@ -87,6 +87,8 @@ pdfLaTeX 中文使用 CJK / CTeX 与 Arphic 字体，默认提供宋体、楷体
 
 ## 验证和打包
 
+日常修改可运行 `pnpm test:core`。在已备好测试依赖的 Windows 或 Mac 上，`pnpm test:all` 会依次执行核心、集成、构建、浏览器与真实桌面回归。首次准备、CI 入口和失败报告见[自动化测试指南](docs/testing.md)。
+
 ```sh
 pnpm test
 pnpm build

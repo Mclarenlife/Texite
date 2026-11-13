@@ -52,12 +52,9 @@ digests = {p.name.replace(' ', '.'): hashlib.sha256(p.read_bytes()).hexdigest() 
 
 notes = f'''本次为 {version} 桌面测试版。
 
-- 修复 EPS 图片自动转换，支持 Biber、MakeIndex 及常见辅助编译流程。
-- 改善大项目导入，支持超过 500 个文件和 50 MB 的项目，优化大文件传输与保存。
-- 支持项目内跨文档引用与依赖编译，并复用编译缓存，可清理后重新编译。
-- 新增投稿 ZIP 和生成文件导出；重新编译后保留 PDF 阅读位置和缩放。
-- 支持标准 TikZ 外部化，以及配置本机 Inkscape、latexminted 后的 SVG 和 minted 3 编译。
-- 修复 macOS 的内部辅助文件读取兼容问题，保留现有文件访问限制。
+- 智能检索支持设置主题、篇数和发表年份，查看基于文献摘要的简介，批量保存到 BibTeX。
+- 按项目记住本次会话的检索结果，支持删除、继续检索及 DOI 和题名去重。
+- PDF 选区可直接调用翻译引擎或 AI API，改进中文文稿与 PDF 的双向定位。
 
 仅提供 Windows x64 和 Mac Apple Silicon（arm64）安装包，扩展包沿用此前版本。
 Inkscape、latexminted 需在本机另行安装并配置；此版本不启用任意 shell escape。

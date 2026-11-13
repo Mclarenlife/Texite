@@ -1,0 +1,62 @@
+.translation-settings {
+  width: min(100%, 34rem);
+}
+.translation-settings fieldset {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+}
+.translation-settings label {
+  display: grid;
+  gap: 6px;
+  color: var(--secondary);
+  font-size: 0.9em;
+}
+.translation-settings input {
+  font: inherit;
+  color: var(--text);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 12px;
+  width: 100%;
+  min-width: 0;
+}
+.translation-settings button[type='submit'] {
+  justify-self: start;
+}
+.translation-settings small,
+.translation-dialog small {
+  color: var(--secondary);
+  line-height: 1.6;
+}
+.translation-dialog.dialog-content {
+  width: min(28rem, calc(100vw - 24px));
+  max-height: 85dvh;
+  overflow: auto;
+}
+.translation-dialog blockquote {
+  margin: 0 0 14px;
+  padding: 4px 12px;
+  border-inline-start: 2px solid var(--line);
+  color: var(--secondary);
+  max-height: 6em;
+  overflow: auto;
+}
+.translation-dialog blockquote,
+.translation-output {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.translation-output {
+  line-height: 1.7;
+  margin: 6px 0 16px;
+  user-select: text;
+}
+.translation-actions {
+  display: flex;
+  gap: 8px;
+}

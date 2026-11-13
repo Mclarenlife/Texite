@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
 import {
   Info,
+  Languages,
+  BookOpen,
   Check,
   Cloud,
   Sun,
@@ -14,6 +16,7 @@ import {
 } from 'lucide-react';
 import './settings.css';
 import { AboutSettings } from './AboutSettings';
+import { TranslationSettings } from './TranslationSettings';
 import { editorFonts } from './preferences';
 import { ColorPicker } from './ColorPicker';
 import {
@@ -45,6 +48,7 @@ type Props = {
   children: ReactNode;
   initialTab?: string;
   sync?: ReactNode;
+  literature?: ReactNode;
 };
 function Choices({
   label,
@@ -157,6 +161,8 @@ export function AppearanceSettings(props: Props) {
     { id: 'text', name: '编辑器文字', icon: Type },
     { id: 'compiler', name: '编译设置', icon: Terminal },
     { id: 'sync', name: '同步与存储', icon: Cloud },
+    { id: 'translation', name: '翻译', icon: Languages },
+    { id: 'literature', name: '文献检索', icon: BookOpen },
     { id: 'about', name: '关于', icon: Info },
   ];
   return (
@@ -191,7 +197,9 @@ export function AppearanceSettings(props: Props) {
       <div
         className={
           'settings-layout' +
-          (['compiler', 'sync', 'about'].includes(tab) ? ' compiler-layout' : '')
+          (['compiler', 'sync', 'about', 'translation', 'literature'].includes(tab)
+            ? ' compiler-layout'
+            : '')
         }
       >
         <div
@@ -468,6 +476,8 @@ export function AppearanceSettings(props: Props) {
           )}
           {tab === 'about' && <AboutSettings onPrepareUpdate={props.onPrepareUpdate} />}
           {tab === 'sync' && props.sync}
+          {tab === 'translation' && <TranslationSettings />}
+          {tab === 'literature' && props.literature}
           {tab === 'compiler' && (
             <div className="compiler-settings">
               <div className="settings-section-heading">
@@ -478,7 +488,7 @@ export function AppearanceSettings(props: Props) {
             </div>
           )}
         </div>
-        {!['compiler', 'sync', 'about'].includes(tab) && (
+        {['appearance', 'text'].includes(tab) && (
           <aside className="settings-live-preview" aria-label="编辑器实时预览">
             <div className="live-preview-label">
               <span className="live-dot" />

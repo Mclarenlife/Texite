@@ -11,10 +11,13 @@ import {
   Plus,
   ScanLine,
   LocateFixed,
+  Languages,
 } from 'lucide-react';
 import { download } from '../platform/storage';
 import { normalizedText, type PdfLocate } from './sync';
+import { indexedPage, selectableContent } from './pdf-text';
 import { createPortal } from 'react-dom';
+import { TranslationDialog } from './TranslationDialog';
 GlobalWorkerOptions.workerSrc = workerUrl;
 
 export function PdfViewer({
@@ -29,6 +32,7 @@ export function PdfViewer({
   downloadName = 'document.pdf',
   locate,
   onLocateSource,
+  onLocateMiss,
   documentKey = downloadName,
 }: {
   bytes: Uint8Array | null;
@@ -42,9 +46,12 @@ export function PdfViewer({
   downloadName?: string;
   locate?: PdfLocate;
   onLocateSource?(point: { page: number; x: number; y: number; text: string }): void;
+  onLocateMiss?(): void;
   documentKey?: string;
 }) {
   const [highlights, setHighlights] = useState<Record<number, { from: number; to: number }>>({});
+  const [locatedId, setLocatedId] = useState<number>();
+  const [translation, setTranslation] = useState('');
   const [selection, setSelection] = useState<{
     left: number;
     top: number;
@@ -118,6 +125,7 @@ export function PdfViewer({
     restorePosition.current = anchor;
     setError('');
     setHighlights({});
+    setTranslation('');
     setSelection(null);
     setPdf(null);
     if (!bytes) return;
@@ -220,19 +228,61 @@ export function PdfViewer({
     let disposed = false;
     void (async () => {
       const texts: string[] = [];
-      for (let n = 1; n <= pdf.numPages; n++) {
-        const content = await (await pdf.getPage(n)).getTextContent();
+      const needle = normalizedText(locate.text);
+      const readPage = async (n: number) => {
+        const page = await pdf.getPage(n);
+        const content = selectableContent(await page.getTextContent());
+        const viewport = page.getViewport({ scale: 1 });
+        return indexedPage(
+          content,
+          (x, y) => viewport.convertToViewportPoint(x, y),
+          n === locate.node?.page ? locate.node : undefined,
+        );
+      };
+      let expectedInPage = 0;
+      if (locate.node && locate.node.page <= pdf.numPages) {
+        const n = locate.node.page,
+          indexed = await readPage(n);
         if (disposed) return;
-        texts.push(content.items.map((i) => ('str' in i ? normalizedText(i.str) : '')).join(''));
+        texts[n - 1] = indexed.text;
+        expectedInPage = indexed.expected;
+        let best = -1;
+        if (needle)
+          for (
+            let at = indexed.text.indexOf(needle);
+            at >= 0;
+            at = indexed.text.indexOf(needle, at + 1)
+          ) {
+            if (best < 0 || Math.abs(at - expectedInPage) < Math.abs(best - expectedInPage))
+              best = at;
+          }
+        if (best >= 0 || !needle) {
+          setHighlights(best >= 0 ? { [n]: { from: best, to: best + needle.length } } : {});
+          setLocatedId(locate.id);
+          navigate(n);
+          return;
+        }
       }
-      const needle = normalizedText(locate.text),
-        all = texts.join('');
-      const offsets = texts.map((_, i) => texts.slice(0, i).reduce((n, t) => n + t.length, 0));
-      const expected = offsets[(locate.node?.page || 1) - 1] || 0;
+      for (let n = 1; n <= pdf.numPages; n++) {
+        if (texts[n - 1] === undefined) texts[n - 1] = (await readPage(n)).text;
+        if (disposed) return;
+      }
+      const all = texts.join('');
+      let offset = 0;
+      const offsets = texts.map((text) => {
+        const start = offset;
+        offset += text.length;
+        return start;
+      });
+      const expected = (offsets[(locate.node?.page || 1) - 1] || 0) + expectedInPage;
       let best = -1,
         distance = Infinity;
       if (needle)
         for (let at = all.indexOf(needle); at >= 0; at = all.indexOf(needle, at + 1)) {
+          if (!locate.node && best >= 0) {
+            best = -1;
+            break;
+          }
           const candidatePage = offsets.reduce(
             (page, offset, index) => (offset <= at ? index + 1 : page),
             1,
@@ -254,28 +304,40 @@ export function PdfViewer({
         });
       if (!disposed) {
         setHighlights(ranges);
-        navigate(Number(Object.keys(ranges)[0]) || locate.node?.page || 1);
+        setLocatedId(locate.id);
+        const target = Number(Object.keys(ranges)[0]) || locate.node?.page;
+        if (target) navigate(target);
+        else onLocateMiss?.();
       }
     })().catch(() => {
-      if (!disposed && locate.node) navigate(locate.node.page);
+      if (disposed) return;
+      setHighlights({});
+      setLocatedId(locate.id);
+      if (locate.node) navigate(locate.node.page);
+      else onLocateMiss?.();
     });
     return () => {
       disposed = true;
     };
   }, [pdf, locate]);
   function captureSelection() {
-    if (!onLocateSource) return;
     const selected = window.getSelection();
     if (!selected?.rangeCount || selected.isCollapsed) return;
     const range = selected.getRangeAt(0),
       element = range.startContainer.parentElement?.closest<HTMLElement>('.pdf-page');
-    if (!element || !container.current?.contains(element)) return;
+    if (
+      !element ||
+      !container.current?.contains(element) ||
+      !container.current.contains(range.endContainer) ||
+      !range.startContainer.parentElement?.closest('.texite-text-layer')
+    )
+      return;
     const bounds = element.getBoundingClientRect(),
       rect = range.getClientRects()[0];
     if (!rect) return;
     const scale = Number(element.dataset.scale) || 1;
     setSelection({
-      left: Math.max(8, Math.min(window.innerWidth - 138, rect.left)),
+      left: Math.max(8, Math.min(window.innerWidth - 172, rect.left)),
       top: Math.max(8, Math.min(window.innerHeight - 40, rect.top - 38)),
       page: Number(element.dataset.page),
       x: (rect.left - bounds.left) / scale,
@@ -421,6 +483,8 @@ export function PdfViewer({
         ref={container}
         hidden={diagnosticsOpen}
         onMouseUp={() => setTimeout(captureSelection, 0)}
+        onTouchEnd={() => setTimeout(captureSelection, 0)}
+        onKeyUp={captureSelection}
       >
         {error ? (
           <div className="empty-state" role="alert">
@@ -438,7 +502,13 @@ export function PdfViewer({
               zoom={zoom}
               root={container}
               highlight={highlights[index + 1]}
-              locate={locate}
+              locate={
+                locatedId === locate?.id &&
+                (!Object.keys(highlights).length ||
+                  Number(Object.keys(highlights)[0]) === index + 1)
+                  ? locate
+                  : undefined
+              }
             />
           ))
         ) : (
@@ -450,6 +520,7 @@ export function PdfViewer({
       </div>
       {selection &&
         !diagnosticsOpen &&
+        !translation &&
         createPortal(
           <div
             className="pdf-selection-popover"
@@ -457,17 +528,31 @@ export function PdfViewer({
             onMouseDown={(e) => e.preventDefault()}
           >
             <button
+              type="button"
               className="pdf-selection-locate"
-              aria-label="定位到源码"
-              title="定位到源码"
-              onMouseDown={(e) => e.preventDefault()}
+              aria-label="翻译选中文字"
+              title="翻译选中文字"
               onClick={() => {
-                onLocateSource?.(selection);
+                setTranslation(selection.text);
                 setSelection(null);
               }}
             >
-              <LocateFixed size={17} />
+              <Languages size={17} />
             </button>
+            {onLocateSource && (
+              <button
+                className="pdf-selection-locate"
+                aria-label="定位到源码"
+                title="定位到源码"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onLocateSource?.(selection);
+                  setSelection(null);
+                }}
+              >
+                <LocateFixed size={17} />
+              </button>
+            )}
             <span className="pdf-selection-count" aria-label="选中文字词数">
               {
                 [
@@ -479,6 +564,7 @@ export function PdfViewer({
           </div>,
           document.body,
         )}
+      {translation && <TranslationDialog text={translation} onClose={() => setTranslation('')} />}
       {diagnosticsOpen && diagnostics}
     </section>
   );
@@ -504,6 +590,7 @@ function PdfPage({
   locate?: PdfLocate;
 }) {
   const textHolder = useRef<HTMLDivElement>(null);
+  const scrolledLocate = useRef<number | undefined>(undefined);
   const [textReady, setTextReady] = useState(0);
   const [rendered, setRendered] = useState(false);
   const [boxes, setBoxes] = useState<
@@ -564,7 +651,7 @@ function PdfPage({
           textHolder.current.replaceChildren();
           textHolder.current.style.setProperty('--total-scale-factor', String(viewport.scale));
           if (holder.current) holder.current.dataset.scale = String(viewport.scale);
-          const content = await page.getTextContent();
+          const content = selectableContent(await page.getTextContent());
           if (disposed) return;
           layer = new TextLayer({
             textContentSource: content,
@@ -606,15 +693,19 @@ function PdfPage({
         if (!span.firstChild || span.firstChild.nodeType !== Node.TEXT_NODE) continue;
         const text = span.textContent || '',
           positions: number[] = [];
-        for (let i = 0; i < text.length; i++)
-          for (const _ of normalizedText(text[i])) positions.push(i);
+        for (let i = 0; i < text.length;) {
+          const char = String.fromCodePoint(text.codePointAt(i)!);
+          for (let k = 0; k < normalizedText(char).length; k++) positions.push(i);
+          i += char.length;
+        }
         const from = Math.max(0, highlight.from - offset),
           to = Math.min(positions.length, highlight.to - offset);
         offset += positions.length;
         if (to <= from) continue;
         const range = document.createRange();
         range.setStart(span.firstChild, positions[from]);
-        range.setEnd(span.firstChild, positions[to - 1] + 1);
+        const end = positions[to - 1];
+        range.setEnd(span.firstChild, end + (text.codePointAt(end)! > 0xffff ? 2 : 1));
         for (const r of range.getClientRects())
           rects.push({
             left: r.left - holderRect.left,
@@ -634,6 +725,17 @@ function PdfPage({
       });
     }
     setBoxes(rects);
+    if (
+      locate &&
+      scrolledLocate.current !== locate.id &&
+      rects.length &&
+      root.current?.clientHeight
+    ) {
+      const top = holderRect.top - root.current.getBoundingClientRect().top + rects[0].top;
+      if (top < 0 || top + rects[0].height > root.current.clientHeight)
+        root.current.scrollTop += top - root.current.clientHeight * 0.35;
+      scrolledLocate.current = locate.id;
+    }
   }, [highlight, locate, textReady, pageWidth, number]);
   return (
     <div

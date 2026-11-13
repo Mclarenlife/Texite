@@ -34,6 +34,7 @@ import {
 import { importZip } from '../../packages/platform/storage';
 import { SourceEditor, type EditorHandle } from '../../packages/editor/SourceEditor';
 import { PdfViewer } from '../../packages/preview/PdfViewer';
+import { TranslationSettings } from '../../packages/ui/TranslationSettings';
 import { AssetPreview } from '../../packages/preview/AssetPreview';
 import { CompileDiagnostics } from '../../packages/preview/CompileDiagnostics';
 import { Dialog } from '../../packages/ui/Dialog';
@@ -670,6 +671,7 @@ export function MobileApp() {
         className="mobile-sheet"
       >
         <div className="mobile-settings">
+          <details><summary>翻译设置</summary><TranslationSettings /></details>
           <h3>外观</h3>
           <div className="mobile-choice-row">
             {[

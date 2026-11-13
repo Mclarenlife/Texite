@@ -168,6 +168,51 @@ export function useAI(options: Options) {
     setChatProfiles(profiles);
     setChatConfig({ ...safe, hasKey: !!secret, persistent: false });
   }
+  async function askLiterature(
+    mode: 'cli' | 'api',
+    prompt: string,
+    context: string,
+    signal: AbortSignal,
+  ) {
+    signal.throwIfAborted();
+    const api = window.texite?.literature;
+    if (api) {
+      const id = crypto.randomUUID();
+      const cancel = () => {
+        void api.cancel(id).catch(() => {});
+      };
+      signal.addEventListener('abort', cancel, { once: true });
+      try {
+        let model = '';
+        try {
+          model = JSON.parse(localStorage.getItem('texite-ai-model') || '""');
+        } catch {}
+        return await api.ask({
+          id,
+          mode,
+          prompt,
+          context,
+          model: typeof model === 'string' ? model : '',
+        });
+      } finally {
+        signal.removeEventListener('abort', cancel);
+      }
+    }
+    if (mode !== 'api') throw new Error('请在桌面版使用本机 CLI。');
+    let result = '';
+    await streamChat(
+      { ...chatConfig, apiKey: chatSecret.current },
+      [
+        { role: 'system', content: prompt },
+        { role: 'user', content: context },
+      ],
+      (delta) => {
+        result += delta;
+      },
+      signal,
+    );
+    return result;
+  }
   async function selectChatProfile(id: string) {
     if (busy || active.current || cleaning.current) return;
     cleaning.current = true;
@@ -1079,6 +1124,7 @@ export function useAI(options: Options) {
     configureAgent,
     chatProfiles,
     selectChatProfile,
+    askLiterature,
     tasks,
     chatConfig,
     saveChatConfig,

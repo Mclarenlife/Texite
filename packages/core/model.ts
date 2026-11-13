@@ -43,6 +43,17 @@ export type SyncNode = {
   height: number;
 };
 export type DesktopAPI = {
+  literature?: {
+    ask(input: {
+      id: string;
+      mode: 'api' | 'cli';
+      model: string;
+      prompt: string;
+      context: string;
+    }): Promise<string>;
+    cancel(id: string): Promise<void>;
+  };
+  translation?: import('../../apps/desktop/translation.mjs').TranslationAPI;
   aiHistory?: import('./ai').AIHistoryAPI;
   deleteProject?(id: string, deleteFiles: boolean): Promise<void>;
   updates?: {

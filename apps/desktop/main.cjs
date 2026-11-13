@@ -66,6 +66,12 @@ function handleFiles(name, callback) {
   });
 }
 app.whenReady().then(async () => {
+  const { createTranslationService } = await import('./translation.mjs');
+  const translation = createTranslationService(require('./translation-store.cjs')(app.getPath('userData'), safeStorage));
+  handle('translation:get', () => translation.get());
+  handle('translation:save', config => translation.save(config));
+  handle('translation:run', (id, text) => translation.translate(id, text));
+  handle('translation:cancel', id => translation.cancel(id));
   handle('clipboard:write', (text) => {
     if (typeof text !== 'string' || text.length > 1_000_000)
       throw new Error('复制内容无效或过长。');
@@ -191,13 +197,18 @@ app.whenReady().then(async () => {
   );
   handle('runtime:online-get', () => packageRepository.settings());
   handle('runtime:online-set', (settings) => packageRepository.configure(settings));
+  let literature;
   ai = new AgentClient(path.join(app.getPath('userData'), 'ai'), (event) => {
+    if (literature?.event(event)) return;
     if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
   });
   chat = new ChatClient(path.join(app.getPath('userData'), 'ai'), safeStorage, (event) => {
     if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
   });
   handle('chat:list', () => chat.list());
+  literature = new (require('./literature-client.cjs').LiteratureClient)(ai, chat, (url, init) => net.fetch(url, init));
+  handle('literature:ask', input => literature.ask(input));
+  handle('literature:cancel', id => literature.cancel(id));
   handle('chat:select', (id) => chat.select(id));
   handle('ai:config', () => ai.getConfig());
   handle('ai:profiles', () => ai.getProfiles());
@@ -384,6 +395,7 @@ app.whenReady().then(async () => {
           })
         ).response === 1,
       cleanup: async () => {
+        literature.cancel();
         chat?.cancel();
         packageRepository.cancel();
         await Promise.all([compiler.cancel(), ai.disconnect()]);
@@ -421,6 +433,7 @@ app.whenReady().then(async () => {
       if (choice === 1) event.preventDefault();
     });
     window.on('closed', () => {
+      literature.cancel();
       packageRepository.cancel();
       void compiler.cancel();
       void ai.disconnect();

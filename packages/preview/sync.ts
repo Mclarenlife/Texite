@@ -2,14 +2,13 @@ import type { SyncNode, ProjectFile } from '../core/model';
 export function normalizedText(text: string) {
   return text
     .normalize('NFKC')
-    .replace(/[\s\u00ad{}]/g, '')
+    .replace(/[\s\u00ad\u200b-\u200f\u2060\ufe00-\ufe0f{}]/g, '')
     .toLowerCase();
 }
+const sourceTokens =
+  /\\([%&#_$])|\\(?:begin|end|label|cite|ref)\*?\{[^}]*\}|\\[a-zA-Z]+\*?|%[^\n]*/g;
 export function sourceText(text: string) {
-  return text
-    .replace(/%[^\n]*/g, '')
-    .replace(/\\(?:begin|end|label|cite|ref)\*?\{[^}]*\}/g, '')
-    .replace(/\\[a-zA-Z]+\*?/g, '');
+  return text.replace(sourceTokens, (_, literal) => literal || '');
 }
 export function forwardNode(nodes: SyncNode[], file: string, line: number) {
   return nodes
@@ -31,14 +30,17 @@ export function sourceRange(content: string, line: number, text: string) {
   const positions: number[] = [],
     chars: string[] = [];
   const hidden = new Uint8Array(content.length);
-  for (const m of content.matchAll(/%[^\n]*|\\[a-zA-Z]+\*?/g))
-    hidden.fill(1, m.index!, m.index! + m[0].length);
-  for (let i = 0; i < content.length; i++)
-    if (!hidden[i])
-      for (const c of normalizedText(content[i])) {
-        chars.push(c);
-        positions.push(i);
-      }
+  for (const m of content.matchAll(sourceTokens))
+    hidden.fill(1, m.index!, m.index! + m[0].length - (m[1] ? 1 : 0));
+  for (let i = 0; i < content.length;) {
+    const char = String.fromCodePoint(content.codePointAt(i)!);
+    if (!hidden[i]) {
+      const normalized = normalizedText(char);
+      chars.push(normalized);
+      for (let n = 0; n < normalized.length; n++) positions.push(i);
+    }
+    i += char.length;
+  }
   let needle = normalizedText(text);
   const haystack = chars.join('');
   // One PDF text run can join adjacent input files or generated material.
@@ -66,7 +68,10 @@ export function sourceRange(content: string, line: number, text: string) {
         distance = d;
       }
     }
-  if (best >= 0) return { from: positions[best], to: positions[best + needle.length - 1] + 1 };
+  if (best >= 0) {
+    const end = positions[best + needle.length - 1];
+    return { from: positions[best], to: end + (content.codePointAt(end)! > 0xffff ? 2 : 1) };
+  }
   return {
     from: start,
     to: Math.min(content.length, start + (content.split('\n')[line - 1]?.length || 0)),
@@ -80,9 +85,8 @@ export function findSourceSelection(
   point: { page: number; x: number; y: number; text: string },
 ) {
   const closest = inverseNode(nodes, point.page, point.x, point.y);
-  if (!closest) return;
   const candidates = [
-    closest.file,
+    ...(closest ? [closest.file] : []),
     ...new Set(nodes.filter((n) => n.page === point.page).map((n) => n.file)),
   ];
   let fallback: { file: ProjectFile; range: { from: number; to: number } } | undefined;
@@ -103,5 +107,21 @@ export function findSourceSelection(
     )
       return { file, range };
   }
-  return fallback;
+  // Macro expansion can leave an included Chinese paragraph with no tagged
+  // nodes on this page. Accept unanchored text only if it identifies one place.
+  const needle = normalizedText(point.text);
+  let unique: typeof fallback;
+  if (needle)
+    for (const file of files) {
+      if (file.binary || candidates.includes(file.path) || !/\.(?:tex|ltx)$/i.test(file.path))
+        continue;
+      const visible = normalizedText(sourceText(file.content));
+      const first = visible.indexOf(needle);
+      if (first < 0) continue;
+      if (unique || visible.indexOf(needle, first + 1) >= 0) return fallback;
+      const range = sourceRange(file.content, 1, point.text);
+      if (normalizedText(sourceText(file.content.slice(range.from, range.to))) === needle)
+        unique = { file, range };
+    }
+  return unique ?? fallback;
 }

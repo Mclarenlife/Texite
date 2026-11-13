@@ -135,10 +135,11 @@ test('successful compilation creates a persistent first-page cover and a failed 
   await page.evaluate(() => {
     window.texite = {
       compile: async (p) => ({ success: false, revision: p.revision, log: '! Compilation failed' }),
+      saveProject: async () => ({}),
     } as NonNullable<Window['texite']>;
   });
   await page.getByRole('button', { name: '编译文稿', exact: false }).click();
-  await expect(page.getByRole('status')).toContainText('编译未完成');
+  await expect(page.locator('.diagnostics')).toContainText('Compilation failed');
   await page.evaluate(() => {
     window.texite = undefined;
   });

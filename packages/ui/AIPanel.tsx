@@ -1,5 +1,6 @@
+import { ChatProfileSettings } from './ChatProfileSettings';
 import { AIReply } from './AIReply';
-import { resizeAI, type WindowRect } from './resizeAI';
+import { WindowResizeHandles } from './WindowResizeHandles';
 import { AgentSettings } from './AgentSettings';
 import { AIConversationList } from './AIConversationList';
 import { selectionLabel, type InlineScope } from '../core/ai';
@@ -55,8 +56,6 @@ export function AIPanel({
 }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [cliSettings, setCliSettings] = useState(false);
-  const [profileId, setProfileId] = useState('');
-  const [profileName, setProfileName] = useState('');
   const [prompt, setPrompt] = useState('');
   const input = useRef<HTMLTextAreaElement>(null);
   const [model, setModel] = usePreference<string>('ai-model', '');
@@ -80,13 +79,7 @@ export function AIPanel({
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const panel = useRef<HTMLElement>(null);
   const [windowSize, setWindowSize] = useState<{ width: number; height: number } | null>(null);
-  const resizing = useRef<(WindowRect & { x: number; y: number }) | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
-  const [baseURL, setBaseURL] = useState('');
-  const [apiModel, setApiModel] = useState('');
-  const [apiKey, setApiKey] = useState('');
-  const [configError, setConfigError] = useState('');
-  const [savingConfig, setSavingConfig] = useState(false);
   const service = mode === 'agent' ? ai.agentProvider : provider;
   const custom = service === 'api';
   const visibleTasks = ai.tasks.filter(
@@ -126,15 +119,7 @@ export function AIPanel({
     observer.observe(panel.current);
     return () => observer.disconnect();
   }, []);
-  const configure = () => {
-    setProfileId(ai.chatConfig.id || '');
-    setProfileName(ai.chatConfig.name || '');
-    setBaseURL(ai.chatConfig.baseURL);
-    setApiModel(ai.chatConfig.model);
-    setApiKey('');
-    setConfigError('');
-    setConfigOpen(true);
-  };
+  const configure = () => setConfigOpen(true);
 
   const [review, setReview] = useState<AITask | null>(null);
   const [clearMode, setClearMode] = useState<'agent' | 'chat' | null>(null);
@@ -640,223 +625,23 @@ export function AIPanel({
           </div>
         </div>
       </div>
-      {!minimized &&
-        Object.entries({
-          n: '上边',
-          s: '下边',
-          w: '左边',
-          e: '右边',
-          nw: '左上角',
-          ne: '右上角',
-          sw: '左下角',
-          se: '右下角',
-        }).map(([edge, label]) => (
-          <div
-            key={edge}
-            className={'ai-resize-edge ai-resize-' + edge}
-            role="separator"
-            aria-label={'调整 AI 窗口大小 · ' + label}
-            tabIndex={0}
-            onPointerDown={(e) => {
-              e.preventDefault();
-              e.currentTarget.setPointerCapture(e.pointerId);
-              const r = panel.current!.getBoundingClientRect();
-              resizing.current = {
-                x: e.clientX,
-                y: e.clientY,
-                left: r.left,
-                top: r.top,
-                width: r.width,
-                height: r.height,
-              };
-            }}
-            onPointerMove={(e) => {
-              const start = resizing.current;
-              if (!start) return;
-              const next = resizeAI(
-                start,
-                edge,
-                e.clientX - start.x,
-                e.clientY - start.y,
-                window.innerWidth,
-                window.innerHeight,
-              );
-              setPosition({ x: next.left, y: next.top });
-              setWindowSize({ width: next.width, height: next.height });
-            }}
-            onPointerUp={(e) => {
-              resizing.current = null;
-              e.currentTarget.releasePointerCapture(e.pointerId);
-            }}
-            onPointerCancel={() => {
-              resizing.current = null;
-            }}
-            onKeyDown={(e) => {
-              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) return;
-              e.preventDefault();
-              const next = resizeAI(
-                panel.current!.getBoundingClientRect(),
-                edge,
-                e.key === 'ArrowLeft' ? -20 : e.key === 'ArrowRight' ? 20 : 0,
-                e.key === 'ArrowUp' ? -20 : e.key === 'ArrowDown' ? 20 : 0,
-                window.innerWidth,
-                window.innerHeight,
-              );
-              setPosition({ x: next.left, y: next.top });
-              setWindowSize({ width: next.width, height: next.height });
-            }}
-          />
-        ))}
+      {!minimized && (
+        <WindowResizeHandles
+          name="AI"
+          panel={panel}
+          onResize={(next) => {
+            setPosition({ x: next.left, y: next.top });
+            setWindowSize({ width: next.width, height: next.height });
+          }}
+        />
+      )}
       <Dialog
         open={configOpen}
-        onClose={() => {
-          setConfigOpen(false);
-          setApiKey('');
-        }}
+        onClose={() => setConfigOpen(false)}
         title={mode === 'agent' ? '配置 Agent API' : '配置对话 API'}
         description="Agent 与对话共用 API 配置。Agent 需要支持工具调用的 Chat Completions 接口；轮数指单次任务最多发送的模型请求次数。"
       >
-        <form
-          className="api-settings"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            if (savingConfig) return;
-            setSavingConfig(true);
-            try {
-              await ai.saveChatConfig({
-                id: profileId,
-                name: profileName,
-                baseURL,
-                model: apiModel,
-                apiKey,
-              });
-              setConfigOpen(false);
-              setApiKey('');
-            } catch (err) {
-              setConfigError((err as Error).message);
-            } finally {
-              setSavingConfig(false);
-            }
-          }}
-        >
-          <div className="ai-inline-actions">
-            <Select
-              aria-label="编辑 API 配置"
-              value={profileId}
-              onValueChange={(id) => {
-                const c = ai.chatProfiles.find((p) => p.id === id);
-                if (!c) return;
-                setProfileId(id);
-                setProfileName(c.name || '');
-                setBaseURL(c.baseURL);
-                setApiModel(c.model);
-                setApiKey('');
-              }}
-            >
-              <option value="">新 API 配置</option>
-              {ai.chatProfiles.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name || p.model}
-                </option>
-              ))}
-            </Select>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={() => {
-                setProfileId('');
-                setProfileName('');
-                setBaseURL('');
-                setApiModel('');
-                setApiKey('');
-              }}
-            >
-              新增 API
-            </button>
-          </div>
-          <label>
-            配置名称
-            <input
-              aria-label="API 配置名称"
-              value={profileName}
-              maxLength={100}
-              onChange={(e) => setProfileName(e.target.value)}
-              placeholder="例如：论文助手"
-            />
-          </label>
-          <label>
-            API 地址
-            <input
-              aria-label="API 地址"
-              value={baseURL}
-              onChange={(e) => setBaseURL(e.target.value)}
-              placeholder="https://api.openai.com/v1"
-              required
-            />
-          </label>
-          <label>
-            模型
-            <input
-              aria-label="API 模型名称"
-              value={apiModel}
-              onChange={(e) => setApiModel(e.target.value)}
-              placeholder="服务商提供的模型 ID"
-              required
-            />
-          </label>
-          <label>
-            API Key
-            <input
-              aria-label="API Key"
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={
-                ai.chatProfiles.find((p) => p.id === profileId)?.hasKey
-                  ? '已配置，留空保留'
-                  : '本机无鉴权服务可留空'
-              }
-            />
-          </label>
-          <p>
-            {window.texite?.chat
-              ? '密钥使用系统加密保存；系统加密不可用时仅在本次运行保留。'
-              : '网页版密钥仅在内存保留，刷新后需重新填写；接口需允许浏览器跨域访问。'}
-          </p>
-          {configError && (
-            <p className="form-error" role="alert">
-              {configError}
-            </p>
-          )}
-          <div className="ai-inline-actions">
-            <button className="primary-button" disabled={ai.busy || savingConfig}>
-              保存配置
-            </button>
-            <button
-              type="button"
-              className="text-button"
-              disabled={ai.busy}
-              onClick={async () => {
-                try {
-                  await ai.saveChatConfig({
-                    id: profileId,
-                    name: profileName,
-                    baseURL,
-                    model: apiModel,
-                    apiKey: '',
-                    clearKey: true,
-                  });
-                  setApiKey('');
-                } catch (err) {
-                  setConfigError((err as Error).message);
-                }
-              }}
-            >
-              清除密钥
-            </button>
-          </div>
-        </form>
+        {configOpen && <ChatProfileSettings ai={ai} onSaved={() => setConfigOpen(false)} />}
       </Dialog>
       <Dialog
         open={cliSettings}

@@ -70,17 +70,19 @@ test('create files and search, command dialog keyboard close, narrow layout', as
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
-test('ZIP import and export preserve binary resources and main-file metadata', async ({ page }) => {
+test('ZIP import, edit, reload and export preserve Chinese source, binary resources and main-file metadata', async ({
+  page,
+}) => {
   const zip = new JSZip();
   zip.file(
-    'chapters/main.tex',
+    '章节/main.tex',
     '\\documentclass{article}\n\\begin{document}ZIP round trip\\end{document}',
   );
   const asset = Buffer.from([0, 255, 13, 10, 9, 128]);
-  zip.file('assets/data.bin', asset);
+  zip.file('附件/原始数据.bin', asset);
   zip.file(
     '.texite.json',
-    JSON.stringify({ name: 'Imported project', mainFile: 'chapters/main.tex', engine: 'pdflatex' }),
+    JSON.stringify({ name: '中文论文', mainFile: '章节/main.tex', engine: 'pdflatex' }),
   );
   await page.goto('/');
   await page.locator('input[type=file][accept=".zip"]').setInputFiles({
@@ -88,16 +90,23 @@ test('ZIP import and export preserve binary resources and main-file metadata', a
     mimeType: 'application/zip',
     buffer: await zip.generateAsync({ type: 'nodebuffer' }),
   });
-  await expect(page.getByRole('textbox', { name: 'LaTeX 源码编辑器' })).toContainText(
-    'ZIP round trip',
-  );
+  const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
+  await expect(editor).toContainText('ZIP round trip');
+  const revised =
+    '\\documentclass{ctexart}\n\\begin{document}\n修改后的中文，含全角标点。\n\\end{document}';
+  await editor.fill(revised);
+  await editor.press('Control+s');
+  await expect(page.getByText('本地恢复副本已保存', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(editor).toContainText('修改后的中文，含全角标点。');
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
   const result = await event;
   const data = await JSZip.loadAsync(await readFile((await result.path())!));
-  expect(await data.file('assets/data.bin')!.async('nodebuffer')).toEqual(asset);
+  expect(await data.file('附件/原始数据.bin')!.async('nodebuffer')).toEqual(asset);
+  expect(await data.file('章节/main.tex')!.async('string')).toBe(revised);
   expect(JSON.parse(await data.file('.texite.json')!.async('string')).mainFile).toBe(
-    'chapters/main.tex',
+    '章节/main.tex',
   );
 });
 
@@ -162,13 +171,11 @@ test('project space imports ZIP, creates nested and empty folders, and returns v
     '\\documentclass{article}\n\\begin{document}Archive test\\end{document}',
   );
   zip.folder('wrapped/assets/empty');
-  await page
-    .locator('input[accept=".zip"]')
-    .setInputFiles({
-      name: 'wrapped.zip',
-      mimeType: 'application/zip',
-      buffer: await zip.generateAsync({ type: 'nodebuffer' }),
-    });
+  await page.locator('input[accept=".zip"]').setInputFiles({
+    name: 'wrapped.zip',
+    mimeType: 'application/zip',
+    buffer: await zip.generateAsync({ type: 'nodebuffer' }),
+  });
   await expect(space).not.toBeVisible();
   await page.getByRole('button', { name: '创建文件夹', exact: true }).click();
   await page.getByLabel('文件夹路径').fill('chapters/drafts');

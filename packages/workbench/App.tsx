@@ -102,6 +102,13 @@ import { changeSummary, type EditRecord, type RestoreRequest } from '../core/his
 import { DiffLines, HistoryReview } from '../editor/HistoryReview';
 import { useAI } from './useAI';
 import { AIPanel } from '../ui/AIPanel';
+import {
+  LiteratureDialog,
+  newLiteratureSession,
+  type LiteratureSession,
+} from '../ui/LiteratureDialog';
+import { LiteratureSettings, type LiteratureMode } from '../ui/LiteratureSettings';
+import { appendPapers, bibDestinations, type Paper } from '../core/literature';
 import type { AITask } from '../core/ai';
 import { commitAIProject } from '../platform/storage';
 import { compileTargets, compileWithFallback } from '../core/compile-target';
@@ -134,6 +141,18 @@ export function App() {
   const [syncBusy, setSyncBusy] = useState(false);
   const syncRunning = useRef(false);
   const [settingsTab, setSettingsTab] = useState('appearance');
+  const [literatureProject, setLiteratureProject] = useState<string | null>(null);
+  const [literatureSessions, setLiteratureSessions] = useState<Record<string, LiteratureSession>>(
+    {},
+  );
+  function openLiterature(id: string) {
+    setLiteratureSessions((s) => (s[id] ? s : { ...s, [id]: newLiteratureSession() }));
+    setLiteratureProject(id);
+  }
+  const [literatureMode, setLiteratureMode] = usePreference<LiteratureMode>(
+    'literature-mode',
+    'api',
+  );
   useEffect(() => {
     void window.texite?.webdav
       ?.get()
@@ -145,6 +164,9 @@ export function App() {
   }, [project?.id]);
   const [mode, setMode] = useState<Mode>('split');
   const [space, setSpace] = useState(false);
+  useEffect(() => {
+    if (space || literatureProject !== project?.id) setLiteratureProject(null);
+  }, [space, project?.id, literatureProject]);
   const [inlineRun, setInlineRun] = useState(0);
   const [aiOpen, setAiOpen] = useState(false);
   const [archivedProjects, setArchivedProjects] = useState<string[]>([]);
@@ -530,6 +552,34 @@ export function App() {
       files: p.files.map((f) => (f.path === path && !f.binary ? { ...f, content } : f)),
     }));
   };
+  async function saveLiterature(id: string, path: string, papers: Paper[]) {
+    const current = projectRef.current;
+    if (!current || current.id !== id || restoreLock.current || ai.busy)
+      throw new Error('项目已切换或正在修改，请稍后重试。');
+    if (!bibDestinations(current).includes(path)) throw new Error('目标文件已变更，请重新选择。');
+    const old = current.files.find((f) => f.path.toLowerCase() === path.toLowerCase());
+    if (old && (old.binary || old.path !== path)) throw new Error('目标路径已被其他文件占用。');
+    const { count, content } = appendPapers(current.files, path, papers);
+    if (!count) {
+      await persist(current);
+      notify('所选文献已在项目中。');
+      return;
+    }
+    const next = validateProject({
+      ...current,
+      revision: current.revision + 1,
+      updatedAt: Date.now(),
+      files: old
+        ? current.files.map((f) => (f === old ? { ...f, content } : f))
+        : [...current.files, { path, content }],
+    });
+    editHistory.record(path, old?.content || '', content);
+    clearTimeout(autosaveTimer.current);
+    projectRef.current = next;
+    setProject(next);
+    await persist(next);
+    notify('已将 ' + count + ' 篇文献保存到 ' + path + '。');
+  }
   const previewRestore = (record: EditRecord) => {
     const current = projectRef.current;
     const file = current?.files.find((f) => f.path === record.path);
@@ -907,10 +957,6 @@ export function App() {
     }
     const line = scope.before.slice(0, scope.from).split('\n').length;
     const node = forwardNode(syncMap, scope.path, line);
-    if (!node) {
-      notify('当前 PDF 没有源码定位信息，请重新编译。');
-      return;
-    }
     const text = sourceText(
       scope.to > scope.from
         ? scope.before.slice(scope.from, scope.to)
@@ -1724,6 +1770,11 @@ export function App() {
                         : '参考文献'}
                 </span>
                 <div>
+                  {section === 'references' && (
+                    <button className="text-button" onClick={() => openLiterature(project.id)}>
+                      <Sparkles size={14} /> 智能检索
+                    </button>
+                  )}
                   {section === 'files' && (
                     <>
                       <button
@@ -2213,6 +2264,9 @@ export function App() {
                   bytes={pdf}
                   locate={pdfLocate}
                   onLocateSource={locateSource}
+                  onLocateMiss={() =>
+                    notify('无法在 PDF 中唯一定位这段文字，请尝试选中更长的正文。')
+                  }
                   diagnosticsOpen={diagnosticsOpen}
                   onDiagnosticsChange={setDiagnosticsOpen}
                   diagnosticCount={diagnostics.length}
@@ -2344,6 +2398,26 @@ export function App() {
             onDelete={permanentlyDeleteProjects}
           />
         </section>
+        {literatureSessions[project.id] && (
+          <LiteratureDialog
+            visible={!space && literatureProject === project.id}
+            session={literatureSessions[project.id]}
+            onChange={(change) =>
+              setLiteratureSessions((s) => ({ ...s, [project.id]: change(s[project.id]) }))
+            }
+            key={project.id}
+            project={project}
+            ai={ai}
+            mode={literatureMode}
+            onClose={() => setLiteratureProject(null)}
+            onSettings={() => {
+              setLiteratureProject(null);
+              openModal('settings');
+              setSettingsTab('literature');
+            }}
+            onSave={(path, papers) => saveLiterature(project.id, path, papers)}
+          />
+        )}
         <Dialog open={scopeOpen} onClose={() => setScopeOpen(false)} title="限定搜索文件">
           <div className="scope-actions">
             <button
@@ -2621,6 +2695,9 @@ export function App() {
           }}
         >
           <AppearanceSettings
+            literature={
+              <LiteratureSettings ai={ai} mode={literatureMode} onMode={setLiteratureMode} />
+            }
             onPrepareUpdate={prepareSpaceMutation}
             theme={theme}
             onTheme={setTheme}

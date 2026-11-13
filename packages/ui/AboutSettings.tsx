@@ -57,6 +57,17 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         <section>
           <h4>
             {packageInfo.version}
+            <time>2026.11.13</time>
+          </h4>
+          <ul>
+            <li>新增智能文献检索，按主题、篇数与年份筛选文献，支持去重、继续检索和批量写入 BibTeX。</li>
+            <li>PDF 选中文字可直接翻译，支持翻译引擎和 AI API。</li>
+            <li>改进中文文稿与 PDF 的双向定位。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.12.0-beta.4
             <time>2026.10.30</time>
           </h4>
           <ul>

@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('texite', {
   platform: process.platform,
+  literature: {
+    ask: input => ipcRenderer.invoke('literature:ask', input),
+    cancel: id => ipcRenderer.invoke('literature:cancel', id),
+  },
+  translation: {
+    get: () => ipcRenderer.invoke('translation:get'),
+    save: config => ipcRenderer.invoke('translation:save', config),
+    translate: (id, text) => ipcRenderer.invoke('translation:run', id, text),
+    cancel: id => ipcRenderer.invoke('translation:cancel', id),
+  },
   deleteProject: (id, deleteFiles) => ipcRenderer.invoke('project:delete', id, deleteFiles),
   updates: {
     status: () => ipcRenderer.invoke('updates:status'),

@@ -9,10 +9,14 @@ const path = require('node:path');
     path.join(folder, '.texite.json'),
     JSON.stringify({ name: 'Navigation test', mainFile: 'main.tex', engine: 'pdflatex' }),
   );
+  const chinese = '轻轻点按，检查中文定位。';
   const source =
-    '\\documentclass{article}\n\\begin{document}\nFirst page text.\n\\newpage\nSelected second page words.\n\\input{chapter}\n\\end{document}\n';
+    '\\documentclass{ctexart}\\pagestyle{myheadings}\\markright{' +
+    chinese +
+    '}\n\\begin{document}\nFirst page text.\n\\newpage\nSelected second page words.\n\\input{chapter}\n\\end{document}\n';
   await fs.writeFile(path.join(folder, 'main.tex'), source);
-  await fs.writeFile(path.join(folder, 'chapter.tex'), 'Included chapter text.');
+  const chapter = 'Included chapter text.\\par\n\\textbf{' + chinese + '}';
+  await fs.writeFile(path.join(folder, 'chapter.tex'), chapter);
   await fs.writeFile(path.join(folder, 'asset.bin'), Buffer.from([0, 255, 13, 128]));
   await fs.mkdir(path.join(folder, 'notes', 'nested'), { recursive: true });
   await fs.mkdir(path.join(folder, 'notes', 'empty'), { recursive: true });
@@ -99,7 +103,49 @@ const path = require('node:path');
     await included.dispatchEvent('mouseup');
     await page.getByRole('button', { name: '定位到源码', exact: true }).click();
     await expect(page.locator('.editor-tab')).toContainText('chapter.tex');
-    await expect(editor).toHaveText('Included chapter text.');
+    await expect(editor).toContainText(chinese);
+    // Select a whole TeX line in the included file and verify that the PDF
+    // highlight covers its bold glyphs, including the genuine repeated 轻.
+    await editor.press(mac ? 'Meta+ArrowDown' : 'Control+End');
+    await editor.press(mac ? 'Meta+Shift+ArrowLeft' : 'Shift+Home');
+    await editor.press('Alt+Enter');
+    await page.getByRole('button', { name: '定位到 PDF', exact: true }).click();
+    const glyph = pdfPage.locator('.texite-text-layer span').filter({ hasText: /^轻$/ });
+    // The running header repeats the entire sentence. Verify the highlight is
+    // over the body (the last two 轻 glyphs), not the earlier header occurrence.
+    const firstBodyGlyph = glyph.nth(-2);
+    await expect
+      .poll(async () => {
+        const box = await firstBodyGlyph.boundingBox();
+        return (
+          box &&
+          pdfPage.locator('.pdf-locate-highlight').evaluateAll(
+            (els, p) =>
+              els.some((el) => {
+                const r = el.getBoundingClientRect();
+                return (
+                  r.left <= p.x + 1 && r.right >= p.x + p.width - 1 && Math.abs(r.top - p.y) < 2
+                );
+              }),
+            box,
+          )
+        );
+      })
+      .toBe(true);
+    // Select across the actual PDF.js text runs, not a synthetic one-span string.
+    await firstBodyGlyph.evaluate((el) => {
+      document.activeElement?.blur();
+      const spans = [...el.parentElement.querySelectorAll('span')];
+      const last = spans.slice(spans.indexOf(el)).find((span) => span.textContent.includes('。'));
+      const r = document.createRange();
+      r.setStart(el.firstChild, 0);
+      r.setEnd(last.firstChild, last.textContent.indexOf('。') + 1);
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(r);
+    });
+    await firstBodyGlyph.dispatchEvent('mouseup');
+    await page.getByRole('button', { name: '定位到源码', exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe(chinese);
     await page.getByRole('button', { name: 'main.tex 主文件', exact: true }).click();
     await page.getByRole('button', { name: '修改历史', exact: true }).click();
     await page.getByRole('button', { name: '备份当前项目', exact: true }).click();

@@ -44,6 +44,19 @@ readline.createInterface({ input: process.stdin }).on('line', async (line) => {
       const sessionId = m.params.sessionId,
         text = m.params.prompt[0].text;
       if (text.endsWith('wait')) return;
+      if (text.endsWith('literature fixture')) {
+        send({
+          method: 'session/update',
+          params: {
+            sessionId,
+            update: {
+              sessionUpdate: 'agent_message_chunk',
+              content: { type: 'text', text: '{"query":"wave propagation"}' },
+            },
+          },
+        });
+        return send({ id: m.id, result: { stopReason: 'end_turn' } });
+      }
       if (text.endsWith('outside')) {
         await call('fs/read_text_file', { sessionId, path: path.resolve(cwd, '../secret.txt') });
       } else {

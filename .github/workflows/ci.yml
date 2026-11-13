@@ -1,10 +1,11 @@
 name: Validate
-on: [push, pull_request]
+on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
 jobs:
   web-and-core:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -14,7 +15,42 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: sudo apt-get update && sudo apt-get install -y latexmk texlive-latex-recommended
-      - run: pnpm test
-      - run: pnpm build
       - run: pnpm exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - run: pnpm test:verify
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Texite-browser-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+  desktop-from-source:
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm runtime:prepare
+      - run: pnpm exec install-electron
+      - run: pnpm test:desktop
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Texite-${{ runner.os }}-source-report
+          path: .qa/desktop-reports/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
