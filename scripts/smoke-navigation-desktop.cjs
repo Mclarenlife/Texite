@@ -46,10 +46,16 @@ const path = require('node:path');
     await expect(page.getByRole('status')).toContainText('编译完成', { timeout: 90000 });
     await expect(page.locator('.pdf-page')).toHaveCount(2);
     const mac = process.platform === 'darwin';
-    await editor.press(mac ? 'Meta+ArrowUp' : 'Control+Home');
-    for (let i = 0; i < 4; i++) await editor.press('ArrowDown');
+    // The preamble can wrap on smaller displays. Start on the actual source line.
+    await editor
+      .locator('.cm-line')
+      .filter({ hasText: /^Selected second page words\.$/ })
+      .click();
     await editor.press(mac ? 'Meta+ArrowLeft' : 'Home');
     await editor.press(mac ? 'Meta+Shift+ArrowRight' : 'Shift+End');
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toBe('Selected second page words.');
     await editor.press('Alt+Enter');
     await page.getByRole('button', { name: '定位到 PDF', exact: true }).click();
     await expect(page.getByLabel('PDF 页码')).toHaveValue('2');

@@ -14,8 +14,8 @@ test('completion snippets and right-click tools insert real, undoable LaTeX', as
   await page.keyboard.press('Tab');
   await page.keyboard.type('b');
   await expect(editor).toHaveText('\\frac{a}{b}');
-  await editor.fill('\\begin{ali');
-  await editor.press('Control+Space');
+  await editor.fill('');
+  await page.keyboard.type('\\begin{ali');
   await page
     .getByRole('option')
     .filter({ hasText: /^align对齐/ })

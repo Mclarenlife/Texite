@@ -1,4 +1,5 @@
 import {
+  snippet,
   snippetCompletion,
   type CompletionContext,
   type Completion,
@@ -98,23 +99,22 @@ export function latexCompletions(
       fragment = argument[2].split(',').at(-1)!;
     let values: Completion[];
     if (command === 'begin' || command === 'end') {
-      values = Object.entries(environments).map(([label, detail]) =>
-        command === 'end'
-          ? { label, detail, type: 'type' }
-          : snippetCompletion(`${label}}\n  \${content}\n\\end{${label}}`, {
-              label,
-              detail,
-              type: 'type',
-            }),
-      );
-      // A typed closing brace is included in the replacement for begin snippets.
+      values = Object.entries(environments).map(([label, detail]) => {
+        const option = { label, detail, type: 'type' };
+        if (command === 'end') return option;
+        const insert = snippet(`${label}}\n  \${content}\n\\end{${label}}`);
+        return {
+          ...option,
+          apply(view, completion, from, to) {
+            const hasBrace = view.state.sliceDoc(to, to + 1) === '}';
+            insert(view, completion, from, hasBrace ? to + 1 : to);
+          },
+        };
+      });
       return {
         from: context.pos - fragment.length,
-        to:
-          command === 'begin' && context.state.sliceDoc(context.pos, context.pos + 1) === '}'
-            ? context.pos + 1
-            : context.pos,
         options: values,
+        validFor: /^[\w*]*$/,
       };
     }
     if (command.startsWith('cite'))
