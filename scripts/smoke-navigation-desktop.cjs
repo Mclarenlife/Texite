@@ -112,8 +112,12 @@ const path = require('node:path');
     await expect(editor).toContainText(chinese);
     // Select a whole TeX line in the included file and verify that the PDF
     // highlight covers its bold glyphs, including the genuine repeated 轻.
-    await editor.press(mac ? 'Meta+ArrowDown' : 'Control+End');
+    await editor.locator('.cm-line').filter({ hasText: chinese }).click();
+    await editor.press(mac ? 'Meta+ArrowRight' : 'End');
     await editor.press(mac ? 'Meta+Shift+ArrowLeft' : 'Shift+Home');
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toBe('\\textbf{' + chinese + '}');
     await editor.press('Alt+Enter');
     await page.getByRole('button', { name: '定位到 PDF', exact: true }).click();
     const glyph = pdfPage.locator('.texite-text-layer span').filter({ hasText: /^轻$/ });
@@ -122,7 +126,13 @@ const path = require('node:path');
     const firstBodyGlyph = glyph.nth(-2);
     await expect
       .poll(async () => {
-        const box = await firstBodyGlyph.boundingBox();
+        // PDF.js positions a span with font-dependent line metrics. The highlight
+        // follows the browser's selection rectangle for the text inside that span.
+        const box = await firstBodyGlyph.evaluate((el) => {
+          const r = document.createRange();
+          r.selectNodeContents(el);
+          return r.getBoundingClientRect().toJSON();
+        });
         return (
           box &&
           pdfPage.locator('.pdf-locate-highlight').evaluateAll(
