@@ -97,6 +97,7 @@ contextBridge.exposeInMainWorld('texite', {
   importProject: (project) => ipcRenderer.invoke('project:import', project),
   reopenProject: (id) => ipcRenderer.invoke('project:reopen', id),
   openProject: () => ipcRenderer.invoke('project:open'),
+  saveFolderCopy: (project) => ipcRenderer.invoke('project:save-folder-copy', project),
   saveProject: (project) => ipcRenderer.invoke('project:save', project),
   detectEngines: () => ipcRenderer.invoke('compiler:detect'),
   listRuntime: () => ipcRenderer.invoke('runtime:list'),

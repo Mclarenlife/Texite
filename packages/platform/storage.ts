@@ -317,6 +317,14 @@ export async function commitRecovery(current: Project, request: RestoreRequest) 
     throw error;
   }
 }
+export async function hasDiskRecovery(id: string) {
+  return !!(await (await database()).get('settings', 'disk-recovery:' + id));
+}
+export async function setDiskRecovery(id: string, pending: boolean) {
+  const db = await database();
+  if (pending) await db.put('settings', true, 'disk-recovery:' + id);
+  else await db.delete('settings', 'disk-recovery:' + id);
+}
 export async function saveProject(project: Project) {
   const db = await database();
   const prepared = await prepareProject(validateProject(project));
@@ -392,7 +400,9 @@ export async function permanentlyDeleteStoredProject(id: string) {
   const settings = tx.objectStore('settings');
   for (const key of await settings.getAllKeys()) {
     if (
-      ['history:', 'ai:', 'ai-conversations:', 'cover:', 'folder:'].some((p) => key === p + id) ||
+      ['history:', 'ai:', 'ai-conversations:', 'cover:', 'folder:', 'disk-recovery:'].some(
+        (p) => key === p + id,
+      ) ||
       String(key).startsWith('backup:' + id + ':')
     )
       await settings.delete(key);
@@ -663,6 +673,38 @@ export async function openBrowserDirectory() {
     throw new Error('此浏览器不支持文件夹关联。请使用 Chrome、Edge 或桌面版；也可导入 ZIP。');
   const handle = await picker({ mode: 'readwrite' });
   return scanDirectory(handle);
+}
+export async function saveBrowserFolderCopy(project: Project): Promise<Project> {
+  const picker = (
+    window as unknown as {
+      showDirectoryPicker?: (options: { mode: string }) => Promise<Directory>;
+    }
+  ).showDirectoryPicker;
+  if (!picker) throw new Error('此环境无法选择保存文件夹，请使用桌面版或支持文件夹访问的浏览器。');
+  const parent = await picker({ mode: 'readwrite' });
+  const base =
+    project.name
+      .replace(/[<>:"/\\|?*]/g, '_')
+      .trim()
+      .replace(/[. ]+$/g, '')
+      .slice(0, 80) || '未命名项目';
+  const existing = new Set<string>();
+  for await (const [name] of parent.entries()) existing.add(name.toLowerCase());
+  let name = base;
+  for (let n = 2; existing.has(name.toLowerCase()); n++) name = base + ' (' + n + ')';
+  const handle = (await parent.getDirectoryHandle(name, { create: true })) as Directory;
+  for await (const _entry of handle.entries()) throw new Error('目标文件夹已有内容，请重新选择。');
+  const id = crypto.randomUUID();
+  const copy: Project = { ...project, id, location: { kind: 'linked', directory: name } };
+  const db = await database();
+  await db.put('settings', { handle, hashes: {} }, 'folder:' + id);
+  try {
+    await saveBrowserDirectory(copy);
+  } catch (error) {
+    await db.delete('settings', 'folder:' + id);
+    throw error;
+  }
+  return copy;
 }
 export async function reopenBrowserProject(project: Project) {
   const binding: Binding | undefined = await (

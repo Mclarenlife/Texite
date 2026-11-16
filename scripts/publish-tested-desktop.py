@@ -37,7 +37,8 @@ assert runs[0]['head_sha'] == runs[1]['head_sha'], 'Builds use different commits
 sha = runs[0]['head_sha']
 package = request('/contents/package.json?ref=' + sha)
 version = json.loads(base64.b64decode(package['content']))['version']
-assert re.fullmatch(r'\d+\.\d+\.\d+-beta\.\d+', version), 'This workflow only publishes beta releases'
+assert re.fullmatch(r'\d+\.\d+\.\d+(?:-beta\.\d+)?', version), 'Invalid desktop release version'
+beta = '-beta.' in version
 tag = 'v' + version
 
 subprocess.run(['gh', 'run', 'download', str(runs[0]['id']), '--repo', REPO,
@@ -50,7 +51,10 @@ for name in [f'Texite Setup {version}.exe', f'Texite-{version}-arm64.dmg']:
     files.append(matches[0])
 digests = {p.name.replace(' ', '.'): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
 
-notes = f'''本次为 {version} 桌面测试版。
+notes = f'''本次为 {version} 桌面{'测试版' if beta else '正式版'}。
+
+- 本地文件发生外部修改时，可保留项目恢复副本，关闭选项卡或将项目移到最近删除。
+- 顶栏分享按钮提供另存为项目文件夹和导出 ZIP。
 
 - PDF 选区翻译支持浮窗拖动和八方向调整大小，可边读边译。
 - 本地项目文件夹改名后，可继续保存文稿并在项目空间重新打开。
@@ -71,7 +75,7 @@ release = next((r for r in request('/releases?per_page=100') if r['tag_name'] ==
 if release is None:
     release = request('/releases', 'POST', {'tag_name': tag, 'target_commitish': sha,
                       'name': 'Texite ' + version, 'body': notes, 'draft': True,
-                      'prerelease': True, 'make_latest': 'false'})
+                      'prerelease': beta, 'make_latest': 'false' if beta else 'true'})
 assert release['target_commitish'] == sha, 'Existing release targets another commit'
 release_route = '/releases/' + str(release['id'])
 for path in files:
@@ -90,9 +94,9 @@ for path in files:
 assets = request(release_route + '/assets')
 assert set(a['name'] for a in assets) == set(digests), 'Unexpected release attachments'
 if release['draft']:
-    request(release_route, 'PATCH', {'body': notes, 'draft': False, 'prerelease': True, 'make_latest': 'false'})
+    request(release_route, 'PATCH', {'body': notes, 'draft': False, 'prerelease': beta, 'make_latest': 'false' if beta else 'true'})
 release = request(release_route)
-assert not release['draft'] and len(release['assets']) == 2
+assert not release['draft'] and release['prerelease'] == beta and len(release['assets']) == 2
 print(release['html_url'], flush=True)
 with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
     summary.write(f"Published [{tag}]({release['html_url']}) with two verified desktop installers.\n")

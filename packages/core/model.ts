@@ -140,6 +140,7 @@ export type DesktopAPI = {
     mainFile?: string;
     engine?: Engine;
   } | null>;
+  saveFolderCopy?(project: Project): Promise<Project | null>;
   saveProject(
     project: Project,
   ): Promise<{ cancelled?: boolean; directory?: string; kind?: 'linked' | 'managed' }>;

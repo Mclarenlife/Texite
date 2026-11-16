@@ -219,3 +219,31 @@ test('a folder already renamed before upgrading is recovered only from one match
   await fs.writeFile(path.join(copy, 'main.tex'), 'Another project');
   assert.equal((await reopened.save(doc)).directory, await fs.realpath(renamed));
 });
+
+test('save as copies a conflicted project into a new sibling without overwriting either directory', async () => {
+  const base = await fs.mkdtemp(path.resolve('.qa/save-as-'));
+  const lib = new ProjectLibrary(path.join(base, 'profile'));
+  await lib.init();
+  const root = path.join(base, 'paper');
+  await fs.mkdir(root);
+  await fs.writeFile(path.join(root, 'main.tex'), 'source');
+  await fs.writeFile(path.join(root, 'main.bbl'), 'previous bibliography');
+  const draft = await lib.link(root);
+  draft.files.find((f) => f.path === 'main.tex').content = 'unsaved edit';
+  await fs.writeFile(path.join(root, 'main.bbl'), 'external bibliography');
+  await assert.rejects(lib.save(draft), /main.bbl/);
+  const copy = await lib.import({ ...draft, folders: ['figures/empty'] }, base);
+  assert.notEqual(copy.id, draft.id);
+  assert.equal(copy.location.kind, 'linked');
+  assert.equal(path.basename(copy.location.directory), 'paper (2)');
+  assert.equal(
+    await fs.readFile(path.join(copy.location.directory, 'main.tex'), 'utf8'),
+    'unsaved edit',
+  );
+  assert.equal(
+    await fs.readFile(path.join(copy.location.directory, 'main.bbl'), 'utf8'),
+    'previous bibliography',
+  );
+  assert.ok((await fs.stat(path.join(copy.location.directory, 'figures/empty'))).isDirectory());
+  assert.equal(await fs.readFile(path.join(root, 'main.bbl'), 'utf8'), 'external bibliography');
+});

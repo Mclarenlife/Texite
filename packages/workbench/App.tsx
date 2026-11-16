@@ -2,6 +2,7 @@ import { migrateAIHistories } from '../platform/storage';
 import { PROJECT_LIMITS, projectBytes } from '../core/project-size';
 import { bytesToBase64 } from '../core/binary';
 import { Outline } from './Outline';
+import { ShareProject } from './ShareProject';
 import { pdfCover } from '../preview/cover';
 import { saveProjectCover } from '../platform/storage';
 import { Undo2, Redo2 } from 'lucide-react';
@@ -27,7 +28,6 @@ import {
   RefreshCw,
   Minus,
   Copy,
-  ArrowDownToLine,
   ArrowUpRight,
   BookOpen,
   Check,
@@ -82,6 +82,9 @@ import {
 } from '../platform/storage';
 import {
   openBrowserDirectory,
+  saveBrowserFolderCopy,
+  hasDiskRecovery,
+  setDiskRecovery,
   reopenBrowserProject,
   saveBrowserDirectory,
 } from '../platform/storage';
@@ -323,28 +326,40 @@ export function App() {
     toastTimer.current = setTimeout(() => setToast(''), 4500);
   }, []);
   const persist = useCallback(
-    (snapshot: Project, duringImport = false) => {
+    (snapshot: Project, duringImport = false, allowRecovery = false) => {
+      let recovered = false;
       if (restoreLock.current && !duringImport) return Promise.resolve();
       setSaved('saving');
       const task = saveQueue.current
         .catch(() => {})
         .then(async () => {
           await saveProject(snapshot);
-          if (window.texite) {
-            const location = await window.texite.saveProject(snapshot);
-            if (location.directory && location.directory !== snapshot.location?.directory) {
-              snapshot = {
-                ...snapshot,
-                location: { kind: location.kind || 'managed', directory: location.directory },
-              };
-              await saveProject(snapshot);
-              drafts.current.set(snapshot.id, snapshot);
-              setProject((current) =>
-                current?.id === snapshot.id ? { ...current, location: snapshot.location } : current,
-              );
-            }
-          } else await saveBrowserDirectory(snapshot);
           await editHistory.flush(snapshot.id);
+          try {
+            if (window.texite) {
+              const location = await window.texite.saveProject(snapshot);
+              if (location.directory && location.directory !== snapshot.location?.directory) {
+                snapshot = {
+                  ...snapshot,
+                  location: { kind: location.kind || 'managed', directory: location.directory },
+                };
+                await saveProject(snapshot);
+                drafts.current.set(snapshot.id, snapshot);
+                setProject((current) =>
+                  current?.id === snapshot.id
+                    ? { ...current, location: snapshot.location }
+                    : current,
+                );
+              }
+            } else await saveBrowserDirectory(snapshot);
+          } catch (error) {
+            await setDiskRecovery(snapshot.id, true);
+            if (!allowRecovery) throw error;
+            recovered = true;
+            notify('磁盘保存失败，已保留项目恢复副本，可通过“另存为”保存到新文件夹。');
+          }
+          if (!recovered && (await hasDiskRecovery(snapshot.id)))
+            await setDiskRecovery(snapshot.id, false);
         });
       saveQueue.current = task;
       task
@@ -353,7 +368,7 @@ export function App() {
             projectRef.current?.id === snapshot.id &&
             projectRef.current.revision === snapshot.revision
           )
-            setSaved('saved');
+            setSaved(recovered ? 'error' : 'saved');
           setProjects((items) => [snapshot, ...items.filter((p) => p.id !== snapshot.id)]);
         })
         .catch((error) => {
@@ -662,7 +677,11 @@ export function App() {
     }
     // Flush edits before loading another disk snapshot. Preserve recovery on external conflicts.
     await saveQueue.current.catch(() => {});
-    if (projectRef.current && !alreadyFlushed) await persist(projectRef.current).catch(() => {});
+    if (projectRef.current && !alreadyFlushed) await persist(projectRef.current, false, true);
+    if (refresh && (await hasDiskRecovery(next.id))) {
+      next = drafts.current.get(next.id) ?? next;
+      refresh = false;
+    }
     if (!refresh && !alreadyFlushed && openedIds.includes(next.id)) {
       next = drafts.current.get(next.id) ?? next;
       refresh = false;
@@ -686,9 +705,10 @@ export function App() {
       return;
     }
     if (id === projectRef.current?.id) {
-      await prepareSpaceMutation();
+      await prepareSpaceMutation(true);
       const nextId = openedIds.filter((item) => item !== id).at(-1);
-      if (nextId && drafts.current.has(nextId)) await chooseProject(drafts.current.get(nextId)!);
+      if (nextId && drafts.current.has(nextId))
+        await chooseProject(drafts.current.get(nextId)!, false, true);
       else setSpace(true);
     }
     setOpenedIds((ids) => ids.filter((item) => item !== id));
@@ -807,12 +827,12 @@ export function App() {
       setSyncBusy(false);
     }
   }
-  async function prepareSpaceMutation() {
+  async function prepareSpaceMutation(allowRecovery = false) {
     if (ai.busy || compileRunning.current || restoreLock.current)
       throw new Error('请先结束 AI、编译或恢复任务。');
     clearTimeout(autosaveTimer.current);
-    await saveQueue.current;
-    if (projectRef.current) await persist(projectRef.current);
+    await saveQueue.current.catch(() => {});
+    if (projectRef.current) await persist(projectRef.current, false, allowRecovery);
   }
   async function prepareBackup() {
     await prepareSpaceMutation();
@@ -1005,7 +1025,7 @@ export function App() {
     permanentRunning.current = true;
     let locked = false;
     try {
-      await prepareSpaceMutation();
+      await prepareSpaceMutation(true);
       if (!ids.length || ids.some((id) => !archivedProjects.includes(id)))
         throw new Error('只能永久删除最近删除中的项目。');
       restoreLock.current = true;
@@ -1044,9 +1064,29 @@ export function App() {
     }
   }
   async function archiveSpaceProjects(ids: string[], archive: boolean) {
-    await prepareSpaceMutation();
+    await prepareSpaceMutation(true);
     setArchivedProjects(await archiveProjects(ids, archive));
+    if (archive) setOpenedIds((open) => open.filter((id) => !ids.includes(id)));
     notify(archive ? '项目已移到最近删除。' : '项目已恢复。');
+  }
+  async function saveFolderCopy() {
+    const current = projectRef.current;
+    if (!current) return;
+    if (ai.busy || compileRunning.current || restoreLock.current) {
+      notify('请先结束当前任务。');
+      return;
+    }
+    try {
+      const copy = window.texite?.saveFolderCopy
+        ? await window.texite.saveFolderCopy(current)
+        : await saveBrowserFolderCopy(current);
+      if (!copy) return;
+      await saveProject(copy);
+      await chooseProject(copy);
+      notify('已另存为并打开项目副本：' + copy.location?.directory);
+    } catch (error) {
+      if ((error as DOMException).name !== 'AbortError') notify(friendlyError(error));
+    }
   }
   async function exportProject() {
     if (!projectRef.current) return;
@@ -1715,10 +1755,7 @@ export function App() {
             >
               <CircleHelp size={18} />
             </button>
-            <button className="export-button" onClick={() => void exportProject()}>
-              <ArrowDownToLine size={15} />
-              <span>导出项目</span>
-            </button>
+            <ShareProject onSaveAs={saveFolderCopy} onExport={exportProject} />
           </div>
           {window.texite?.platform === 'win32' && (
             <div className="window-controls">

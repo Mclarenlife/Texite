@@ -3579,3 +3579,38 @@ h1 {
 .compile-tool-row .secondary-button {
   flex-shrink: 0;
 }
+
+.project-share {
+  position: relative;
+  flex: none;
+  -webkit-app-region: no-drag;
+}
+.project-share > .icon-button[aria-expanded='true'] {
+  background: var(--tint);
+  color: var(--accent);
+}
+.project-share [role='menu'] {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% + 7px);
+  right: 0;
+  min-width: 132px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 9px;
+  box-shadow: 0 6px 20px #0002;
+}
+.project-share [role='menuitem'] {
+  display: flex;
+  width: 100%;
+  gap: 9px;
+  align-items: center;
+  padding: 8px 10px;
+  color: var(--text);
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.project-share [role='menuitem']:is(:hover, :focus-visible) {
+  background: var(--tint);
+}

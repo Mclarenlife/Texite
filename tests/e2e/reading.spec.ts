@@ -282,6 +282,7 @@ y &= 2
   await page.screenshot({ animations: 'disabled', path: '.qa/visual-rich.png' });
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
+  await page.getByRole('menuitem', { name: '导出', exact: true }).click();
   const exported = await JSZip.loadAsync(await readFile((await (await event).path())!));
   expect(await exported.file('main.tex')!.async('string')).toBe(source);
   await page.getByRole('button', { name: '打开 chapters/intro.tex', exact: true }).click();
@@ -306,6 +307,7 @@ test('Visual keeps editing boundaries stable while nested braces are incomplete'
   await page.getByRole('button', { name: 'Code', exact: true }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
+  await page.getByRole('menuitem', { name: '导出', exact: true }).click();
   const zip = await JSZip.loadAsync(await readFile((await (await download).path())!));
   const content = await zip.file('main.tex')!.async('string');
   expect(content).toContain(String.raw`\section{A \textbf{bold} heading}`);

@@ -48,3 +48,34 @@ test('project tabs retain edits, close without deletion, and reopen from the ful
     'WebDAV 同步和系统目录设置',
   );
 });
+
+test('a rejected disk save allows closing and archiving while preserving the edited source', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('.save-indicator')).toContainText('已保存');
+  await page.evaluate(() => {
+    window.texite = {
+      saveProject: async () => {
+        throw new Error('文件 main.bbl 已被外部修改');
+      },
+      reopenProject: async () => {
+        throw new Error('must retain the local recovery copy');
+      },
+    } as unknown as typeof window.texite;
+  });
+  const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
+  await editor.fill('edited during the folder conflict');
+  await page.getByRole('button', { name: '关闭项目 示例项目', exact: true }).click();
+  await expect(page.getByRole('tab', { name: '示例项目' })).toHaveCount(0);
+  await page.getByLabel('选择项目 示例项目', { exact: true }).check();
+  await page.getByRole('button', { name: '删除项目', exact: true }).click();
+  await page.getByRole('button', { name: '移到最近删除', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByRole('button', { name: /最近删除/ }).click();
+  await page.getByLabel('选择项目 示例项目', { exact: true }).check();
+  await page.getByRole('button', { name: '恢复项目', exact: true }).click();
+  await page.getByRole('button', { name: '项目', exact: true }).click();
+  await page.getByRole('button', { name: '打开项目 示例项目', exact: true }).click();
+  await expect(editor).toContainText('edited during the folder conflict');
+});

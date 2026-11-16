@@ -263,6 +263,13 @@ app.whenReady().then(async () => {
     const result = await dialog.showOpenDialog(window, { properties: ['openDirectory'] });
     return result.canceled ? null : library.link(result.filePaths[0]);
   });
+  handleFiles('project:save-folder-copy', async (project) => {
+    const result = await dialog.showOpenDialog(window, {
+      title: '选择另存为的上级文件夹',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled ? null : library.import(project, result.filePaths[0]);
+  });
   handleFiles('project:save', (project) => library.save(project));
   handleFiles('project:save-ai', (project, removals) => library.save(project, removals));
   handleFiles('project:restore', (project, removals, removedFolders) =>

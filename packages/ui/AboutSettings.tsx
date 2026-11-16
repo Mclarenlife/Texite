@@ -60,6 +60,15 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
             <time>2026.11.16</time>
           </h4>
           <ul>
+            <li>磁盘文件发生冲突后，可关闭项目选项卡或移到最近删除，并保留本地恢复副本。</li>
+            <li>顶栏分享菜单支持另存为独立的项目文件夹，或导出 ZIP 压缩包。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.12.0-beta.6 <time>2026.11.16</time>
+          </h4>
+          <ul>
             <li>PDF 选区翻译窗口支持自由移动和八方向缩放。</li>
             <li>项目文件夹改名后自动更新本地关联。</li>
           </ul>

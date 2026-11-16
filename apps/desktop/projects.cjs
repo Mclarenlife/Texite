@@ -134,7 +134,7 @@ class ProjectLibrary {
     this.projectsRoot = root;
     return root;
   }
-  async createProjectDirectory(name) {
+  async createProjectDirectory(name, parent = this.projectsRoot) {
     // Keep project IDs separate from paths; use portable, collision-safe display names.
     let base =
       String(name || '未命名项目')
@@ -144,16 +144,16 @@ class ProjectLibrary {
         .slice(0, 80)
         .replace(/[. ]+$/g, '') || '未命名项目';
     if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(base)) base = '_' + base;
-    await fs.mkdir(this.projectsRoot, { recursive: true });
+    await fs.mkdir(parent, { recursive: true });
     for (let n = 1; n <= 10000; n++) {
       const candidate = n === 1 ? base : `${base} (${n})`;
       // Avoid case-only collisions even when created on a case-sensitive platform.
-      const existing = await fs.readdir(this.projectsRoot);
+      const existing = await fs.readdir(parent);
       if (
         existing.some((entry) => entry.normalize('NFC').toLowerCase() === candidate.toLowerCase())
       )
         continue;
-      const root = path.join(this.projectsRoot, candidate);
+      const root = path.join(parent, candidate);
       try {
         await fs.mkdir(root);
         return root;
@@ -326,16 +326,16 @@ class ProjectLibrary {
       if (e.code !== 'ENOENT') throw e;
     }
   }
-  async import(project) {
+  async import(project, parent) {
     validateSnapshot(project);
     const id = randomUUID();
-    const root = await this.createProjectDirectory(project.name);
+    const root = await this.createProjectDirectory(project.name, parent);
     const hashes = await saveDirectory(root, project);
     const entry = {
       id,
       root,
       directoryKey: await directoryKey(root),
-      kind: 'managed',
+      kind: parent ? 'linked' : 'managed',
       hashes: [...hashes],
     };
     this.entries.set(id, entry);

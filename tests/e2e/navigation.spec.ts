@@ -43,6 +43,7 @@ test('project backups preserve all files, auto-back up before restore, and histo
   await expect(page.locator('.backup-row')).toHaveCount(2);
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
+  await page.getByRole('menuitem', { name: '导出', exact: true }).click();
   const zip = await JSZip.loadAsync(await readFile((await (await event).path())!));
   expect(await zip.file('main.tex')!.async('string')).toContain('Changed version');
   expect(zip.file('references.bib')).not.toBeNull();

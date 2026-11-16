@@ -28,6 +28,7 @@ test('edit, retain undo across files, restore after reload, and export project',
   await expect(editor).toContainText('persistence check');
   const downloadEvent = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
+  await page.getByRole('menuitem', { name: '导出', exact: true }).click();
   const download = await downloadEvent;
   expect(download.suggestedFilename()).toMatch(/\.zip$/);
   expect(errors).toEqual([]);
@@ -101,6 +102,7 @@ test('ZIP import, edit, reload and export preserve Chinese source, binary resour
   await expect(editor).toContainText('修改后的中文，含全角标点。');
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
+  await page.getByRole('menuitem', { name: '导出', exact: true }).click();
   const result = await event;
   const data = await JSZip.loadAsync(await readFile((await result.path())!));
   expect(await data.file('附件/原始数据.bin')!.async('nodebuffer')).toEqual(asset);
@@ -188,6 +190,7 @@ test('project space imports ZIP, creates nested and empty folders, and returns v
   await expect(page.locator('.file-tree button[title="chapters/drafts/note.tex"]')).toBeVisible();
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
+  await page.getByRole('menuitem', { name: '导出', exact: true }).click();
   const exported = await JSZip.loadAsync(await readFile((await (await event).path())!));
   expect(exported.file('main.tex')).not.toBeNull();
   expect(exported.files['assets/empty/'].dir).toBe(true);
@@ -212,6 +215,7 @@ test('visual editing preserves unsupported LaTeX and Code history, PDF controls 
   const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
   const event = page.waitForEvent('download');
   await page.getByRole('button', { name: '导出项目', exact: true }).click();
+  await page.getByRole('menuitem', { name: '导出', exact: true }).click();
   const zip = await JSZip.loadAsync(await readFile((await (await event).path())!));
   const source = await zip.file('main.tex')!.async('string');
   expect(source).toContain('\\section{Changed introduction}');
