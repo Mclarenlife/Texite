@@ -52,9 +52,8 @@ digests = {p.name.replace(' ', '.'): hashlib.sha256(p.read_bytes()).hexdigest() 
 
 notes = f'''本次为 {version} 桌面测试版。
 
-- 智能检索支持设置主题、篇数和发表年份，查看基于文献摘要的简介，批量保存到 BibTeX。
-- 按项目记住本次会话的检索结果，支持删除、继续检索及 DOI 和题名去重。
-- PDF 选区可直接调用翻译引擎或 AI API，改进中文文稿与 PDF 的双向定位。
+- PDF 选区翻译支持浮窗拖动和八方向调整大小，可边读边译。
+- 本地项目文件夹改名后，可继续保存文稿并在项目空间重新打开。
 
 仅提供 Windows x64 和 Mac Apple Silicon（arm64）安装包，扩展包沿用此前版本。
 Inkscape、latexminted 需在本机另行安装并配置；此版本不启用任意 shell escape。

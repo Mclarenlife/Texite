@@ -3,6 +3,17 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { readDirectory, saveDirectory, validateSnapshot } = require('./workspace.cjs');
 
+async function directoryKey(root) {
+  try {
+    const stat = await fs.lstat(root, { bigint: true });
+    if (!stat.isDirectory()) return null;
+    return stat.ino ? stat.dev + ':' + stat.ino : '';
+  } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null;
+    throw e;
+  }
+}
+
 // Native paths never come from renderer input. Bindings survive project switches and restarts.
 class ProjectLibrary {
   constructor(directory) {
@@ -24,15 +35,54 @@ class ProjectLibrary {
         await fs.readFile(path.join(this.directory, 'projects.json'), 'utf8'),
       );
       this.entries = new Map(entries.map((entry) => [entry.id, entry]));
+      let migrated = false;
+      for (const entry of entries) {
+        if (entry.directoryKey !== undefined) continue;
+        const key = await directoryKey(entry.root).catch(() => null);
+        if (key !== null) {
+          entry.directoryKey = key;
+          migrated = true;
+        }
+      }
+      if (migrated) await this.persist();
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
   }
+  async resolveEntry(entry) {
+    const key = await directoryKey(entry.root);
+    if (key !== null && (entry.directoryKey === undefined || entry.directoryKey === key)) return;
+    const parent = path.dirname(entry.root);
+    if (entry.directoryKey) {
+      const siblings = await fs.readdir(parent, { withFileTypes: true }).catch((e) => {
+        if (e.code === 'ENOENT') return [];
+        throw e;
+      });
+      for (const item of siblings) {
+        if (!item.isDirectory()) continue;
+        const candidate = path.join(parent, item.name);
+        const id = await directoryKey(candidate).catch((e) => {
+          if (e.code === 'EACCES' || e.code === 'EPERM') return null;
+          throw e;
+        });
+        if (id === entry.directoryKey) {
+          entry.root = await fs.realpath(candidate);
+          await this.persist();
+          return;
+        }
+      }
+    }
+    throw new Error('找不到原项目文件夹。请从项目空间重新打开它所在的文件夹。');
+  }
   async persist() {
     const target = path.join(this.directory, 'projects.json');
-    const temp = target + '.tmp';
-    await fs.writeFile(temp, JSON.stringify([...this.entries.values()]));
-    await fs.rename(temp, target);
+    const write = async () => {
+      const temp = target + '.tmp';
+      await fs.writeFile(temp, JSON.stringify([...this.entries.values()]));
+      await fs.rename(temp, target);
+    };
+    this.pendingWrite = (this.pendingWrite || Promise.resolve()).catch(() => {}).then(write);
+    return this.pendingWrite;
   }
   async setRoot(root) {
     root = await fs.realpath(root);
@@ -79,7 +129,13 @@ class ProjectLibrary {
     if (!original) throw new Error('请先保存项目。');
     const root = await this.createProjectDirectory(project.name);
     const hashes = await saveDirectory(root, project);
-    const entry = { ...original, root, kind: 'managed', hashes: [...hashes] };
+    const entry = {
+      ...original,
+      root,
+      directoryKey: await directoryKey(root),
+      kind: 'managed',
+      hashes: [...hashes],
+    };
     this.entries.set(project.id, entry);
     try {
       await this.persist();
@@ -91,14 +147,20 @@ class ProjectLibrary {
   }
   async link(root) {
     root = await fs.realpath(root);
+    const key = await directoryKey(root);
     const existing = [...this.entries.values()].find((e) =>
-      process.platform === 'win32' ? e.root.toLowerCase() === root.toLowerCase() : e.root === root,
+      key && e.directoryKey
+        ? e.directoryKey === key
+        : process.platform === 'win32'
+          ? e.root.toLowerCase() === root.toLowerCase()
+          : e.root === root,
     );
     const data = await readDirectory(root);
     const entry = {
       id: existing?.id || randomUUID(),
       root,
-      kind: 'linked',
+      directoryKey: key,
+      kind: existing?.kind || 'linked',
       name: existing?.name,
       hashes: [...data.hashes],
     };
@@ -129,6 +191,7 @@ class ProjectLibrary {
   async reopen(id) {
     const entry = this.entries.get(id);
     if (!entry) return null;
+    await this.resolveEntry(entry);
     const data = await readDirectory(entry.root);
     const project = this.snapshot(entry, data);
     validateSnapshot(project);
@@ -155,6 +218,7 @@ class ProjectLibrary {
     for (const entry of this.entries.values()) {
       // Listing does not advance conflict baselines or discard recovery snapshots.
       try {
+        await this.resolveEntry(entry);
         projects.push(validateSnapshot(this.snapshot(entry, await readDirectory(entry.root))));
       } catch {}
     }
@@ -166,6 +230,7 @@ class ProjectLibrary {
     const entry = this.entries.get(id);
     if (!entry) return;
     if (deleteFiles) {
+      await this.resolveEntry(entry);
       const root = path.resolve(entry.root);
       const same = (a, b) =>
         process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
@@ -226,7 +291,13 @@ class ProjectLibrary {
     const id = randomUUID();
     const root = await this.createProjectDirectory(project.name);
     const hashes = await saveDirectory(root, project);
-    const entry = { id, root, kind: 'managed', hashes: [...hashes] };
+    const entry = {
+      id,
+      root,
+      directoryKey: await directoryKey(root),
+      kind: 'managed',
+      hashes: [...hashes],
+    };
     this.entries.set(id, entry);
     await this.persist();
     return { ...project, id, location: { kind: entry.kind, directory: root } };
@@ -237,7 +308,15 @@ class ProjectLibrary {
     if (!entry) {
       // IDs are renderer data; never use them as a filesystem path.
       const root = await this.createProjectDirectory(project.name);
-      entry = { id: project.id, root, kind: 'managed', hashes: [] };
+      entry = {
+        id: project.id,
+        root,
+        directoryKey: await directoryKey(root),
+        kind: 'managed',
+        hashes: [],
+      };
+    } else {
+      await this.resolveEntry(entry);
     }
     const hashes = await saveDirectory(
       entry.root,

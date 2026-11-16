@@ -165,3 +165,29 @@ test('folder bindings, managed imports, empty directories and conflict baselines
   assert.equal((await next.reopen(linked.id)).files[0].content, 'External change');
   assert.equal((await next.link(linkedRoot)).id, linked.id);
 });
+
+test('renamed directories retain their ID and conflict baseline across save, reopen and restart', async () => {
+  const base = await fs.mkdtemp(path.resolve('.qa/relink-'));
+  const profile = path.join(base, 'profile'),
+    orig = path.join(base, 'original'),
+    moved = path.join(base, 'renamed');
+  const lib = new ProjectLibrary(profile);
+  await lib.init();
+  await fs.mkdir(orig);
+  await fs.writeFile(path.join(orig, 'main.tex'), 'before');
+  const doc = await lib.link(orig);
+  await fs.rename(orig, moved);
+  await fs.mkdir(orig);
+  await fs.writeFile(path.join(orig, 'main.tex'), 'unrelated');
+  doc.files[0].content = 'after';
+  assert.equal((await lib.save(doc)).directory, await fs.realpath(moved));
+  assert.equal(await fs.readFile(path.join(orig, 'main.tex'), 'utf8'), 'unrelated');
+  assert.equal(await fs.readFile(path.join(moved, 'main.tex'), 'utf8'), 'after');
+  const newer = path.join(base, 'renamed-again');
+  await fs.rename(moved, newer);
+  const restart = new ProjectLibrary(profile);
+  await restart.init();
+  assert.equal((await restart.list())[0].location.directory, await fs.realpath(newer));
+  assert.equal((await restart.reopen(doc.id)).files[0].content, 'after');
+  assert.equal((await restart.link(newer)).id, doc.id);
+});

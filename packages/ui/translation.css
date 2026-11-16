@@ -33,9 +33,13 @@
   color: var(--secondary);
   line-height: 1.6;
 }
-.translation-dialog.dialog-content {
-  width: min(28rem, calc(100vw - 24px));
-  max-height: 85dvh;
+.literature-window.translation-dialog {
+  overflow: hidden;
+}
+.translation-body {
+  flex: 1;
+  padding: 12px 2px;
+  min-height: 0;
   overflow: auto;
 }
 .translation-dialog blockquote {

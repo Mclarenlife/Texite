@@ -42,6 +42,18 @@ test('PDF translation sits left of locate and sends the selected passage using s
   await button.click();
   const dialog = page.getByRole('dialog', { name: '选区翻译' });
   await expect(dialog.getByRole('status')).toHaveText('论文节选译文');
+  const before = (await dialog.boundingBox())!;
+  const grip = dialog.getByLabel('移动选区翻译窗口');
+  const g = (await grip.boundingBox())!;
+  await page.mouse.move(g.x + 10, g.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(g.x - 70, g.y + 32);
+  await page.mouse.up();
+  expect((await dialog.boundingBox())!.x).toBeLessThan(before.x - 50);
+  const handle = dialog.getByRole('separator', { name: '调整 选区翻译 窗口大小 · 右边' });
+  await handle.press('ArrowRight');
+  expect((await dialog.boundingBox())!.width).toBeGreaterThan(before.width);
+  await expect(dialog.getByRole('separator')).toHaveCount(8);
   expect(body).toEqual({
     q: selected,
     source: 'auto',
