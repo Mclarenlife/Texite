@@ -191,3 +191,31 @@ test('renamed directories retain their ID and conflict baseline across save, reo
   assert.equal((await restart.reopen(doc.id)).files[0].content, 'after');
   assert.equal((await restart.link(newer)).id, doc.id);
 });
+
+test('a folder already renamed before upgrading is recovered only from one matching saved project', async () => {
+  const base = await fs.mkdtemp(path.resolve('.qa/legacy-relink-')),
+    lib = new ProjectLibrary(base);
+  await lib.init();
+  const doc = {
+    id: 'older',
+    name: 'Legacy paper',
+    engine: 'pdflatex',
+    revision: 0,
+    mainFile: 'main.tex',
+    files: [{ path: 'main.tex', content: 'Legacy manuscript' }],
+  };
+  const old = (await lib.save(doc)).directory,
+    renamed = path.join(path.dirname(old), 'new name'),
+    copy = renamed + ' copy';
+  const db = path.join(base, 'projects.json'),
+    entries = JSON.parse(await fs.readFile(db, 'utf8'));
+  delete entries[0].directoryKey;
+  await fs.writeFile(db, JSON.stringify(entries));
+  await fs.rename(old, renamed);
+  await fs.cp(renamed, copy, { recursive: true });
+  const reopened = new ProjectLibrary(base);
+  await reopened.init();
+  await assert.rejects(reopened.save(doc), /找不到原项目/);
+  await fs.writeFile(path.join(copy, 'main.tex'), 'Another project');
+  assert.equal((await reopened.save(doc)).directory, await fs.realpath(renamed));
+});

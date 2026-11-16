@@ -49,10 +49,50 @@ class ProjectLibrary {
       if (error.code !== 'ENOENT') throw error;
     }
   }
-  async resolveEntry(entry) {
+  // Older releases recorded the last saved file digests but no filesystem identity.
+  async findLegacyFolder(entry, parent) {
+    if (!entry.hashes?.length) return;
+    let match;
+    for (const dir of await fs.readdir(parent, { withFileTypes: true }).catch((e) => {
+      if (e.code === 'ENOENT') return [];
+      throw e;
+    })) {
+      if (!dir.isDirectory()) continue;
+      const candidate = path.join(parent, dir.name);
+      if ([...this.entries.values()].some((other) => other.root === candidate)) continue;
+      const metadata = path.join(candidate, '.texite.json');
+      try {
+        const stat = await fs.lstat(metadata);
+        if (!stat.isFile() || stat.size > 65536) continue;
+        const settings = JSON.parse(await fs.readFile(metadata, 'utf8'));
+        if (settings.name !== (entry.name || path.basename(entry.root))) continue;
+        const { hashes } = await readDirectory(candidate);
+        if (
+          hashes.size !== entry.hashes.length ||
+          !entry.hashes.every(([name, digest]) => hashes.get(name) === digest)
+        )
+          continue;
+      } catch {
+        continue;
+      }
+      if (match) return;
+      match = candidate;
+    }
+    return match;
+  }
+  async resolveEntry(entry, recoverLegacy = true) {
     const key = await directoryKey(entry.root);
     if (key !== null && (entry.directoryKey === undefined || entry.directoryKey === key)) return;
     const parent = path.dirname(entry.root);
+    if (key === null && !entry.directoryKey && recoverLegacy) {
+      const match = await this.findLegacyFolder(entry, parent);
+      if (match) {
+        entry.root = await fs.realpath(match);
+        entry.directoryKey = await directoryKey(entry.root);
+        await this.persist();
+        return;
+      }
+    }
     if (entry.directoryKey) {
       const siblings = await fs.readdir(parent, { withFileTypes: true }).catch((e) => {
         if (e.code === 'ENOENT') return [];
@@ -230,7 +270,7 @@ class ProjectLibrary {
     const entry = this.entries.get(id);
     if (!entry) return;
     if (deleteFiles) {
-      await this.resolveEntry(entry);
+      await this.resolveEntry(entry, false);
       const root = path.resolve(entry.root);
       const same = (a, b) =>
         process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
