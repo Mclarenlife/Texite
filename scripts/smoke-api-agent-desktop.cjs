@@ -94,6 +94,7 @@ const http = require('node:http');
     const history = await page.evaluate((id) => window.texite.aiHistory.read(id), projects[0].id);
     expect(history.tasks[0].usage.inputTokens).toBe(300);
     expect(history.tasks[0].changes[0].before).toBe('Before\n苹果\nAfter');
+    await expect(page.locator('.save-indicator')).toContainText('已保存');
     await page.screenshot({ path: '.qa/api-agent-desktop.png' });
     await page.reload();
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
@@ -110,7 +111,11 @@ const http = require('node:http');
       'PASS: API Agent Electron IPC, selection patch, native save, persisted usage and whole-task undo.',
     );
   } finally {
-    if (desktop) await desktop.close();
+    if (desktop) {
+      // The fixture verifies edits and undo above. Close without showing the native quit dialog.
+      await desktop.evaluate(({ app }) => app.exit(0)).catch(() => {});
+      await desktop.close();
+    }
     server.closeAllConnections();
     await new Promise((r) => server.close(r));
   }

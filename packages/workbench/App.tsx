@@ -22,6 +22,7 @@ import { AssetPreview } from '../preview/AssetPreview';
 import { archiveProjects, readArchivedProjects, renameStoredProject } from '../platform/storage';
 import { Select } from '../ui/Select';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   Cloud,
@@ -997,10 +998,13 @@ export function App() {
       return;
     }
     const { file, range } = target;
-    selectFile(file.path);
-    setEditMode('code');
-    setMode('split');
-    setTimeout(() => editor.current?.jump(range.from, range.to), 50);
+    // Switch CodeMirror's document before applying the range in this click event.
+    flushSync(() => {
+      selectFile(file.path);
+      setEditMode('code');
+      setMode('split');
+    });
+    editor.current?.jump(range.from, range.to);
   }
   async function renameSpaceProject(target: Project, name: string) {
     await prepareSpaceMutation();

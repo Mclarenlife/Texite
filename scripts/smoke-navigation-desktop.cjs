@@ -110,6 +110,9 @@ const path = require('node:path');
     await page.getByRole('button', { name: '定位到源码', exact: true }).click();
     await expect(page.locator('.editor-tab')).toContainText('chapter.tex');
     await expect(editor).toContainText(chinese);
+    await expect
+      .poll(() => page.evaluate(() => window.getSelection()?.toString()))
+      .toContain('Included chapter text.');
     // Select a whole TeX line in the included file and verify that the PDF
     // highlight covers its bold glyphs, including the genuine repeated 轻.
     await editor.locator('.cm-line').filter({ hasText: chinese }).click();
