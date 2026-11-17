@@ -115,7 +115,6 @@ export async function createProjectBackup(project: Project, note: string) {
     await tx.done.catch(() => {});
     throw error;
   }
-  window.dispatchEvent(new CustomEvent('texite-backup-created', { detail: project.id }));
   return backup;
 }
 export async function deleteProjectBackup(projectId: string, id: string) {

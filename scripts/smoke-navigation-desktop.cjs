@@ -213,6 +213,7 @@ const path = require('node:path');
     await page
       .getByRole('button', { name: '还原备份 删除前自动备份 · notes', exact: true })
       .click();
+    await expect(page.locator('.project-backups')).toHaveAttribute('aria-busy', 'false');
     await expect(page.locator('.backup-row')).toHaveCount(5);
     expect(await fs.readFile(path.join(folder, 'notes/nested/draft.txt'), 'utf8')).toBe(
       'Deletion recovery text',

@@ -52,17 +52,32 @@ const http = require('node:http');
     );
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  let phase = 'launch';
+  const deadline = setTimeout(() => {
+    console.error('Timed out in API Agent regression:', phase);
+    desktop?.process()?.kill('SIGKILL');
+    process.exit(1);
+  }, 180000);
   try {
     desktop = await electron.launch({
       executablePath: process.env.TEXITE_TEST_EXECUTABLE,
-      args: process.env.TEXITE_TEST_EXECUTABLE ? [] : ['.'],
+      args: [
+        ...(process.platform === 'darwin' ? ['--use-mock-keychain'] : []),
+        ...(process.env.TEXITE_TEST_EXECUTABLE ? [] : ['.']),
+      ],
       env: { ...process.env, TEXITE_TEST_USER_DATA: directory },
     });
+    phase = 'open isolated project';
     const page = await desktop.firstWindow();
+    await desktop.evaluate(({ BrowserWindow }) => {
+      for (const win of BrowserWindow.getAllWindows())
+        win.webContents.setBackgroundThrottling(false);
+    });
     page.setDefaultTimeout(30000);
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
     await expect(page.locator('.save-indicator')).toContainText('已保存');
+    phase = 'configure loopback API';
     await page.evaluate(async (baseURL) => {
       await window.texite.chat.save({
         baseURL,
@@ -72,6 +87,8 @@ const http = require('node:http');
       });
       localStorage.setItem('texite-agent-provider', JSON.stringify('api'));
     }, `http://127.0.0.1:${server.address().port}/v1`);
+    phase = 'reload configured project';
+    await expect(page.locator('.save-indicator')).toContainText('已保存');
     await page.reload();
     const editor = page.getByRole('textbox', { name: 'LaTeX 源码编辑器' });
     await editor.fill('Before\n苹果\nAfter');
@@ -82,6 +99,7 @@ const http = require('node:http');
     await editor.press(mac ? 'Meta+Shift+ArrowRight' : 'Shift+End');
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
     await expect(page.locator('.ai-selection-range')).toContainText('第 2 行，第 1–2 字');
+    phase = 'edit and verify usage';
     await page.getByLabel('发送给 API 的消息').fill('改写成英文');
     await page.getByRole('button', { name: '发送 AI 指令', exact: true }).click();
     await expect(editor.locator('.cm-line')).toHaveText(['Before', 'apple', 'After']);
@@ -95,6 +113,7 @@ const http = require('node:http');
     expect(history.tasks[0].usage.inputTokens).toBe(300);
     expect(history.tasks[0].changes[0].before).toBe('Before\n苹果\nAfter');
     await expect(page.locator('.save-indicator')).toContainText('已保存');
+    phase = 'reload and verify undo';
     await page.screenshot({ path: '.qa/api-agent-desktop.png' });
     await page.reload();
     await page.getByRole('button', { name: 'AI 助手', exact: true }).click();
@@ -111,6 +130,7 @@ const http = require('node:http');
       'PASS: API Agent Electron IPC, selection patch, native save, persisted usage and whole-task undo.',
     );
   } finally {
+    phase = 'close fixture';
     if (desktop) {
       // The fixture verifies edits and undo above. Close without showing the native quit dialog.
       await desktop.evaluate(({ app }) => app.exit(0)).catch(() => {});
@@ -118,6 +138,7 @@ const http = require('node:http');
     }
     server.closeAllConnections();
     await new Promise((r) => server.close(r));
+    clearTimeout(deadline);
   }
 })().catch((e) => {
   console.error(e);

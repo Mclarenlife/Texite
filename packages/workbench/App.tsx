@@ -390,8 +390,12 @@ export function App() {
               }
               await saveProject(snapshot);
               await disk.accept(snapshot.id, delta.token);
-              if (merged.conflicts.length)
+              if (merged.conflicts.length) {
+                window.dispatchEvent(
+                  new CustomEvent('texite-backup-created', { detail: snapshot.id }),
+                );
                 notify('已同步外部修改。两边都改过的内容已保存在「修改历史 → 备份历史」。');
+              }
               break;
             }
           } else {
