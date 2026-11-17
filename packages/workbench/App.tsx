@@ -1,4 +1,9 @@
-import { migrateAIHistories } from '../platform/storage';
+import {
+  migrateAIHistories,
+  acceptBrowserChanges,
+  inspectBrowserChanges,
+} from '../platform/storage';
+import { mergeExternalFiles } from '../core/external-files';
 import { PROJECT_LIMITS, projectBytes } from '../core/project-size';
 import { bytesToBase64 } from '../core/binary';
 import { Outline } from './Outline';
@@ -327,16 +332,74 @@ export function App() {
     toastTimer.current = setTimeout(() => setToast(''), 4500);
   }, []);
   const persist = useCallback(
-    (snapshot: Project, duringImport = false, allowRecovery = false) => {
+    (snapshot: Project, duringImport = false, allowRecovery = false, inspectOnly = false) => {
+      let unchanged = false;
       let recovered = false;
       if (restoreLock.current && !duringImport) return Promise.resolve();
-      setSaved('saving');
+      if (!inspectOnly) setSaved('saving');
       const task = saveQueue.current
         .catch(() => {})
         .then(async () => {
-          await saveProject(snapshot);
+          const disk =
+            window.texite?.diskChanges ??
+            (!window.texite && snapshot.location?.kind === 'linked'
+              ? { inspect: inspectBrowserChanges, accept: acceptBrowserChanges }
+              : null);
+          const latest = () => {
+            const current =
+              projectRef.current?.id === snapshot.id
+                ? projectRef.current
+                : drafts.current.get(snapshot.id);
+            return current && current.revision >= snapshot.revision && !duringImport
+              ? current
+              : snapshot;
+          };
+          let inspectError: unknown;
+          const delta =
+            disk &&
+            (await disk.inspect(snapshot.id).catch((error) => {
+              inspectError = error;
+              return null;
+            }));
+          if (inspectOnly && inspectError) throw inspectError;
+          if (
+            inspectOnly &&
+            (!delta || restoreLock.current || projectRef.current?.id !== snapshot.id)
+          ) {
+            unchanged = true;
+            return;
+          }
+          snapshot = latest();
+          if (delta && disk) {
+            for (;;) {
+              const source = latest();
+              const merged = await mergeExternalFiles(source, delta);
+              if (latest() !== source) continue;
+              if (merged.conflicts.length) {
+                await createProjectBackup(
+                  source,
+                  '外部修改前的编辑稿 · ' + merged.conflicts.slice(0, 3).join('、'),
+                );
+                if (latest() !== source) continue;
+              }
+              snapshot = merged.project;
+              drafts.current.set(snapshot.id, snapshot);
+              if (projectRef.current?.id === snapshot.id) {
+                projectRef.current = snapshot;
+                flushSync(() => setProject(snapshot));
+              }
+              await saveProject(snapshot);
+              await disk.accept(snapshot.id, delta.token);
+              if (merged.conflicts.length)
+                notify('已同步外部修改。两边都改过的内容已保存在「修改历史 → 备份历史」。');
+              break;
+            }
+          } else {
+            await saveProject(snapshot);
+          }
           await editHistory.flush(snapshot.id);
           try {
+            if (inspectError) throw inspectError;
             if (window.texite) {
               const location = await window.texite.saveProject(snapshot);
               if (location.directory && location.directory !== snapshot.location?.directory) {
@@ -365,6 +428,7 @@ export function App() {
       saveQueue.current = task;
       task
         .then(() => {
+          if (unchanged) return;
           if (
             projectRef.current?.id === snapshot.id &&
             projectRef.current.revision === snapshot.revision
@@ -431,6 +495,69 @@ export function App() {
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
   }, [saved, restoreBusy, syncDirty, syncBusy]);
+  const watchedId = project?.id,
+    watchedDirectory = project?.location?.directory;
+  useEffect(() => {
+    const api = window.texite?.diskChanges;
+    if (!watchedId || !watchedDirectory || (!api && window.texite)) return;
+    let disposed = false,
+      running = false,
+      pending = false;
+    const check = async () => {
+      const current = projectRef.current;
+      if (
+        disposed ||
+        !current ||
+        current.id !== watchedId ||
+        restoreLock.current ||
+        compileRunning.current
+      )
+        return;
+      if (running) {
+        pending = true;
+        return;
+      }
+      running = true;
+      try {
+        await persist(current, false, false, true);
+      } catch {
+        /* persist reports disk and storage failures. */
+      } finally {
+        running = false;
+        if (pending && !disposed) {
+          pending = false;
+          void check();
+        }
+      }
+    };
+    const reconnect = () => {
+      if (!api && document.hidden) return;
+      if (api)
+        void api
+          .watch(watchedId)
+          .then(check)
+          .catch(() => {});
+      else void check();
+    };
+    const unsubscribe = api?.subscribe((id) => {
+      if (id === watchedId) void check();
+    });
+    reconnect();
+    window.addEventListener('focus', reconnect);
+    document.addEventListener('visibilitychange', reconnect);
+    const timer = setInterval(
+      reconnect,
+      api ? 30000 : Math.max(3000, (projectRef.current?.files.length ?? 0) * 4),
+    );
+    return () => {
+      disposed = true;
+      clearInterval(timer);
+      unsubscribe?.();
+      window.removeEventListener('focus', reconnect);
+      document.removeEventListener('visibilitychange', reconnect);
+      if (api) void api.watch(null).catch(() => {});
+    };
+  }, [watchedId, watchedDirectory, persist]);
   const closeState = useRef<
     () => Promise<{ unsaved: boolean; unsynced: number; syncing: boolean }>
   >(async () => ({ unsaved: true, unsynced: 0, syncing: false }));

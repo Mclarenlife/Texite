@@ -2,14 +2,14 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('texite', {
   platform: process.platform,
   literature: {
-    ask: input => ipcRenderer.invoke('literature:ask', input),
-    cancel: id => ipcRenderer.invoke('literature:cancel', id),
+    ask: (input) => ipcRenderer.invoke('literature:ask', input),
+    cancel: (id) => ipcRenderer.invoke('literature:cancel', id),
   },
   translation: {
     get: () => ipcRenderer.invoke('translation:get'),
-    save: config => ipcRenderer.invoke('translation:save', config),
+    save: (config) => ipcRenderer.invoke('translation:save', config),
     translate: (id, text) => ipcRenderer.invoke('translation:run', id, text),
-    cancel: id => ipcRenderer.invoke('translation:cancel', id),
+    cancel: (id) => ipcRenderer.invoke('translation:cancel', id),
   },
   deleteProject: (id, deleteFiles) => ipcRenderer.invoke('project:delete', id, deleteFiles),
   updates: {
@@ -92,6 +92,16 @@ contextBridge.exposeInMainWorld('texite', {
   saveAIProject: (project, removals) => ipcRenderer.invoke('project:save-ai', project, removals),
   restoreProject: (project, removals, removedFolders) =>
     ipcRenderer.invoke('project:restore', project, removals, removedFolders),
+  diskChanges: {
+    inspect: (id) => ipcRenderer.invoke('project:inspect-changes', id),
+    accept: (id, token) => ipcRenderer.invoke('project:accept-changes', id, token),
+    watch: (id) => ipcRenderer.invoke('project:watch', id),
+    subscribe(callback) {
+      const listener = (_event, id) => callback(id);
+      ipcRenderer.on('project:disk-changed', listener);
+      return () => ipcRenderer.removeListener('project:disk-changed', listener);
+    },
+  },
   listProjects: () => ipcRenderer.invoke('project:list'),
   renameProject: (id, name) => ipcRenderer.invoke('project:rename', id, name),
   importProject: (project) => ipcRenderer.invoke('project:import', project),

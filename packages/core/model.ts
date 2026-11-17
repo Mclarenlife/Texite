@@ -2,6 +2,12 @@ import { PROJECT_LIMITS, fileBytes } from './project-size';
 export type Engine = 'tectonic' | 'xelatex' | 'pdflatex' | 'lualatex';
 export type Mode = 'split' | 'editor' | 'pdf';
 export type ProjectFile = { path: string; content: string; binary?: boolean };
+export type DiskChanges = {
+  token: string;
+  changes: { path: string; before: string | null; file: ProjectFile | null }[];
+  added: string[];
+  removed: string[];
+};
 export type Project = {
   id: string;
   name: string;
@@ -128,6 +134,12 @@ export type DesktopAPI = {
   removeRuntimeModule(id: string): Promise<RuntimeModule[]>;
   restoreDefaultRuntime(): Promise<RuntimeModule[]>;
   importProject(project: Project): Promise<Project>;
+  diskChanges?: {
+    inspect(id: string): Promise<DiskChanges | null>;
+    accept(id: string, token: string): Promise<void>;
+    watch(id: string | null): Promise<void>;
+    subscribe(callback: (id: string) => void): () => void;
+  };
   listProjects(): Promise<Project[]>;
   renameProject?(id: string, name: string): Promise<void>;
   reopenProject(id: string): Promise<Project | null>;

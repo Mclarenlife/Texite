@@ -57,7 +57,16 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         <section>
           <h4>
             {packageInfo.version}
-            <time>2026.11.16</time>
+            <time>2026.11.17</time>
+          </h4>
+          <ul>
+            <li>本地目录中的文稿和资源发生修改、新增、删除或改名时，编辑器自动刷新。</li>
+            <li>同一文件两边同时修改时，先将编辑稿存入备份历史，再载入磁盘版本。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.12.0 <time>2026.11.16</time>
           </h4>
           <ul>
             <li>磁盘文件发生冲突后，可关闭项目选项卡或移到最近删除，并保留本地恢复副本。</li>

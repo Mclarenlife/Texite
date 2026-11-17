@@ -67,11 +67,13 @@ function handleFiles(name, callback) {
 }
 app.whenReady().then(async () => {
   const { createTranslationService } = await import('./translation.mjs');
-  const translation = createTranslationService(require('./translation-store.cjs')(app.getPath('userData'), safeStorage));
+  const translation = createTranslationService(
+    require('./translation-store.cjs')(app.getPath('userData'), safeStorage),
+  );
   handle('translation:get', () => translation.get());
-  handle('translation:save', config => translation.save(config));
+  handle('translation:save', (config) => translation.save(config));
   handle('translation:run', (id, text) => translation.translate(id, text));
-  handle('translation:cancel', id => translation.cancel(id));
+  handle('translation:cancel', (id) => translation.cancel(id));
   handle('clipboard:write', (text) => {
     if (typeof text !== 'string' || text.length > 1_000_000)
       throw new Error('复制内容无效或过长。');
@@ -206,9 +208,11 @@ app.whenReady().then(async () => {
     if (window && !window.isDestroyed()) window.webContents.send('ai:event', event);
   });
   handle('chat:list', () => chat.list());
-  literature = new (require('./literature-client.cjs').LiteratureClient)(ai, chat, (url, init) => net.fetch(url, init));
-  handle('literature:ask', input => literature.ask(input));
-  handle('literature:cancel', id => literature.cancel(id));
+  literature = new (require('./literature-client.cjs').LiteratureClient)(ai, chat, (url, init) =>
+    net.fetch(url, init),
+  );
+  handle('literature:ask', (input) => literature.ask(input));
+  handle('literature:cancel', (id) => literature.cancel(id));
   handle('chat:select', (id) => chat.select(id));
   handle('ai:config', () => ai.getConfig());
   handle('ai:profiles', () => ai.getProfiles());
@@ -259,6 +263,56 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) =>
     callback(false),
   );
+  let directoryWatcher;
+  let watchedRoot;
+  let watchTimer;
+  function clearDirectoryWatch() {
+    directoryWatcher?.close();
+    directoryWatcher = undefined;
+    watchedRoot = undefined;
+    clearTimeout(watchTimer);
+  }
+  handleFiles('project:watch', async (id) => {
+    const entry = library.entries.get(id);
+    if (entry) await library.resolveEntry(entry);
+    if (directoryWatcher && watchedRoot === entry?.root) return;
+    clearDirectoryWatch();
+    if (!entry) return;
+    const signal = () => {
+      clearTimeout(watchTimer);
+      watchTimer = setTimeout(() => {
+        if (window && !window.isDestroyed()) window.webContents.send('project:disk-changed', id);
+      }, 180);
+    };
+    try {
+      directoryWatcher = require('node:fs').watch(
+        entry.root,
+        { recursive: true },
+        (_event, filename) => {
+          if (
+            filename &&
+            String(filename)
+              .split(/[\\/]/)
+              .some(
+                (part) => part.startsWith('.') || ['build', 'dist', 'node_modules'].includes(part),
+              )
+          )
+            return;
+          signal();
+        },
+      );
+      watchedRoot = entry.root;
+      directoryWatcher.on('error', () => {
+        clearDirectoryWatch();
+        signal();
+      });
+    } catch {
+      /* Focus and periodic checks also cover volumes without native watch support. */
+    }
+  });
+  app.once('will-quit', clearDirectoryWatch);
+  handleFiles('project:inspect-changes', (id) => library.inspectChanges(id));
+  handleFiles('project:accept-changes', (id, token) => library.acceptChanges(id, token));
   handleFiles('project:open', async () => {
     const result = await dialog.showOpenDialog(window, { properties: ['openDirectory'] });
     return result.canceled ? null : library.link(result.filePaths[0]);

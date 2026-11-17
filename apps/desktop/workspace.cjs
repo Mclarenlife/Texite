@@ -92,7 +92,7 @@ function validateSnapshot(project) {
   return project;
 }
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
-async function readDirectory(root) {
+async function readDirectory(root, baseline, statCache = new Map()) {
   const files = [];
   const folders = [];
   const hashes = new Map();
@@ -116,10 +116,21 @@ async function readDirectory(root) {
       const stat = await fs.stat(path.join(root, name));
       total += stat.size;
       if (stat.size > LIMITS.fileBytes) throw new Error(`文件 ${name} 超过 128 MB。`);
-      if (total > LIMITS.projectBytes || files.length >= LIMITS.files)
+      if (total > LIMITS.projectBytes || hashes.size >= LIMITS.files)
         throw new Error('项目超过 5,000 个文件或 250 MB。');
+      const stamp = [stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(':');
+      const cached = statCache.get(name);
+      if (baseline?.has(name) && cached?.stamp === stamp && cached.hash === baseline.get(name)) {
+        hashes.set(name, cached.hash);
+        continue;
+      }
       const bytes = await fs.readFile(path.join(root, name));
-      hashes.set(name, digest(bytes));
+      const hash = digest(bytes);
+      hashes.set(name, hash);
+      if (baseline) {
+        statCache.set(name, { stamp, hash });
+        if (baseline.get(name) === hash) continue;
+      }
       files.push({
         path: name,
         content: bytes.toString(textPattern.test(name) ? 'utf8' : 'base64'),
@@ -233,7 +244,10 @@ async function saveDirectory(
     const target = await ensureSafeDestination(root, file.path);
     const incoming = contentDigest(file);
     const existing = await diskDigest(target);
-    if (existing && existing !== hashes.get(file.path) && existing !== incoming)
+    if (
+      (!existing && hashes.has(file.path)) ||
+      (existing && existing !== hashes.get(file.path) && existing !== incoming)
+    )
       throw new Error(
         `文件 ${file.path} 已被外部修改或目标目录已有同名文件。请重新打开项目，或另存到空目录。`,
       );

@@ -247,3 +247,29 @@ test('save as copies a conflicted project into a new sibling without overwriting
   assert.ok((await fs.stat(path.join(copy.location.directory, 'figures/empty'))).isDirectory());
   assert.equal(await fs.readFile(path.join(root, 'main.bbl'), 'utf8'), 'external bibliography');
 });
+
+test('external changes are observed without advancing the save baseline until acknowledged', async () => {
+  const base = await fs.mkdtemp(path.resolve('.qa/external-files-'));
+  const root = path.join(base, 'project'),
+    lib = new ProjectLibrary(path.join(base, 'profile'));
+  await fs.mkdir(root);
+  await lib.init();
+  await fs.writeFile(path.join(root, 'main.tex'), 'previous');
+  const project = await lib.link(root);
+  assert.equal(await lib.inspectChanges(project.id), null);
+  await fs.writeFile(path.join(root, 'main.tex'), 'external');
+  await fs.mkdir(path.join(root, 'figures'));
+  await fs.writeFile(path.join(root, 'figures', 'image.png'), Buffer.from([0, 255]));
+  const change = await lib.inspectChanges(project.id);
+  assert.deepEqual(change.added, ['figures']);
+  assert.equal(change.changes.find((c) => c.path === 'figures/image.png').file.content, 'AP8=');
+  await assert.rejects(lib.save(project), /外部修改/);
+  await lib.acceptChanges(project.id, change.token);
+  assert.equal(await lib.inspectChanges(project.id), null);
+  await fs.unlink(path.join(root, 'main.tex'));
+  const deleted = await lib.inspectChanges(project.id);
+  assert.equal(deleted.changes[0].file, null);
+  await assert.rejects(lib.save(project), /外部修改/);
+  await lib.acceptChanges(project.id, deleted.token);
+  assert.equal(await lib.inspectChanges(project.id), null);
+});

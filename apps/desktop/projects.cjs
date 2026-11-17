@@ -19,6 +19,8 @@ class ProjectLibrary {
   constructor(directory) {
     this.directory = directory;
     this.entries = new Map();
+    this.observation = null;
+    this.scanCache = { root: null, files: new Map() };
   }
   async init() {
     await fs.mkdir(this.directory, { recursive: true });
@@ -175,6 +177,7 @@ class ProjectLibrary {
       directoryKey: await directoryKey(root),
       kind: 'managed',
       hashes: [...hashes],
+      folders: project.folders || [],
     };
     this.entries.set(project.id, entry);
     try {
@@ -203,6 +206,7 @@ class ProjectLibrary {
       kind: existing?.kind || 'linked',
       name: existing?.name,
       hashes: [...data.hashes],
+      folders: data.folders,
     };
     const project = this.snapshot(entry, data);
     validateSnapshot(project);
@@ -228,6 +232,62 @@ class ProjectLibrary {
       location: { kind: entry.kind, directory: entry.root },
     };
   }
+  async inspectChanges(id) {
+    const entry = this.entries.get(id);
+    if (!entry) return null;
+    await this.resolveEntry(entry);
+    if (this.scanCache.root !== entry.root) this.scanCache = { root: entry.root, files: new Map() };
+    const previous = new Map(entry.hashes);
+    const data = await readDirectory(entry.root, previous, this.scanCache.files);
+    for (const name of this.scanCache.files.keys())
+      if (!data.hashes.has(name)) this.scanCache.files.delete(name);
+    const changes = data.files.map((file) => ({
+      path: file.path,
+      before: previous.get(file.path) ?? null,
+      file,
+    }));
+    for (const [path, before] of previous) {
+      if (!data.hashes.has(path)) changes.push({ path, before, file: null });
+    }
+    const oldFolders = new Set(entry.folders || []);
+    const newFolders = new Set(data.folders);
+    const added = data.folders.filter((folder) => !oldFolders.has(folder));
+    const removed = [...oldFolders].filter((folder) => !newFolders.has(folder));
+    if (!changes.length && !added.length && !removed.length) return null;
+    const token = randomUUID();
+    this.observation = {
+      id,
+      token,
+      entry,
+      previous: entry.hashes,
+      hashes: [...data.hashes],
+      folders: data.folders,
+    };
+    return { token, changes, added, removed };
+  }
+  async acceptChanges(id, token) {
+    const obs = this.observation;
+    const entry = this.entries.get(id);
+    if (
+      !obs ||
+      obs.id !== id ||
+      obs.token !== token ||
+      entry !== obs.entry ||
+      entry.hashes !== obs.previous
+    )
+      throw new Error('文件状态已更新，请再试一次。');
+    const oldFolders = entry.folders;
+    entry.hashes = obs.hashes;
+    entry.folders = obs.folders;
+    try {
+      await this.persist();
+    } catch (error) {
+      entry.hashes = obs.previous;
+      entry.folders = oldFolders;
+      throw error;
+    }
+    this.observation = null;
+  }
   async reopen(id) {
     const entry = this.entries.get(id);
     if (!entry) return null;
@@ -236,6 +296,7 @@ class ProjectLibrary {
     const project = this.snapshot(entry, data);
     validateSnapshot(project);
     entry.hashes = [...data.hashes];
+    entry.folders = data.folders;
     await this.persist();
     return project;
   }
@@ -337,6 +398,7 @@ class ProjectLibrary {
       directoryKey: await directoryKey(root),
       kind: parent ? 'linked' : 'managed',
       hashes: [...hashes],
+      folders: project.folders || [],
     };
     this.entries.set(id, entry);
     await this.persist();
@@ -367,6 +429,7 @@ class ProjectLibrary {
       removedFolders,
     );
     entry.hashes = [...hashes];
+    entry.folders = project.folders || [];
     entry.name = project.name;
     this.entries.set(project.id, entry);
     await this.persist();

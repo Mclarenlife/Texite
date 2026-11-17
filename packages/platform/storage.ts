@@ -22,6 +22,7 @@ import {
   validateProject,
   type Project,
   type ProjectFile,
+  type DiskChanges,
 } from '../core/model';
 
 let connection: ReturnType<typeof openDB> | undefined;
@@ -114,6 +115,7 @@ export async function createProjectBackup(project: Project, note: string) {
     await tx.done.catch(() => {});
     throw error;
   }
+  window.dispatchEvent(new CustomEvent('texite-backup-created', { detail: project.id }));
   return backup;
 }
 export async function deleteProjectBackup(projectId: string, id: string) {
@@ -604,18 +606,20 @@ type Directory = FileSystemDirectoryHandle & {
   queryPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
   requestPermission(options: { mode: 'readwrite' }): Promise<PermissionState>;
 };
-type Binding = { handle: Directory; hashes: Record<string, string> };
+type Binding = { handle: Directory; hashes: Record<string, string>; folders?: string[] };
 const hashBytes = async (bytes: ArrayBuffer) =>
   Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), (b) =>
     b.toString(16).padStart(2, '0'),
   ).join('');
-async function scanDirectory(
+async function readBrowserFolder(
   handle: Directory,
-  id: string = crypto.randomUUID(),
-): Promise<Project> {
+  baseline?: Binding,
+  stats?: Map<string, { stamp: string; hash: string }>,
+) {
   const files: ProjectFile[] = [],
     folders: string[] = [];
-  const hashes: Record<string, string> = {};
+  const hashes: Record<string, string> = Object.create(null);
+  let count = 0;
   let total = 0;
   async function visit(directory: Directory, prefix = '') {
     for await (const [name, child] of directory.entries()) {
@@ -631,10 +635,18 @@ async function scanDirectory(
         const file = await (child as FileSystemFileHandle).getFile();
         total += file.size;
         if (file.size > PROJECT_LIMITS.fileBytes) throw new Error(`文件 ${path} 超过 128 MB。`);
-        if (total > PROJECT_LIMITS.projectBytes || files.length >= PROJECT_LIMITS.files)
+        if (total > PROJECT_LIMITS.projectBytes || ++count > PROJECT_LIMITS.files)
           throw new Error('项目超过 5,000 个文件或 250 MB。');
+        const stamp = file.lastModified + ':' + file.size;
+        const cached = stats?.get(path);
+        if (baseline && cached?.stamp === stamp && cached.hash === baseline.hashes[path]) {
+          hashes[path] = cached.hash;
+          continue;
+        }
         const bytes = await file.arrayBuffer();
         hashes[path] = await hashBytes(bytes);
+        stats?.set(path, { stamp, hash: hashes[path] });
+        if (baseline && hashes[path] === baseline.hashes[path]) continue;
         const text = isTextFile(path);
         let content = '';
         if (text) content = new TextDecoder().decode(bytes);
@@ -652,6 +664,13 @@ async function scanDirectory(
       await (await (await handle.getFileHandle('.texite.json')).getFile()).text(),
     );
   } catch {}
+  return { files, folders, hashes, settings };
+}
+async function scanDirectory(
+  handle: Directory,
+  id: string = crypto.randomUUID(),
+): Promise<Project> {
+  const { files, folders, hashes, settings } = await readBrowserFolder(handle);
   const project = validateProject({
     ...settings,
     id,
@@ -662,8 +681,56 @@ async function scanDirectory(
     updatedAt: Date.now(),
     location: { kind: 'linked', directory: handle.name },
   });
-  await (await database()).put('settings', { handle, hashes }, 'folder:' + id);
+  await (await database()).put('settings', { handle, hashes, folders }, 'folder:' + id);
   return project;
+}
+let latestBrowserScan: { id: string; token: string; before: Binding; after: Binding } | undefined;
+let browserScanCache = { id: '', stats: new Map<string, { stamp: string; hash: string }>() };
+export async function inspectBrowserChanges(id: string): Promise<DiskChanges | null> {
+  const binding: Binding | undefined = await (await database()).get('settings', 'folder:' + id);
+  if (!binding || (await binding.handle.queryPermission({ mode: 'readwrite' })) !== 'granted')
+    return null;
+  if (browserScanCache.id !== id) browserScanCache = { id, stats: new Map() };
+  const data = await readBrowserFolder(binding.handle, binding, browserScanCache.stats);
+  for (const name of browserScanCache.stats.keys())
+    if (!(name in data.hashes)) browserScanCache.stats.delete(name);
+  const changes: DiskChanges['changes'] = data.files.map((file) => ({
+    path: file.path,
+    file,
+    before: binding.hashes[file.path] ?? null,
+  }));
+  for (const [path, before] of Object.entries(binding.hashes)) {
+    if (!(path in data.hashes)) changes.push({ path, before, file: null });
+  }
+  const before = new Set(binding.folders),
+    after = new Set(data.folders);
+  const added = data.folders.filter((f) => !before.has(f)),
+    removed = [...before].filter((f) => !after.has(f));
+  if (!changes.length && !added.length && !removed.length) return null;
+  const token = crypto.randomUUID();
+  latestBrowserScan = {
+    id,
+    token,
+    before: binding,
+    after: { ...binding, hashes: data.hashes, folders: data.folders },
+  };
+  return { token, changes, added, removed };
+}
+export async function acceptBrowserChanges(id: string, token: string) {
+  const scan = latestBrowserScan;
+  if (!scan || scan.id !== id || scan.token !== token) throw new Error('目录状态已变化，请重试。');
+  const tx = (await database()).transaction('settings', 'readwrite');
+  const key = 'folder:' + id;
+  const binding: Binding | undefined = await tx.store.get(key);
+  if (
+    !binding ||
+    JSON.stringify(binding.hashes) !== JSON.stringify(scan.before.hashes) ||
+    JSON.stringify(binding.folders) !== JSON.stringify(scan.before.folders)
+  )
+    throw new Error('目录状态已变化，请重试。');
+  await tx.store.put(scan.after, key);
+  await tx.done;
+  latestBrowserScan = undefined;
 }
 export async function openBrowserDirectory() {
   const picker = (
@@ -792,9 +859,11 @@ export async function saveBrowserDirectory(
       ? base64ToBytes(file.content)
       : new TextEncoder().encode(file.content);
     const digest = await hashBytes(content.buffer);
+    let checked: string | null = null;
     try {
       const existing = await (await parent.getFileHandle(name)).getFile();
       const current = await hashBytes(await existing.arrayBuffer());
+      checked = current;
       if (current !== binding.hashes[file.path] && current !== digest)
         throw new Error(file.path + ' 已被外部修改，请导出恢复副本后重新打开文件夹。');
       if (current === digest) {
@@ -803,16 +872,29 @@ export async function saveBrowserDirectory(
       }
     } catch (error) {
       if ((error as DOMException).name !== 'NotFoundError') throw error;
+      if (Object.hasOwn(binding.hashes, file.path))
+        throw new Error(file.path + ' 已被外部删除，请刷新后保存。');
     }
-    pending.push({ parent, name, file, digest });
+    pending.push({ parent, name, file, digest, checked });
   }
   for (const folder of project.folders || []) await directory(safePath(folder));
   for (const item of pending) {
-    const stream = await (
-      await item.parent.getFileHandle(item.name, { create: true })
-    ).createWritable();
-    await stream.write(item.file.binary ? base64ToBytes(item.file.content) : item.file.content);
-    await stream.close();
+    const handle = await item.parent.getFileHandle(item.name, { create: true });
+    const stream = await handle.createWritable();
+    try {
+      await stream.write(item.file.binary ? base64ToBytes(item.file.content) : item.file.content);
+      const existing = await handle.getFile();
+      if (
+        item.checked === null
+          ? existing.size !== 0
+          : (await hashBytes(await existing.arrayBuffer())) !== item.checked
+      )
+        throw new Error(item.file.path + ' 在保存期间被外部修改。');
+      await stream.close();
+    } catch (error) {
+      await stream.abort().catch(() => {});
+      throw error;
+    }
     binding.hashes[item.file.path] = item.digest;
   }
   for (const item of deletes) {
@@ -832,5 +914,6 @@ export async function saveBrowserDirectory(
     JSON.stringify({ name: project.name, mainFile: project.mainFile, engine: project.engine }),
   );
   await metadata.close();
+  binding.folders = project.folders || [];
   await db.put('settings', binding, 'folder:' + project.id);
 }

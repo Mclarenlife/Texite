@@ -248,9 +248,28 @@ const path = require('node:path');
     await page.getByRole('button', { name: '关闭弹窗' }).click();
     await page.getByRole('button', { name: '修改历史', exact: true }).click();
     await fs.writeFile(path.join(folder, 'main.tex'), source + '% external edit');
-    await page.getByRole('button', { name: '还原备份 Native baseline', exact: true }).click();
-    await expect(page.locator('.project-backups [role="alert"]')).toContainText(/外部|修改/);
-    expect(await fs.readFile(path.join(folder, 'main.tex'), 'utf8')).toContain('% external edit');
+    await expect(editor).toContainText('% external edit', { timeout: 12000 });
+    const afterExternal = source + '% external edit plus local continuation';
+    await editor.fill(afterExternal);
+    await expect.poll(() => fs.readFile(path.join(folder, 'main.tex'), 'utf8')).toBe(afterExternal);
+    await expect(page.locator('.save-indicator')).toContainText('已保存');
+    await editor.fill(afterExternal + ' concurrent draft');
+    await fs.writeFile(path.join(folder, 'main.tex'), source + '% external conflict');
+    await expect(editor).toContainText('% external conflict');
+    await expect(
+      page.locator('.backup-row').filter({ hasText: '外部修改前的编辑稿' }),
+    ).toBeVisible();
+    expect(await fs.readFile(path.join(folder, 'main.tex'), 'utf8')).toBe(
+      source + '% external conflict',
+    );
+    await page.getByRole('button', { name: '项目文件', exact: true }).click();
+    await fs.writeFile(path.join(folder, 'external.bib'), '@article{x,title={External}}');
+    await expect(page.locator('.file-tree button[title="external.bib"]')).toBeVisible();
+    await fs.rename(path.join(folder, 'external.bib'), path.join(folder, 'renamed.bib'));
+    await expect(page.locator('.file-tree button[title="renamed.bib"]')).toBeVisible();
+    await expect(page.locator('.file-tree button[title="external.bib"]')).toHaveCount(0);
+    await fs.unlink(path.join(folder, 'renamed.bib'));
+    await expect(page.locator('.file-tree button[title="renamed.bib"]')).toHaveCount(0);
     expect(errors).toEqual([]);
     console.log(
       'PASS native PDF forward/inverse location, selection word count, persistent cover, confirmed folder deletion, full-project restore and external-edit protection',

@@ -31,10 +31,17 @@ export function ProjectBackups({
     setError('');
     setMenu(null);
     setAdding(false);
-    void readProjectBackups(project.id)
-      .then((v) => active && setItems(v))
-      .catch((e) => active && setError(e.message));
+    const refresh = () =>
+      void readProjectBackups(project.id)
+        .then((v) => active && setItems(v))
+        .catch((e) => active && setError(e.message));
+    const changed = (event: Event) => {
+      if ((event as CustomEvent).detail === project.id) refresh();
+    };
+    refresh();
+    window.addEventListener('texite-backup-created', changed);
     return () => {
+      window.removeEventListener('texite-backup-created', changed);
       active = false;
     };
   }, [project.id]);
