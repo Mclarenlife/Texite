@@ -1,10 +1,48 @@
 import { test, expect } from '@playwright/test';
 
+test('AI configuration consolidates settings and preserves a custom translation prompt after reload', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('tab', { name: 'AI配置', exact: true }).click();
+  await expect(page.getByRole('tab', { name: 'AI 对话', exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: '翻译', exact: true }).click();
+  await page.getByRole('combobox', { name: '翻译引擎', exact: true }).click();
+  await page.getByRole('option', { name: 'AI API', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '翻译提示词', exact: true })).toHaveValue(
+    '只输出翻译内容。',
+  );
+  await page.getByLabel('AI API 地址', { exact: true }).fill('https://translate.example.test/v1');
+  await page.getByLabel('模型名称', { exact: true }).fill('translation-model');
+  await page
+    .getByRole('textbox', { name: '翻译提示词', exact: true })
+    .fill('先翻译，再解释专业词汇和难点词汇。');
+  await page.getByRole('button', { name: '保存翻译设置', exact: true }).click();
+  await expect(page.getByText('翻译设置已保存。')).toBeVisible();
+  await page.locator('.settings-options').evaluate((el) => {
+    el.scrollTop = 0;
+  });
+  await page.screenshot({ path: '.qa/ai-translation-settings.png' });
+  await page.reload();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('tab', { name: 'AI配置', exact: true }).click();
+  await page.getByRole('tab', { name: '翻译', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '翻译提示词', exact: true })).toHaveValue(
+    '先翻译，再解释专业词汇和难点词汇。',
+  );
+  await page.getByRole('button', { name: '恢复默认提示词', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: '翻译提示词', exact: true })).toHaveValue(
+    '只输出翻译内容。',
+  );
+});
+
 test('PDF translation sits left of locate and sends the selected passage using saved translation settings', async ({
   page,
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('tab', { name: 'AI配置', exact: true }).click();
   await page.getByRole('tab', { name: '翻译', exact: true }).click();
   await page.getByLabel('LibreTranslate 地址').fill('https://translate.example.test');
   await page.getByLabel('API Key', { exact: true }).fill('session-secret');

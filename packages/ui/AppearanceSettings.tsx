@@ -1,8 +1,7 @@
 import { useEffect, useState, type ReactNode, type CSSProperties } from 'react';
 import {
   Info,
-  Languages,
-  BookOpen,
+  Sparkles,
   Check,
   Cloud,
   Sun,
@@ -16,7 +15,6 @@ import {
 } from 'lucide-react';
 import './settings.css';
 import { AboutSettings } from './AboutSettings';
-import { TranslationSettings } from './TranslationSettings';
 import { editorFonts } from './preferences';
 import { ColorPicker } from './ColorPicker';
 import {
@@ -48,7 +46,7 @@ type Props = {
   children: ReactNode;
   initialTab?: string;
   sync?: ReactNode;
-  literature?: ReactNode;
+  ai?: ReactNode;
 };
 function Choices({
   label,
@@ -134,7 +132,11 @@ function MiniWindow({ appearance }: { appearance: string }) {
   );
 }
 export function AppearanceSettings(props: Props) {
-  const [tab, setTab] = useState(props.initialTab || 'appearance');
+  const [tab, setTab] = useState(
+    ['translation', 'literature'].includes(props.initialTab || '')
+      ? 'ai'
+      : props.initialTab || 'appearance',
+  );
   const [editingColor, setEditingColor] = useState<ColorRole | null>(null);
   const [systemDark, setSystemDark] = useState(
     () => matchMedia('(prefers-color-scheme: dark)').matches,
@@ -161,8 +163,7 @@ export function AppearanceSettings(props: Props) {
     { id: 'text', name: '编辑器文字', icon: Type },
     { id: 'compiler', name: '编译设置', icon: Terminal },
     { id: 'sync', name: '同步与存储', icon: Cloud },
-    { id: 'translation', name: '翻译', icon: Languages },
-    { id: 'literature', name: '文献检索', icon: BookOpen },
+    { id: 'ai', name: 'AI配置', icon: Sparkles },
     { id: 'about', name: '关于', icon: Info },
   ];
   return (
@@ -197,9 +198,7 @@ export function AppearanceSettings(props: Props) {
       <div
         className={
           'settings-layout' +
-          (['compiler', 'sync', 'about', 'translation', 'literature'].includes(tab)
-            ? ' compiler-layout'
-            : '')
+          (['compiler', 'sync', 'about', 'ai'].includes(tab) ? ' compiler-layout' : '')
         }
       >
         <div
@@ -476,8 +475,7 @@ export function AppearanceSettings(props: Props) {
           )}
           {tab === 'about' && <AboutSettings onPrepareUpdate={props.onPrepareUpdate} />}
           {tab === 'sync' && props.sync}
-          {tab === 'translation' && <TranslationSettings />}
-          {tab === 'literature' && props.literature}
+          {tab === 'ai' && props.ai}
           {tab === 'compiler' && (
             <div className="compiler-settings">
               <div className="settings-section-heading">

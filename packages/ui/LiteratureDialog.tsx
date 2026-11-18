@@ -16,6 +16,7 @@ import type { AIController } from '../workbench/useAI';
 import type { LiteratureMode } from './LiteratureSettings';
 import { WindowResizeHandles } from './WindowResizeHandles';
 import { Select } from './Select';
+import { ReasoningSelect } from './ReasoningSelect';
 import './literature.css';
 
 import { fit, FloatingWindowGrip } from './FloatingWindowGrip';
@@ -189,6 +190,7 @@ export function LiteratureDialog({
       </header>
       <div className="literature-tools">
         <small>{mode === 'cli' ? '本机 CLI' : ai.chatConfig.model || 'API'} · Crossref</small>
+        {mode === 'cli' && <ReasoningSelect ai={ai} literature disabled={busy} />}
       </div>
       {stage === 'filters' && (
         <form

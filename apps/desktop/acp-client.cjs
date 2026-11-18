@@ -5,6 +5,20 @@ const { randomUUID } = require('node:crypto');
 const { terminateCLI } = require('./cli-process.cjs');
 const { binaryEnvironment } = require('./codex-client.cjs');
 
+function selectOptions(option) {
+  return (option?.options || []).flatMap((item) => item.options || [item]);
+}
+function thoughtOption(session) {
+  return session.configOptions?.find(
+    (option) =>
+      option.type === 'select' &&
+      (option.category === 'thought_level' ||
+        ['reasoning_effort', 'reasoningEffort', 'thinking_level', 'thought_level'].includes(
+          option.id,
+        )),
+  );
+}
+
 // Resolve npm shims without shell interpolation. Arguments always remain an argv array.
 async function commandLine(command, args) {
   const candidates = path.isAbsolute(command)
@@ -127,12 +141,20 @@ class ACPClient {
       });
       if (init.protocolVersion !== 1) throw new Error('当前仅支持 ACP v1。');
       const probe = await this.request('session/new', { cwd: this.cwd, mcpServers: [] });
-      const models =
-        probe.models?.availableModels?.map((m) => ({
-          id: m.modelId,
-          label: m.name || m.modelId,
-          isDefault: m.modelId === (this.config.model || probe.models.currentModelId),
-        })) || [];
+      const modelOption = probe.configOptions?.find(
+        (o) => o.category === 'model' && o.type === 'select',
+      );
+      const models = modelOption
+        ? selectOptions(modelOption).map((m) => ({
+            id: m.value,
+            label: m.name || m.value,
+            isDefault: m.value === (this.config.model || modelOption.currentValue),
+          }))
+        : probe.models?.availableModels?.map((m) => ({
+            id: m.modelId,
+            label: m.name || m.modelId,
+            isDefault: m.modelId === (this.config.model || probe.models.currentModelId),
+          })) || [];
       if (this.config.model && !models.some((m) => m.id === this.config.model))
         throw new Error('CLI 未返回指定模型；请检查 CLI 服务配置与完整模型 ID。');
       this.connection = {
@@ -141,6 +163,10 @@ class ACPClient {
         binary: launch.file,
         version: init.agentInfo?.version || 'ACP v1',
         account: init.agentInfo?.title || init.agentInfo?.name || 'Agent CLI',
+        reasoningOptions: selectOptions(thoughtOption(probe)).map((o) => ({
+          value: o.value,
+          label: o.name || o.value,
+        })),
         models: models.length
           ? models
           : [
@@ -172,6 +198,10 @@ class ACPClient {
     if (message.method === 'session/update') {
       if (!run || run.cancelled || p.sessionId !== run.sessionId) return;
       const update = p.update;
+      if (update?.sessionUpdate === 'config_option_update') {
+        const session = [...this.sessions.values()].find((s) => s.sessionId === p.sessionId);
+        if (session) session.configOptions = update.configOptions;
+      }
       if (update?.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text')
         this.emit({
           type: 'text',
@@ -278,7 +308,9 @@ class ACPClient {
         (k) => typeof input[k] === 'string',
       ) ||
       input.prompt.length > 20000 ||
-      input.context.length > 100000
+      input.context.length > 100000 ||
+      (input.reasoningEffort !== undefined &&
+        (typeof input.reasoningEffort !== 'string' || input.reasoningEffort.length > 200))
     )
       throw new Error('Agent 请求无效。');
     if (!this.connection) throw new Error('请先连接 Agent CLI。');
@@ -309,8 +341,48 @@ class ACPClient {
       }
       if (run.cancelled || this.active !== run) return;
       run.sessionId = session.sessionId;
-      if (session.models && run.model !== 'default' && run.model !== session.models.currentModelId)
-        await this.request('session/set_model', { sessionId: run.sessionId, modelId: run.model });
+      const modelOption = session.configOptions?.find(
+        (o) => o.category === 'model' && o.type === 'select',
+      );
+      if (modelOption && run.model !== 'default' && run.model !== modelOption.currentValue) {
+        const result = await this.request('session/set_config_option', {
+          sessionId: run.sessionId,
+          configId: modelOption.id,
+          value: run.model,
+        });
+        session.configOptions = result.configOptions;
+      } else if (
+        session.models &&
+        run.model !== 'default' &&
+        run.model !== session.models.currentModelId
+      ) {
+        const result = await this.request('session/set_model', {
+          sessionId: run.sessionId,
+          modelId: run.model,
+        });
+        session.models.currentModelId = run.model;
+        if (result.configOptions) session.configOptions = result.configOptions;
+      }
+      if (run.cancelled || this.active !== run) return;
+      const thought = thoughtOption(session);
+      if (
+        run.reasoningEffort &&
+        !selectOptions(thought).some((o) => o.value === run.reasoningEffort)
+      )
+        throw new Error('当前 CLI 模型不支持所选思考强度，请重新选择或使用默认设置。');
+      if (thought) {
+        session.defaultReasoningEffort ??= thought.currentValue;
+        const value = run.reasoningEffort || session.defaultReasoningEffort;
+        if (value !== thought.currentValue) {
+          const result = await this.request('session/set_config_option', {
+            sessionId: run.sessionId,
+            configId: thought.id,
+            value,
+          });
+          session.configOptions = result.configOptions;
+        }
+      }
+      if (run.cancelled || this.active !== run) return;
       const project = await this.tool('texite_list_files', {});
       if (run.cancelled || this.active !== run) return;
       run.files = new Set(project.files.map((f) => f.path));

@@ -7,6 +7,65 @@ const require = createRequire(import.meta.url);
 const { ACPClient } = require('../apps/desktop/acp-client.cjs');
 const { AgentClient } = require('../apps/desktop/agent-client.cjs');
 
+test('ACP applies advertised reasoning configuration, resets defaults and rejects unsupported levels', async () => {
+  const sent = [];
+  let done;
+  const client = new ACPClient('.qa/reasoning', {}, (e) => {
+    if (e.type === 'done') done(e);
+  });
+  client.connection = { authenticated: true };
+  const options = [
+    {
+      id: 'effort',
+      category: 'thought_level',
+      type: 'select',
+      currentValue: 'medium',
+      options: [
+        {
+          group: 'levels',
+          options: ['low', 'medium', 'high'].map((value) => ({ value, name: value })),
+        },
+      ],
+    },
+  ];
+  client.request = async (method, params) => {
+    sent.push({ method, params });
+    if (method === 'session/new')
+      return { sessionId: 's', configOptions: structuredClone(options) };
+    if (method === 'session/set_config_option') {
+      assert.equal(params.configId, 'effort');
+      return { configOptions: [{ ...options[0], currentValue: params.value }] };
+    }
+    if (method === 'session/prompt') return { stopReason: 'end_turn' };
+    throw new Error('Unexpected request ' + method);
+  };
+  client.tool = async () => ({ files: [] });
+  const run = async (reasoningEffort) => {
+    const finished = new Promise((resolve) => {
+      done = resolve;
+    });
+    await client.start({
+      projectId: 'p',
+      runId: 'r',
+      prompt: 'hello',
+      context: '',
+      model: 'default',
+      readOnly: true,
+      reasoningEffort,
+    });
+    return finished;
+  };
+  assert.equal((await run('high')).status, 'completed');
+  assert.equal((await run('')).status, 'completed');
+  assert.deepEqual(
+    sent.filter((s) => s.method === 'session/set_config_option').map((s) => s.params.value),
+    ['high', 'medium'],
+  );
+  assert.equal(sent.filter((s) => s.method === 'session/new').length, 1);
+  assert.match((await run('unsupported')).error, /不支持/);
+  assert.equal(sent.filter((s) => s.method === 'session/prompt').length, 2);
+});
+
 test('deleting one conversation keeps other ACP sessions and modes', () => {
   const client = new ACPClient('.qa/clear-context', () => {});
   const keys = [

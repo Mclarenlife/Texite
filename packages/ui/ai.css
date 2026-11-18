@@ -204,6 +204,7 @@
   line-height: 1.6;
 }
 .ai-composer-controls {
+  flex-wrap: wrap;
   margin: 0;
   padding: 4px 8px 8px;
   gap: 8px;
@@ -900,5 +901,8 @@
 }
 .ai-composer-controls [aria-label='API Agent 最大执行轮数'] {
   max-width: 110px;
+  margin-left: auto;
+}
+.ai-composer-controls [aria-label='AI 思考强度'] {
   margin-left: auto;
 }

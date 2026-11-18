@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   defaults,
+  defaultPrompt,
   languages,
   providers,
   type Provider,
@@ -137,6 +138,27 @@ export function TranslationSettings({ onSaved }: { onSaved?: () => void }) {
               placeholder="服务商提供的模型 ID"
               onChange={(e) => setForm({ ...form, model: e.target.value })}
             />
+          </label>
+        )}
+        {form.provider === 'ai' && (
+          <label>
+            翻译提示词
+            <textarea
+              aria-label="翻译提示词"
+              rows={4}
+              maxLength={8000}
+              value={form.prompt ?? defaultPrompt}
+              onChange={(e) => setForm({ ...form, prompt: e.target.value })}
+              placeholder="例如：先给出译文，再解析专业术语和难点词汇。"
+            />
+            <small>目标语言会自动加入。可要求补充专业术语、难点词汇或句式解析。</small>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setForm({ ...form, prompt: defaultPrompt })}
+            >
+              恢复默认提示词
+            </button>
           </label>
         )}
         <label>

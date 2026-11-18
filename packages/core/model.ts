@@ -54,6 +54,7 @@ export type DesktopAPI = {
       id: string;
       mode: 'api' | 'cli';
       model: string;
+      reasoningEffort?: string;
       prompt: string;
       context: string;
     }): Promise<string>;

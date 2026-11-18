@@ -86,7 +86,15 @@ async function setup(page: Page) {
             connected: true,
             authenticated: true,
             version: 'codex-cli test',
-            models: [{ id: 'test-model', label: 'Test model', isDefault: true }],
+            models: [
+              {
+                id: 'test-model',
+                label: 'Test model',
+                isDefault: true,
+                reasoningEfforts: ['low', 'medium', 'high'],
+                defaultReasoningEffort: 'medium',
+              },
+            ],
           };
         },
         chooseBinary: async () => null,
@@ -143,6 +151,37 @@ async function send(page: Page, prompt: string) {
   await page.getByLabel('发送给 Agent CLI 的指令').fill(prompt);
   await page.getByRole('button', { name: '发送 AI 指令', exact: true }).click();
 }
+
+test('CLI chat reasoning selection reaches requests and settings share the same preference', async ({
+  page,
+}) => {
+  await setup(page);
+  await page.getByRole('tab', { name: '对话', exact: true }).click();
+  await page.getByRole('combobox', { name: 'AI 思考强度', exact: true }).click();
+  await page.getByRole('option', { name: '思考 · 高', exact: true }).click();
+  await send(page, 'markdown');
+  await expect(page.getByText('已完成', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).aiTest.run.reasoningEffort)).toBe('high');
+  await page.getByRole('button', { name: '关闭 AI 面板', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('tab', { name: 'AI配置', exact: true }).click();
+  await expect(page.getByRole('combobox', { name: 'AI 思考强度', exact: true })).toContainText(
+    '高',
+  );
+  await page.getByRole('combobox', { name: 'AI 思考强度', exact: true }).click();
+  await page.getByRole('option', { name: '思考 · 默认', exact: true }).click();
+  await page.getByRole('tab', { name: '文献检索', exact: true }).click();
+  await page.getByRole('combobox', { name: '文献检索接入方式' }).click();
+  await page.getByRole('option', { name: '本机 CLI', exact: true }).click();
+  await page.getByRole('combobox', { name: '文献检索思考强度' }).click();
+  await page.getByRole('option', { name: '思考 · 低', exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('texite-literature-reasoning-effort')))
+    .toBe('"low"');
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('texite-ai-reasoning-effort')))
+    .toBe('""');
+});
 
 test('AI edits editor buffers, compiles, previews diff and durably undoes the entire task', async ({
   page,

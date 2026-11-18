@@ -116,7 +116,8 @@ import {
   newLiteratureSession,
   type LiteratureSession,
 } from '../ui/LiteratureDialog';
-import { LiteratureSettings, type LiteratureMode } from '../ui/LiteratureSettings';
+import { type LiteratureMode } from '../ui/LiteratureSettings';
+import { AISettings } from '../ui/AISettings';
 import { appendPapers, bibDestinations, type Paper } from '../core/literature';
 import type { AITask } from '../core/ai';
 import { commitAIProject } from '../platform/storage';
@@ -2867,8 +2868,13 @@ export function App() {
           }}
         >
           <AppearanceSettings
-            literature={
-              <LiteratureSettings ai={ai} mode={literatureMode} onMode={setLiteratureMode} />
+            ai={
+              <AISettings
+                ai={ai}
+                literatureMode={literatureMode}
+                onLiteratureMode={setLiteratureMode}
+                initialSection={settingsTab}
+              />
             }
             onPrepareUpdate={prepareSpaceMutation}
             theme={theme}

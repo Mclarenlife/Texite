@@ -87,6 +87,35 @@ function fixture(readOnly = false) {
   client.active = { runId: 'r', projectId: 'p', threadId: 'th', turnId: 'tu', calls: 0, readOnly };
   return { client, sent, events };
 }
+
+test('Codex sends reasoning effort for chat and editing, and restores model default on reused threads', async () => {
+  const { client } = fixture();
+  client.active = null;
+  client.connection.models[0] = {
+    id: 'test',
+    reasoningEfforts: ['low', 'medium', 'high'],
+    defaultReasoningEffort: 'medium',
+  };
+  client.threads = { 'p:test:true': 'chat', 'p:test:false': 'agent' };
+  const turns = [];
+  client.request = async (method, params) => {
+    assert.equal(method, 'turn/start');
+    turns.push(params);
+    return { turn: { id: 'turn' } };
+  };
+  const input = { projectId: 'p', runId: 'r', model: 'test', prompt: 'hello', context: '' };
+  for (const readOnly of [true, false]) {
+    await client.start({ ...input, readOnly, reasoningEffort: 'high' });
+    assert.equal(turns.at(-1).effort, 'high');
+    client.finish('completed');
+    await client.start({ ...input, readOnly, reasoningEffort: '' });
+    assert.equal(turns.at(-1).effort, 'medium');
+    client.finish('completed');
+  }
+  await assert.rejects(client.start({ ...input, reasoningEffort: 'unsupported' }), /不支持/);
+  assert.equal(turns.length, 4);
+  assert.equal(client.active, null);
+});
 test('Codex protocol correlates replies, refuses native tools, and scopes project calls', async () => {
   const { client, sent, events } = fixture();
   const pending = client.request('example', {});

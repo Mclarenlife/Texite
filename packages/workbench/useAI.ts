@@ -50,6 +50,17 @@ const labels: Record<string, string> = {
   texite_create_file: '新建文本文件',
 };
 export function useAI(options: Options) {
+  const [model, setModel] = usePreference<string>('ai-model', '');
+  const [savedChatProvider, setChatProvider] = usePreference<'codex' | 'api'>(
+    'chat-provider',
+    'codex',
+  );
+  const chatProvider = window.texite?.ai ? savedChatProvider : 'api';
+  const [reasoningEffort, setReasoningEffort] = usePreference<string>('ai-reasoning-effort', '');
+  const [literatureReasoningEffort, setLiteratureReasoningEffort] = usePreference<string>(
+    'literature-reasoning-effort',
+    '',
+  );
   const [agentProvider, setAgentProvider] = usePreference<'codex' | 'api'>(
     'agent-provider',
     'codex',
@@ -193,6 +204,7 @@ export function useAI(options: Options) {
           prompt,
           context,
           model: typeof model === 'string' ? model : '',
+          reasoningEffort: literatureReasoningEffort,
         });
       } finally {
         signal.removeEventListener('abort', cancel);
@@ -742,6 +754,7 @@ export function useAI(options: Options) {
         runId: task.id,
         prompt: task.prompt,
         model: selected,
+        reasoningEffort,
         readOnly,
         context: scope
           ? JSON.stringify({
@@ -1105,6 +1118,14 @@ export function useAI(options: Options) {
     }
   }
   return {
+    model,
+    setModel,
+    chatProvider,
+    setChatProvider,
+    reasoningEffort,
+    setReasoningEffort,
+    literatureReasoningEffort,
+    setLiteratureReasoningEffort,
     flush: persist,
     reloadHistory: () => setHistoryRevision((n) => n + 1),
     disconnect,

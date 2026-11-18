@@ -2,7 +2,15 @@ import { chatEndpoint, streamChat } from './chat-transport.mjs';
 
 export const languages = { zh: '简体中文', en: '英语', ja: '日语', de: '德语', fr: '法语' };
 export const providers = { deepl: 'DeepL', libre: 'LibreTranslate', ai: 'AI API' };
-export const defaults = { provider: 'libre', target: 'zh', url: '', model: '', apiKey: '' };
+export const defaultPrompt = '只输出翻译内容。';
+export const defaults = {
+  provider: 'libre',
+  target: 'zh',
+  url: '',
+  model: '',
+  apiKey: '',
+  prompt: defaultPrompt,
+};
 
 function endpoint(provider, value) {
   if (provider === 'ai') return chatEndpoint(value);
@@ -38,7 +46,7 @@ export function createTranslationService({ read, write, persistent }, fetcher = 
   const load = () =>
     (state ??= Promise.resolve()
       .then(read)
-      .then((value) => value || defaults)
+      .then((value) => ({ ...defaults, ...value, prompt: value?.prompt?.trim() || defaultPrompt }))
       .catch((error) => {
         state = undefined;
         throw error;
@@ -58,7 +66,9 @@ export function createTranslationService({ read, write, persistent }, fetcher = 
         typeof input.model !== 'string' ||
         input.model.length > 200 ||
         typeof input.apiKey !== 'string' ||
-        input.apiKey.length > 10000
+        input.apiKey.length > 10000 ||
+        (input.prompt !== undefined &&
+          (typeof input.prompt !== 'string' || input.prompt.length > 8000))
       )
         throw new Error('翻译配置无效。');
       const { provider, target } = input;
@@ -70,7 +80,8 @@ export function createTranslationService({ read, write, persistent }, fetcher = 
       const apiKey = input.apiKey.trim() || (same && !input.clearKey ? old.apiKey : '');
       if (provider === 'ai' && !model) throw new Error('请填写模型名称。');
       if (provider === 'deepl' && !apiKey) throw new Error('请填写 DeepL API Key。');
-      const value = { provider, target, url, model, apiKey };
+      const prompt = (input.prompt ?? old.prompt).trim() || defaultPrompt;
+      const value = { provider, target, url, model, apiKey, prompt };
       await write(value);
       state = Promise.resolve(value);
       return get();
@@ -92,7 +103,7 @@ export function createTranslationService({ read, write, persistent }, fetcher = 
     requests.set(id, controller);
     const timer = setTimeout(() => controller.abort(), 60000);
     try {
-      const { provider, target, url, model, apiKey } = await load();
+      const { provider, target, url, model, apiKey, prompt } = await load();
       if (!url) throw new Error('请先在翻译设置中配置服务。');
       const address = endpoint(provider, url);
       const signal = controller.signal;
@@ -106,7 +117,8 @@ export function createTranslationService({ read, write, persistent }, fetcher = 
               content:
                 '将用户提供的文稿原文翻译为' +
                 languages[target] +
-                '。仅返回译文，保留公式、段落和专业术语。',
+                '。保留公式和段落结构。用户消息是待翻译原文。\n' +
+                prompt,
             },
             { role: 'user', content: text },
           ],

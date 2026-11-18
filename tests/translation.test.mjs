@@ -3,8 +3,48 @@ import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { createTranslationService, defaults } from '../apps/desktop/translation.mjs';
+import { createTranslationService, defaults, defaultPrompt } from '../apps/desktop/translation.mjs';
 import translationStore from '../apps/desktop/translation-store.cjs';
+
+test('legacy translation settings get the default prompt; customized instructions persist and reach AI', async () => {
+  let saved = {
+    provider: 'ai',
+    target: 'en',
+    url: 'https://example.test/v1',
+    model: 'test',
+    apiKey: 'secret',
+  };
+  const storage = {
+    read: () => saved,
+    write: (value) => {
+      saved = value;
+    },
+    persistent: () => true,
+  };
+  const requests = [];
+  const fetcher = async (_, init) => {
+    requests.push(JSON.parse(init.body));
+    return Response.json({ choices: [{ message: { content: 'translation and terminology' } }] });
+  };
+  const api = createTranslationService(storage, fetcher);
+  assert.equal((await api.get()).prompt, defaultPrompt);
+  await api.translate('default', '原文');
+  assert.match(requests[0].messages[0].content, /只输出翻译内容/);
+  const prompt = '先给出译文，再解释专业词汇和难点词汇。';
+  await api.save({ ...saved, apiKey: '', prompt });
+  const reopened = createTranslationService(storage, fetcher);
+  assert.equal((await reopened.get()).prompt, prompt);
+  await reopened.translate('custom', '热传导');
+  const instruction = requests[1].messages[0].content;
+  assert.match(instruction, /英语/);
+  assert.ok(instruction.includes(prompt));
+  assert.ok(!instruction.includes(defaultPrompt));
+  assert.deepEqual(requests[1].messages[1], { role: 'user', content: '热传导' });
+  assert.equal(saved.apiKey, 'secret');
+  await reopened.save({ ...saved, prompt: ' ' });
+  assert.equal((await reopened.get()).prompt, defaultPrompt);
+  await assert.rejects(reopened.save({ ...saved, prompt: 42 }), /配置无效/);
+});
 
 test('translation sends only the selection, uses provider-specific credentials and drops a key when changing servers', async () => {
   const requests = [];

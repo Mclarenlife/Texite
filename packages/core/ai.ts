@@ -59,7 +59,14 @@ export type AIConnection = {
   version?: string;
   authenticated?: boolean;
   account?: string;
-  models: { id: string; label: string; isDefault: boolean }[];
+  models: {
+    id: string;
+    label: string;
+    isDefault: boolean;
+    reasoningEfforts?: string[];
+    defaultReasoningEffort?: string;
+  }[];
+  reasoningOptions?: { value: string; label: string }[];
 };
 export type AIEvent =
   | {
@@ -106,6 +113,7 @@ export type AIAPI = {
     prompt: string;
     model: string;
     readOnly: boolean;
+    reasoningEffort?: string;
     context: string;
     conversationId?: string;
   }): Promise<void>;

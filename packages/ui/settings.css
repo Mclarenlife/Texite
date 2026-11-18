@@ -944,3 +944,35 @@
   font-weight: 400;
   color: var(--secondary);
 }
+.ai-settings-page {
+  width: min(100%, 34rem);
+  min-width: 0;
+}
+.ai-settings-tabs {
+  display: flex;
+  gap: 4px;
+  width: fit-content;
+  padding: 4px;
+  margin-bottom: 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--tint);
+}
+.ai-settings-tabs button {
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.ai-settings-tabs button[aria-selected='true'] {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--line);
+}
+.ai-settings-tabs button:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}

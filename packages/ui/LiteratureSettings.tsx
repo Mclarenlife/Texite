@@ -3,6 +3,7 @@ import type { AIController } from '../workbench/useAI';
 import { AgentSettings } from './AgentSettings';
 import { ChatProfileSettings } from './ChatProfileSettings';
 import { Select } from './Select';
+import { ReasoningSelect } from './ReasoningSelect';
 import './literature.css';
 
 export type LiteratureMode = 'cli' | 'api';
@@ -51,6 +52,29 @@ export function LiteratureSettings({
         </label>
       )}
       {mode === 'cli' && <p>当前程序 · {ai.agentConfig.command || ai.agentConfig.preset}</p>}
+      {mode === 'cli' && (
+        <>
+          <label>
+            思考强度
+            <ReasoningSelect ai={ai} literature />
+          </label>
+          {!ai.connection?.connected && (
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={ai.connecting || ai.busy}
+              onClick={() => void ai.connect()}
+            >
+              {ai.connecting ? '连接中…' : '连接 CLI 并读取可用档位'}
+            </button>
+          )}
+          {ai.error && (
+            <p role="alert" className="form-error">
+              {ai.error}
+            </p>
+          )}
+        </>
+      )}
       {editing ? (
         mode === 'cli' ? (
           <AgentSettings ai={ai} onDone={() => setEditing(false)} />

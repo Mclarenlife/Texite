@@ -1,6 +1,12 @@
 export type Provider = 'libre' | 'ai' | 'deepl';
 export type Target = 'zh' | 'en' | 'ja' | 'de' | 'fr';
-export type TranslationConfig = { provider: Provider; target: Target; url: string; model: string };
+export type TranslationConfig = {
+  provider: Provider;
+  target: Target;
+  url: string;
+  model: string;
+  prompt?: string;
+};
 export type Stored = TranslationConfig & { apiKey: string };
 export type PublicConfig = TranslationConfig & { hasKey: boolean; persistent: boolean };
 export interface TranslationAPI {
@@ -12,6 +18,7 @@ export interface TranslationAPI {
 export const languages: Record<Target, string>;
 export const providers: Record<Provider, string>;
 export const defaults: Stored;
+export const defaultPrompt: string;
 export function createTranslationService(
   storage: {
     read(): Stored | null | Promise<Stored | null>;

@@ -1,4 +1,5 @@
 import { ChatProfileSettings } from './ChatProfileSettings';
+import { ReasoningSelect } from './ReasoningSelect';
 import { AIReply } from './AIReply';
 import { WindowResizeHandles } from './WindowResizeHandles';
 import { AgentSettings } from './AgentSettings';
@@ -58,7 +59,7 @@ export function AIPanel({
   const [cliSettings, setCliSettings] = useState(false);
   const [prompt, setPrompt] = useState('');
   const input = useRef<HTMLTextAreaElement>(null);
-  const [model, setModel] = usePreference<string>('ai-model', '');
+  const { model, setModel, chatProvider: provider, setChatProvider: setProvider } = ai;
   const [mode, setMode] = usePreference<'agent' | 'chat'>('ai-mode', 'agent');
   useEffect(() => {
     if (focusAgent) {
@@ -66,7 +67,6 @@ export function AIPanel({
       setMinimized(false);
     }
   }, [focusAgent]);
-  const [provider, setProvider] = usePreference<'codex' | 'api'>('chat-provider', 'codex');
   const [minimized, setMinimized] = useState(false);
   useLayoutEffect(() => {
     const el = input.current;
@@ -594,6 +594,7 @@ export function AIPanel({
                 ))}
               </Select>
             )}
+            {!custom && <ReasoningSelect ai={ai} />}
             {custom && mode === 'agent' && (
               <Select
                 aria-label="API Agent 最大执行轮数"

@@ -27,7 +27,7 @@ class LiteratureClient {
   cancel(id) {
     if (this.job && (!id || this.job.id === id)) this.job.controller.abort();
   }
-  async ask({ id, mode, prompt, context, model }) {
+  async ask({ id, mode, prompt, context, model, reasoningEffort }) {
     if (this.job) throw new Error('上一轮文献检索仍在结束，请稍后重试。');
     if (
       !['cli', 'api'].includes(mode) ||
@@ -38,7 +38,9 @@ class LiteratureClient {
       typeof context !== 'string' ||
       context.length > 60000 ||
       typeof model !== 'string' ||
-      model.length > 200
+      model.length > 200 ||
+      (reasoningEffort !== undefined &&
+        (typeof reasoningEffort !== 'string' || reasoningEffort.length > 200))
     )
       throw new Error('文献检索请求无效。');
     const controller = new AbortController();
@@ -62,6 +64,7 @@ class LiteratureClient {
         return job.text;
       }
       const connection = await this.ai.connect();
+      this.ai.emit?.({ type: 'connection', reason: 'connected', connection });
       controller.signal.throwIfAborted();
       if (!connection.authenticated) throw new Error('请先在终端登录已配置的 CLI。');
       const selected =
@@ -89,6 +92,7 @@ class LiteratureClient {
             context,
             readOnly: true,
             model: selected.id,
+            reasoningEffort,
           })
           .catch(reject);
       });

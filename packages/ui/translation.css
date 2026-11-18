@@ -15,7 +15,8 @@
   color: var(--secondary);
   font-size: 0.9em;
 }
-.translation-settings input {
+.translation-settings input,
+.translation-settings textarea {
   font: inherit;
   color: var(--text);
   background: var(--raised);
@@ -24,6 +25,14 @@
   padding: 9px 12px;
   width: 100%;
   min-width: 0;
+}
+.translation-settings textarea {
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.65;
+}
+.translation-settings .text-button {
+  justify-self: start;
 }
 .translation-settings button[type='submit'] {
   justify-self: start;

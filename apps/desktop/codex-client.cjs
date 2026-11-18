@@ -332,6 +332,8 @@ class CodexClient {
           id: m.model || m.id,
           label: m.displayName || m.model || m.id,
           isDefault: !!m.isDefault,
+          reasoningEfforts: (m.supportedReasoningEfforts || []).map((e) => e.reasoningEffort),
+          defaultReasoningEffort: m.defaultReasoningEffort,
         }));
       return await this.refreshAccount();
     } catch (e) {
@@ -476,8 +478,10 @@ class CodexClient {
       throw new Error('AI 请求无效或内容过长。');
     if (!this.connection?.authenticated || !this.child)
       throw new Error('请先连接并登录本机 Codex。');
-    if (!this.connection.models.some((m) => m.id === input.model))
-      throw new Error('请选择当前 Codex 提供的模型。');
+    const model = this.connection.models.find((m) => m.id === input.model);
+    if (!model) throw new Error('请选择当前 Codex 提供的模型。');
+    if (input.reasoningEffort && !model.reasoningEfforts?.includes(input.reasoningEffort))
+      throw new Error('当前模型不支持所选思考强度，请重新选择或使用默认设置。');
     const run = { ...input, readOnly: !!input.readOnly, calls: 0, cancelled: false };
     this.active = run;
     try {
@@ -516,6 +520,9 @@ class CodexClient {
       const result = await this.request('turn/start', {
         threadId,
         model: input.model,
+        ...(input.reasoningEffort || model.defaultReasoningEffort
+          ? { effort: input.reasoningEffort || model.defaultReasoningEffort }
+          : {}),
         environments: [],
         input: [
           {

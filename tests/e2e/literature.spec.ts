@@ -5,6 +5,7 @@ test('configure research AI, select multiple index results and persist annotated
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('tab', { name: 'AI配置', exact: true }).click();
   await page.getByRole('tab', { name: '文献检索' }).click();
   await page.getByRole('button', { name: '配置 API', exact: true }).click();
   await page.getByLabel('API 地址', { exact: true }).fill('https://research.example.test/v1');
