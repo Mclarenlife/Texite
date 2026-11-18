@@ -53,11 +53,11 @@ digests = {p.name.replace(' ', '.'): hashlib.sha256(p.read_bytes()).hexdigest() 
 
 notes = f'''本次为 {version} 桌面{'测试版' if beta else '正式版'}。
 
-- 自动同步打开的项目目录中的外部编辑、新建、删除和重命名，包括图片与参考文献。
-- 保留其他文件的未保存编辑。同一文件两边都改过时，先备份应用内编辑稿，再载入磁盘内容，可继续在原目录保存。
+- AI 对话和文献智能检索的 CLI 模式新增思考强度选择，分别保存，并按 CLI 与模型支持的档位展示。
+- 设置中的翻译与文献检索合并为「AI配置」，统一管理 AI 对话、翻译和文献检索。
+- AI 翻译支持自定义提示词，默认「只输出翻译内容。」，可要求增加专业术语、难点词汇解析，并支持恢复默认。
 
 仅提供 Windows x64 和 Mac Apple Silicon（arm64）安装包，扩展包沿用此前版本。
-Inkscape、latexminted 需在本机另行安装并配置；此版本不启用任意 shell escape。
 macOS 使用 ad-hoc 签名，尚未进行 Apple Developer ID 公证。
 
 Windows/macOS 构建、编译测试、安装包启动检查及网页回归已通过。

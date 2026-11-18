@@ -57,7 +57,17 @@ export function AboutSettings({ onPrepareUpdate }: { onPrepareUpdate(): Promise<
         <section>
           <h4>
             {packageInfo.version}
-            <time>2026.11.17</time>
+            <time>2026.11.18</time>
+          </h4>
+          <ul>
+            <li>AI 对话和文献智能检索的 CLI 模式支持分别选择并记住思考强度。</li>
+            <li>设置新增 AI配置，统一管理 AI 对话、翻译和文献检索。</li>
+            <li>AI 翻译支持自定义提示词，可补充专业术语与难点词汇解析。</li>
+          </ul>
+        </section>
+        <section>
+          <h4>
+            0.12.1<time>2026.11.17</time>
           </h4>
           <ul>
             <li>本地目录中的文稿和资源发生修改、新增、删除或改名时，编辑器自动刷新。</li>
